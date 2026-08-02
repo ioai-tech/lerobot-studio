@@ -1,0 +1,42 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-01-04T14:20:47.869Z",
+  "datasets": [
+    {
+      "id": "dualairbot_fold",
+      "title": "DualAirbot Folding",
+      "archiveFile": "lerobot_dataset_dualairbot_fold.tar",
+      "coverImageFile": "lerobot_dataset_dualairbot_fold.webp"
+    },
+    {
+      "id": "dualpiper_pulling",
+      "title": "DualPiper Pulling",
+      "archiveFile": "lerobot_dataset_dualpiper_pulling.tar",
+      "coverImageFile": "lerobot_dataset_dualpiper_pulling.webp"
+    },
+    {
+      "id": "franka_stack",
+      "title": "Franka Stacking",
+      "archiveFile": "lerobot_dataset_franka_stack.tar",
+      "coverImageFile": "lerobot_dataset_franka_stack.webp"
+    },
+    {
+      "id": "human_picknplace",
+      "title": "Human Pick and Place",
+      "archiveFile": "lerobot_dataset_human_picknplace.tar",
+      "coverImageFile": "lerobot_dataset_human_picknplace.webp"
+    },
+    {
+      "id": "rm75_move",
+      "title": "RM75 Moving",
+      "archiveFile": "lerobot_dataset_rm75_move.tar",
+      "coverImageFile": "lerobot_dataset_rm75_move.webp"
+    },
+    {
+      "id": "rm75_picknplace",
+      "title": "RM75 Pick and Place",
+      "archiveFile": "lerobot_dataset_rm75_picknplace.tar",
+      "coverImageFile": "lerobot_dataset_rm75_picknplace.webp"
+    }
+  ]
+}

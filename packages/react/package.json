@@ -1,0 +1,68 @@
+{
+  "name": "@ioai/lerobot-studio",
+  "version": "1.0.0",
+  "description": "Browser-based LeRobot dataset visualizer and React embeddable studio",
+  "license": "MIT",
+  "private": false,
+  "type": "module",
+  "main": "./dist/lerobot.es.js",
+  "module": "./dist/lerobot.es.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/lerobot.es.js",
+      "default": "./dist/lerobot.es.js"
+    },
+    "./style.css": "./dist/lerobot-studio.css",
+    "./index.css": "./dist/lerobot-studio.css"
+  },
+  "files": [
+    "dist"
+  ],
+  "sideEffects": [
+    "**/*.css"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ioai-tech/lerobot-studio.git"
+  },
+  "bugs": {
+    "url": "https://github.com/ioai-tech/lerobot-studio/issues"
+  },
+  "homepage": "https://github.com/ioai-tech/lerobot-studio#readme",
+  "engines": {
+    "node": ">=24.0.0 <25"
+  },
+  "scripts": {
+    "build": "vite build --config vite.lib.config.ts && tsc -p tsconfig.lib.json && node ../../scripts/rewrite-declaration-imports.mjs dist",
+    "typecheck": "tsc -p tsconfig.typecheck.json --noEmit"
+  },
+  "peerDependencies": {
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8"
+  },
+  "dependencies": {
+    "@zip.js/zip.js": "^2.8.34",
+    "apache-arrow": "^21.2.0",
+    "comlink": "^4.4.2",
+    "dockview-react": "^7.0.4",
+    "framer-motion": "^12.43.0",
+    "lucide-react": "^1.28.0",
+    "react-intl": "^10.1.18",
+    "react-window": "^2.3.0",
+    "sonner": "^2.0.7",
+    "uplot": "^1.6.32",
+    "use-sync-external-store": "^1.6.0"
+  },
+  "devDependencies": {
+    "@types/react": "^19.2.17",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^6.0.4",
+    "typescript": "6.0.3",
+    "vite": "^8.1.5"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

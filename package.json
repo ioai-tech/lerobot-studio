@@ -1,0 +1,61 @@
+{
+  "name": "lerobot-studio-monorepo",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "packageManager": "npm@11.7.0",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "engines": {
+    "node": ">=24.0.0 <25"
+  },
+  "scripts": {
+    "dev": "npm run dev -w @ioai/lerobot-studio-web",
+    "build": "npm run build -w @ioai/lerobot-studio-core --if-present && npm run build -w @ioai/lerobot-studio-platform --if-present && npm run build -w @ioai/lerobot-studio-ui --if-present && npm run build -w @ioai/lerobot-studio && npm run build -w @ioai/lerobot-studio-web",
+    "build:lib": "npm run build -w @ioai/lerobot-studio",
+    "build:web": "npm run build -w @ioai/lerobot-studio-web",
+    "verify:npm-consumer": "node scripts/verify-npm-consumer.mjs",
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "format:check": "prettier --check \"*.{md,json}\" \"docs/**/*.md\" \".github/**/*.{yml,yaml,md}\" \"apps/**/*.{ts,tsx,js,mjs,css,json,md}\" \"packages/**/*.{ts,tsx,js,mjs,css,json,md}\" \"scripts/**/*.{ts,tsx,js,mjs,json}\" \"tests/**/*.{ts,tsx,js,mjs,json}\"",
+    "fixtures:generate": "node scripts/generate-test-fixtures.mjs",
+    "typecheck": "npm run typecheck -w @ioai/lerobot-studio-core && npm run typecheck -w @ioai/lerobot-studio-platform && npm run typecheck -w @ioai/lerobot-studio-ui && npm run typecheck -w @ioai/lerobot-studio-web && npm run typecheck -w @ioai/lerobot-studio",
+    "test": "vitest run",
+    "test:unit": "vitest run",
+    "test:browser": "vitest run --config vitest.browser.config.ts",
+    "test:compat": "vitest run tests/compat",
+    "test:coverage": "vitest run --coverage",
+    "preview": "npm run preview -w @ioai/lerobot-studio-web",
+    "changeset": "changeset",
+    "version-packages": "changeset version",
+    "release": "changeset publish"
+  },
+  "devDependencies": {
+    "@changesets/cli": "^2.29.5",
+    "@eslint/js": "^10.0.1",
+    "@playwright/test": "^1.62.0",
+    "@tailwindcss/vite": "^4.3.3",
+    "@types/node": "^26.1.2",
+    "@types/react": "^19.2.17",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^6.0.4",
+    "@vitest/browser": "^4.1.10",
+    "@vitest/browser-playwright": "^4.1.10",
+    "@vitest/coverage-v8": "^4.1.10",
+    "eslint": "^10.8.0",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "eslint-plugin-react-refresh": "^0.5.3",
+    "globals": "^17.8.0",
+    "lightningcss": "^1.33.0",
+    "playwright": "^1.62.0",
+    "prettier": "^3.6.2",
+    "tailwindcss": "^4.3.3",
+    "typescript": "6.0.3",
+    "typescript-eslint": "^8.65.0",
+    "vite": "^8.1.5",
+    "vite-plugin-dts": "^5.0.3",
+    "vitest": "^4.1.10"
+  }
+}

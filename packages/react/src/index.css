@@ -1,0 +1,84 @@
+/* Official shadcn Base UI theme + tokens (packages/ui) */
+@import '@ioai/lerobot-studio-ui/globals.css';
+/* Tailwind v4 excludes external workspace packages unless registered explicitly. */
+@source '../../ui/src';
+
+@layer utilities {
+  /* 长文本每行约 80 字符，避免单行过长 */
+  .max-w-readable {
+    max-width: 80ch;
+  }
+}
+
+@layer components {
+  /* 高性能纯 CSS 加载动画 */
+  .loading-spinner {
+    width: 32px;
+    height: 32px;
+    border: 3px solid var(--muted);
+    border-top-color: var(--primary);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+    will-change: transform;
+  }
+
+  @keyframes spin {
+    to {
+      transform: rotate(360deg);
+    }
+  }
+
+  /* Indeterminate Loading Bar */
+  @keyframes indeterminate {
+    0% { transform: translateX(-100%); }
+    100% { transform: translateX(285.7%); }
+  }
+  .animate-indeterminate-loading {
+    animation: indeterminate 1.5s infinite linear;
+    position: absolute;
+    width: 35%;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    will-change: transform;
+  }
+}
+
+/* Dockview: 扁平化，去掉浮动面板阴影 */
+.dockview-theme-light,
+.dockview-theme-dark {
+  --dv-floating-box-shadow: none;
+}
+
+/* Dockview: 简化为单容器头部，弱化 Tabs 心智 */
+.dv-groupview > .dv-tabs-and-actions-container {
+  background-color: color-mix(in oklch, var(--muted) 20%, transparent);
+}
+
+.dv-groupview > .dv-tabs-and-actions-container .dv-tabs-container > .dv-tab {
+  flex: 1;
+  /* 覆盖 dockview 默认 flex-shrink:0 + min-width:auto，否则长标题撑开轨道并触发溢出下拉 */
+  min-width: 0;
+  overflow: hidden;
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+
+.dv-groupview > .dv-tabs-and-actions-container .dv-void-container {
+  display: none;
+}
+
+/* PanelTitle 结构语义：左标题占满，右侧操作固定 */
+.dv-groupview > .dv-tabs-and-actions-container .panel-title-root {
+  width: 100%;
+}
+
+.dv-groupview > .dv-tabs-and-actions-container .panel-title-text {
+  min-width: 0;
+}
+
+.dv-groupview > .dv-tabs-and-actions-container .panel-title-actions {
+  flex-shrink: 0;
+  margin-left: auto;
+}

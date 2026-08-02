@@ -1,0 +1,36 @@
+name: Nightly
+
+on:
+  schedule:
+    - cron: '0 3 * * *'
+  workflow_dispatch:
+
+jobs:
+  browser:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: huggingface/lerobot
+          ref: adccdea1cfbec83ed98263feb7e59f7d047c5692
+          path: official-lerobot
+      - uses: astral-sh/setup-uv@v6
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: '.nvmrc'
+          cache: npm
+      - run: npm ci
+      - name: Install official LeRobot dataset reader
+        working-directory: official-lerobot
+        run: uv sync --extra dataset
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:unit
+      - run: npm run test:browser
+      - name: Official LeRobot metadata compatibility
+        run: npx vitest run tests/compat
+        env:
+          LEROBOT_PYTHON: ${{ github.workspace }}/official-lerobot/.venv/bin/python
+      - run: npm run build:web
+      - run: npm run build:lib

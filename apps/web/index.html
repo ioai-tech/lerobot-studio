@@ -1,0 +1,171 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="logo.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="description"
+      content="LeRobot Studio: Offline LeRobot visualizer. Data stays local—view V2/V3 datasets with synced video, charts, export & edit in your browser."
+    />
+    <meta
+      name="keywords"
+      content="lerobot visualizer, lerobot v2 v3, offline dataset viewer, robot dataset viewer, lerobot studio, robotics data visualization, lerobot export, dataset editor"
+    />
+    <meta name="application-name" content="LeRobot Studio" />
+    <meta name="theme-color" content="#0b1220" />
+    <meta name="twitter:site" content="%TWITTER_SITE%" />
+    <meta name="author" content="IO-AI.TECH" />
+    <meta
+      name="robots"
+      content="index,follow,max-image-preview:large,max-snippet:-1,max-video-preview:-1"
+    />
+    <link rel="canonical" href="%CANONICAL_URL%" />
+
+    <!-- Open Graph / Social -->
+    <meta property="og:title" content="LeRobot Studio" />
+    <meta
+      property="og:description"
+      content="Offline LeRobot visualizer. Data stays local—view and edit V2/V3 datasets with synced video, charts, export & edit. All in your browser."
+    />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="LeRobot Studio" />
+    <meta property="og:locale" content="en_US" />
+    <meta property="og:url" content="%CANONICAL_URL%" />
+    <meta property="og:image" content="%OG_IMAGE_URL%" />
+    <meta property="og:image:secure_url" content="%OG_IMAGE_URL%" />
+    <meta property="og:image:type" content="image/svg+xml" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta
+      property="og:image:alt"
+      content="LeRobot Studio—offline LeRobot V2/V3 dataset visualizer with export and edit"
+    />
+
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="LeRobot Studio" />
+    <meta
+      name="twitter:description"
+      content="Offline LeRobot visualizer. Data stays local—view and edit V2/V3 datasets with synced video, charts, export & edit. All in your browser."
+    />
+    <meta name="twitter:image" content="%OG_IMAGE_URL%" />
+    <meta
+      name="twitter:image:alt"
+      content="LeRobot Studio—offline LeRobot V2/V3 dataset visualizer with export and edit"
+    />
+
+    <link rel="alternate" hreflang="en" href="%CANONICAL_URL%?lang=en" />
+    <link rel="alternate" hreflang="zh" href="%CANONICAL_URL%?lang=zh" />
+    <link rel="alternate" hreflang="ja" href="%CANONICAL_URL%?lang=ja" />
+    <link rel="alternate" hreflang="x-default" href="%CANONICAL_URL%" />
+
+    <script type="application/ld+json" id="seo-jsonld-app">
+      {
+        "@context": "https://schema.org",
+        "@type": "SoftwareApplication",
+        "name": "LeRobot Studio",
+        "applicationCategory": "DeveloperApplication",
+        "operatingSystem": "Web",
+        "url": "%CANONICAL_URL%",
+        "image": "%OG_IMAGE_URL%",
+        "description": "Offline LeRobot dataset visualizer. Data stays local; supports V2/V3 with synced video, charts, export, and edit—all in the browser.",
+        "inLanguage": ["en", "zh", "ja"],
+        "keywords": "lerobot visualizer, lerobot v2 v3, offline dataset viewer, robot dataset viewer, robotics data visualization, lerobot export, dataset editor",
+        "creator": {
+          "@type": "Organization",
+          "name": "IO-AI.TECH",
+          "url": "https://io-ai.tech"
+        }
+      }
+    </script>
+
+    <title>LeRobot Visualizer - LeRobot Studio</title>
+    <style>
+      #lerobot-root {
+        width: 100%;
+        height: 100vh;
+      }
+
+      #app-boot {
+        position: fixed;
+        inset: 0;
+        background: Canvas;
+        color-scheme: light dark;
+        z-index: 9999;
+      }
+
+      #app-boot .bar {
+        position: absolute;
+        left: 50%;
+        top: 50%;
+        transform: translate(-50%, -50%);
+        width: min(220px, calc(100vw - 64px));
+        height: 3px;
+        border-radius: 999px;
+        background: rgba(0, 0, 0, 0.08);
+        overflow: hidden;
+      }
+      #app-boot .bar > div {
+        height: 100%;
+        width: 0%;
+        background: linear-gradient(90deg, #60a5fa, #34d399);
+        transition: width 160ms ease;
+      }
+
+      @media (prefers-color-scheme: dark) {
+        #app-boot .bar {
+          background: rgba(255, 255, 255, 0.14);
+        }
+      }
+    </style>
+  </head>
+  <body style="margin: 0; padding: 0">
+    <div id="app-boot" aria-label="Loading app">
+      <div class="bar" aria-hidden="true"><div id="app-boot-bar"></div></div>
+    </div>
+    <div id="lerobot-root"></div>
+    <script>
+      (function () {
+        var bar = document.getElementById('app-boot-bar');
+        var bootEl = document.getElementById('app-boot');
+        if (!bar || !bootEl) return;
+
+        var p = 0;
+        var done = false;
+        var start = performance.now();
+
+        function set(v) {
+          var vv = Math.max(0, Math.min(100, v));
+          bar.style.width = vv.toFixed(1) + '%';
+        }
+
+        function tick() {
+          if (done) return;
+          var elapsed = performance.now() - start;
+          var target = elapsed < 1200 ? 60 : 90;
+          p = p + (target - p) * 0.06 + 0.25;
+          if (p > 90) p = 90;
+          set(p);
+          requestAnimationFrame(tick);
+        }
+        tick();
+
+        window.__APP_LOADER_DONE__ = function () {
+          if (done) return;
+          done = true;
+          set(100);
+          requestAnimationFrame(function () {
+            bootEl.style.transition = 'opacity 260ms ease';
+            bootEl.style.opacity = '0';
+            setTimeout(function () {
+              try {
+                bootEl.remove();
+              } catch (e) {}
+            }, 280);
+          });
+        };
+      })();
+    </script>
+    <script type="module" src="src/main.tsx"></script>
+  </body>
+</html>

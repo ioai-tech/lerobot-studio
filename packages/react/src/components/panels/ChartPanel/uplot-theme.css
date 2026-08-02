@@ -1,0 +1,54 @@
+.chart-uplot .uplot {
+  /* uPlot 默认样式偏“老派”，这里做轻量扁平化处理 */
+  font-family:
+    ui-sans-serif,
+    system-ui,
+    -apple-system,
+    Segoe UI,
+    Roboto,
+    Inter,
+    Arial,
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  background: transparent;
+}
+
+.chart-uplot .u-over,
+.chart-uplot .u-under {
+  /* 更扁平：不需要卡片圆角容器 */
+  border-radius: 0;
+}
+
+/* 选区框使用 design token */
+.chart-uplot .u-select {
+  background: hsl(var(--primary) / 0.08);
+  border: 1px solid hsl(var(--primary) / 0.25);
+}
+
+/* 避免 uPlot 容器带来的奇怪间距 */
+.chart-uplot .uplot canvas {
+  display: block;
+}
+
+.chart-tooltip {
+  scrollbar-width: thin;
+  scrollbar-color: hsl(var(--muted-foreground) / 0.55) transparent;
+}
+
+.chart-tooltip::-webkit-scrollbar {
+  width: 6px;
+}
+
+.chart-tooltip::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.chart-tooltip::-webkit-scrollbar-thumb {
+  border-radius: 9999px;
+  background: hsl(var(--muted-foreground) / 0.45);
+}
+
+.chart-tooltip::-webkit-scrollbar-thumb:hover {
+  background: hsl(var(--muted-foreground) / 0.7);
+}
