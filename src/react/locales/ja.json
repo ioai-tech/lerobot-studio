@@ -1,0 +1,730 @@
+{
+  "common": {
+    "appName": "LeRobot Studio",
+    "companyWebsite": "https://io-ai.tech",
+    "companyName": "IO-AI.TECH",
+    "browseLeRobot": "LeRobot を開く",
+    "of": "/",
+    "copy": "コピー",
+    "copied": "コピーしました",
+    "close": "閉じる",
+    "clearSearch": "検索をクリア",
+    "loading": "読み込み中...",
+    "addPanel": "パネルを追加",
+    "deletePanel": "パネルを削除",
+    "addToRight": "右に追加",
+    "addBelow": "下に追加",
+    "video": "動画",
+    "image": "画像",
+    "chart": "グラフ",
+    "language": "言語",
+    "theme": "テーマ",
+    "light": "ライト",
+    "dark": "ダーク",
+    "system": "システム",
+    "cancel": "キャンセル",
+    "retry": "再試行",
+    "back": "戻る",
+    "error": "エラーが発生しました",
+    "hint": "ヒント",
+    "hintArchiveUrl": ".zip/.tar/.tar.gz/.tgz の直接URLを指定するか、サーバーで Content-Disposition によりファイル名を返してください。",
+    "initializing": "初期化中...",
+    "loadingLayout": "レイアウトを読み込み中...",
+    "firstLoadNote": "初回読み込みには数秒かかる場合があります。",
+    "open": "開く",
+    "languages": {
+      "zh": "中文",
+      "en": "English",
+      "ja": "日本語"
+    }
+  },
+  "loading": {
+    "phase": {
+      "idle": "待機中",
+      "preflight": "プリフライト中...",
+      "download": "データをダウンロード中...",
+      "index": "インデックス作成中...",
+      "gunzip": "解凍中...",
+      "read": "データを読み込み中...",
+      "render": "パネルを描画中...",
+      "ready": "準備完了",
+      "error": "読み込み失敗"
+    }
+  },
+  "errors": {
+    "generic": "データの読み込み中に問題が発生しました。",
+    "loadFailed": "データセットの読み込みに失敗しました。",
+    "details": "エラー詳細"
+  },
+  "units": {
+    "frame": "フレーム",
+    "second": {
+      "short": "秒"
+    },
+    "minute": {
+      "short": "分"
+    }
+  },
+  "playback": {
+    "noData": "エピソードを選択して再生を開始",
+    "progress": "再生進捗",
+    "a11y": {
+      "valuetext": "{{time}} / {{totalTime}}、フレーム {{frame}}/{{totalFrames}}"
+    },
+    "mode": {
+      "toggle": "再生モードを切り替え",
+      "loop": "現在のエピソードをループ",
+      "shuffle": "シャッフル再生",
+      "sequential": "順番に再生"
+    },
+    "meta": {
+      "fps": "FPS",
+      "version": "バージョン"
+    },
+    "speed": "再生速度"
+  },
+  "onboarding": {
+    "playback": {
+      "title": "自動再生を有効にしました",
+      "body": "再生が自動で開始されました。ここをクリックするか Space で再生/一時停止できます。",
+      "gotIt": "了解"
+    }
+  },
+  "health": {
+    "noData": "データセットを読み込むとヘルスチェックを表示します",
+    "statusErrors": "検証でエラーを検出",
+    "statusWarnings": "検証で警告を検出",
+    "statusOk": "フォーマットチェック完了",
+    "checks": "チェック項目",
+    "noIssues": "問題はありません",
+    "fpsInvalid": "info.fps が未設定または ≤ 0 です。再生が不正になる可能性があります。",
+    "zeroLengthEpisodes": "{{count}} 件のエピソードの長さが 0 です",
+    "episodeCountMismatch": "有効エピソード数（{{effective}}）が info.total_episodes（{{total}}）と一致しません。編集/削除を反映しました。",
+    "footnote": "フォーマット検証は読み込み時に実行されます。データ品質（NaN/外れ値）は今後のバージョンで対応予定です。",
+    "healthCheckButton": "データセットヘルスチェック",
+    "check": "チェック",
+    "validation": {
+      "columns": {
+        "field": "チェック項目",
+        "current": "現在",
+        "expected": "期待値",
+        "suggestion": "推奨対応"
+      },
+      "dialog": {
+        "title": "データセット品質レポート",
+        "summaryErrors": "検証でエラーを検出",
+        "summaryWarnings": "検証で警告を検出",
+        "summaryOk": "すべてのチェックを通過",
+        "errorsCount": "エラー {{count}} 件",
+        "warningsCount": "警告 {{count}} 件",
+        "passedCount": "{{count}} 件通過",
+        "close": "閉じる",
+        "retry": "再試行",
+        "export": "エクスポート",
+        "exportCsv": "CSV でエクスポート",
+        "exportPdf": "PDF でエクスポート"
+      },
+      "categories": {
+        "file_structure": "ファイル構造",
+        "meta_info": "メタデータ",
+        "features": "特徴量",
+        "episodes": "エピソード"
+      },
+      "terms": {
+        "exists": "存在する",
+        "missing": "欠損",
+        "notExists": "見つかりません",
+        "invalidJson": "無効な JSON",
+        "validJson": "有効な JSON ファイル",
+        "positiveInteger": "正の整数",
+        "nonNegativeInteger": "0 以上の整数",
+        "positiveNumber": "正の数",
+        "nonEmptyString": "空でない文字列",
+        "present": "存在",
+        "unknown": "不明",
+        "validDtype": "有効な dtype",
+        "object": "オブジェクト",
+        "arrayOrNull": "配列または null",
+        "nFeatures": "{{count}} 特徴量",
+        "pathOrFileExists": "パスまたはファイルが存在",
+        "fieldExists": "フィールドが存在",
+        "positiveIntArray": "[正の整数, ...]",
+        "stringArrayMatchShape": "string[]（長さ = shape の最終次元）",
+        "objectWithFeatures": "1 つ以上の feature を持つオブジェクト",
+        "positiveIntMatchTotalEpisodes": "正の整数、total_episodes と一致",
+        "episodeLengthPositive": "各エピソードの length > 0",
+        "nonNegativeIntCount": "0 以上の整数（件数）",
+        "requiredParquetColumns": "frame_index, episode_index, index, timestamp など",
+        "objectWithTrainKey": "\"train\" キーを持つオブジェクト",
+        "containsTrain": "\"train\" を含む",
+        "requiredEpisodesColumns": "episode_index, length, dataset_from_index, dataset_to_index",
+        "tasksPresent": "tasks.jsonl または tasks.parquet が存在"
+      },
+      "codes": {
+        "INFO_MISSING": {
+          "message": "meta/info.json が存在しないか読み取れません",
+          "suggestion": "LeRobot データセットルートに meta/info.json があることを確認してください"
+        },
+        "INFO_PARSE_ERROR": {
+          "message": "meta/info.json の JSON 解析に失敗しました",
+          "suggestion": "JSON 構文を確認してください（例: https://jsonlint.com）"
+        },
+        "VERSION_MISMATCH": {
+          "message": "codebase_version が v2.x ではありません",
+          "suggestion": "v3.0 の場合は対応ローダーを使用するか、codebase_version を v2.0 または v2.1 に設定してください"
+        },
+        "VERSION_MISMATCH_V3": {
+          "message": "codebase_version が v3.x ではありません",
+          "suggestion": "codebase_version を v3.0 に設定してください"
+        },
+        "ROBOT_TYPE_MISSING": {
+          "message": "robot_type が未設定または空です",
+          "suggestion": "ロボットタイプを設定してください（例: \"so100\", \"lekiwi\"）"
+        },
+        "TOTAL_EPISODES_INVALID": {
+          "message": "total_episodes は正の整数である必要があります",
+          "suggestion": "正しいエピソード総数を設定してください"
+        },
+        "TOTAL_FRAMES_INVALID": {
+          "message": "total_frames は正の整数である必要があります",
+          "suggestion": "正しいフレーム総数を設定してください"
+        },
+        "TOTAL_TASKS_INVALID": {
+          "message": "total_tasks は 0 以上の整数である必要があります",
+          "suggestion": "正しいタスク総数を設定してください（0 可）"
+        },
+        "FPS_INVALID": {
+          "message": "fps は正の数である必要があります",
+          "suggestion": "正しい FPS を設定してください（例: 30）"
+        },
+        "CHUNKS_SIZE_MISSING": {
+          "message": "chunks_size が未設定です。デフォルト 1000 を使用します",
+          "suggestion": "chunks_size フィールドを追加してください（推奨: 1000）"
+        },
+        "FEATURES_EMPTY": {
+          "message": "features が未設定または空です",
+          "suggestion": "info.json の features にデータセットの全カラムを定義してください"
+        },
+        "EPISODES_MISSING": {
+          "message": "meta/episodes.jsonl が存在しないか読み取れません",
+          "suggestion": "1 行 1 エピソードの JSON で meta/episodes.jsonl を作成してください"
+        },
+        "EPISODES_INVALID_JSONL": {
+          "message": "episodes.jsonl の行の JSON 解析に失敗しました",
+          "suggestion": "各行が有効な JSON オブジェクトであることを確認してください"
+        },
+        "EPISODES_EMPTY": {
+          "message": "episodes.jsonl は空です",
+          "suggestion": "episodes.jsonl にデータがあることを確認してください"
+        },
+        "EPISODES_COUNT_MISMATCH": {
+          "message": "解析したエピソード数（{{parsed}}）が total_episodes（{{expected}}）と一致しません",
+          "suggestion": "episodes.jsonl を再生成するか info.json の total_episodes を修正してください"
+        },
+        "ZERO_LENGTH_EPISODES": {
+          "message": "{{count}} 件のエピソードの長さが 0 です",
+          "suggestion": "各エピソードが正のフレーム数を持つよう episodes.jsonl を再生成してください"
+        },
+        "EPISODES_NO_LENGTH": {
+          "message": "{{count}} 件のエピソードに length/num_frames がありません",
+          "suggestion": "episodes.jsonl の各行に \"length\" を追加してください"
+        },
+        "TASKS_MISSING": {
+          "message": "meta/tasks.jsonl が存在しないか空です",
+          "suggestion": "1 行 1 JSON で tasks.jsonl を作成: {\"task_index\": 0, \"task\": \"説明\"}"
+        },
+        "DATA_FILE_MISSING": {
+          "message": "データファイルが存在しません",
+          "suggestion": "v2 形式で data/ に Parquet ファイルを生成してください"
+        },
+        "DATA_FILE_CHECK_FAILED": {
+          "message": "データファイルの存在を確認できませんでした",
+          "suggestion": "data/chunk-xxx/episode_xxxxxx.parquet が存在することを確認してください"
+        },
+        "VIDEO_FILE_MISSING": {
+          "message": "動画ファイルが存在しません",
+          "suggestion": "videos/chunk-xxx/<key>/episode_xxxxxx.mp4 を生成してください"
+        },
+        "VIDEO_FILE_CHECK_FAILED": {
+          "message": "動画ファイルの存在を確認できませんでした",
+          "suggestion": "videos/chunk-xxx/<key>/episode_xxxxxx.mp4 が存在することを確認してください"
+        },
+        "PARQUET_MISSING_COLS": {
+          "message": "データ Parquet に必須カラムがありません: {{cols}}",
+          "suggestion": "システムカラムを含むデータ Parquet を再生成してください"
+        },
+        "DEFAULT_FEATURE_MISSING": {
+          "message": "システムフィールド {{key}} がありません",
+          "suggestion": "meta/info.json の features に \"{{key}}\" を追加してください"
+        },
+        "FEATURE_INVALID": {
+          "message": "features.{{key}} は有効なオブジェクトではありません",
+          "suggestion": "各 feature が dtype と shape を持つオブジェクトであることを確認してください"
+        },
+        "DTYPE_MISSING": {
+          "message": "features.{{key}}.dtype がありません",
+          "suggestion": "dtype を追加してください（例: float32, int64, video, image, string）"
+        },
+        "DTYPE_INVALID": {
+          "message": "features.{{key}}.dtype が無効です: {{dtype}}",
+          "suggestion": "標準の dtype を使用してください"
+        },
+        "SHAPE_INVALID": {
+          "message": "features.{{key}}.shape は正の整数の非空配列である必要があります",
+          "suggestion": "shape を設定してください（例: [7], [3, 480, 640]）"
+        },
+        "NAMES_INVALID": {
+          "message": "features.{{key}}.names は配列ではありません",
+          "suggestion": "names を文字列配列または null に設定してください"
+        },
+        "NAMES_LENGTH_MISMATCH": {
+          "message": "features.{{key}}.names の長さ（{{actual}}）が shape の最終次元（{{expected}}）と一致しません",
+          "suggestion": "names の長さを shape の最終次元と一致させてください"
+        },
+        "VIDEO_FPS_MISSING": {
+          "message": "動画 feature {{key}} の fps が未設定または ≤0 です。info.fps を使用します",
+          "suggestion": "オプション: この feature に fps を設定。未設定の場合は info.fps を使用"
+        },
+        "VIDEO_SHAPE_CHANNELS": {
+          "message": "動画の shape チャンネル数が一般的ではありません",
+          "suggestion": "通常は 3（RGB）です。[C,H,W] と [H,W,C] の両方に対応"
+        },
+        "VIDEO_SHAPE_NDIM": {
+          "message": "動画 shape は 3D (C, H, W) である必要があります。現在 {{n}}D です",
+          "suggestion": "shape を [C, H, W] に設定してください"
+        },
+        "IMAGE_SHAPE_NDIM": {
+          "message": "画像 shape は 3D (C, H, W) である必要があります。現在 {{n}}D です",
+          "suggestion": "shape を [C, H, W] に設定してください"
+        },
+        "EPISODES_PARQUET_MISSING": {
+          "message": "meta/episodes の最初のファイルが存在しません",
+          "suggestion": "v3 形式で meta/episodes/chunk-xxx/file-xxx.parquet を生成してください"
+        },
+        "EPISODES_PARQUET_INVALID": {
+          "message": "meta/episodes の最初のファイルを Parquet として解析できませんでした",
+          "suggestion": "episodes Parquet ファイルが有効であることを確認してください"
+        },
+        "DATA_PATH_TEMPLATE": {
+          "message": "info.data_path がデフォルトテンプレートと一致しません",
+          "suggestion": "デフォルトの data パステンプレートを使用するか、カスタムパスを一貫させてください"
+        },
+        "VIDEO_PATH_TEMPLATE": {
+          "message": "info.video_path がデフォルトテンプレートと一致しません",
+          "suggestion": "デフォルトの動画パステンプレートを使用してください"
+        },
+        "TASKS_PRESENT": { "message": "タスクメタデータを検出しました", "suggestion": "" },
+        "EPISODE_COUNT": { "message": "{{count}} 件のエピソードを解析しました", "suggestion": "" },
+        "TASK_COUNT": { "message": "{{count}} 件のタスクを解析しました", "suggestion": "" },
+        "SPLITS_MISSING_TRAIN": {
+          "message": "splits に \"train\" が必要です",
+          "suggestion": "splits に少なくとも \"train\" キーを追加してください"
+        }
+      }
+    }
+  },
+  "summary": {
+    "noData": "データセットを読み込むと概要を表示します",
+    "overview": "概要",
+    "episodes": "エピソード数",
+    "totalFrames": "総フレーム数",
+    "fps": "FPS",
+    "version": "フォーマット",
+    "robotType": "ロボットタイプ",
+    "episodeLength": "エピソード長",
+    "min": "最小",
+    "avg": "平均",
+    "max": "最大",
+    "taskDistribution": "タスク分布",
+    "features": "特徴量",
+    "videoChannels": "動画",
+    "imageChannels": "画像",
+    "numericFeatures": "数値",
+    "more": "その他"
+  },
+  "analysis": {
+    "noData": "データセットを読み込むと分析を表示します",
+    "overview": "概要",
+    "episodeCount": "エピソード数",
+    "totalFrames": "総フレーム数",
+    "fps": "FPS",
+    "version": "フォーマット",
+    "robotType": "ロボットタイプ",
+    "duration": "時間",
+    "totalDuration": "合計時間",
+    "avgDuration": "平均/エピソード",
+    "minDuration": "最小",
+    "maxDuration": "最大",
+    "min": "最小",
+    "avg": "平均",
+    "max": "最大",
+    "taskDistribution": "タスク分布",
+    "durationPerEpisode": "エピソードごとの時間",
+    "episodeIndex": "エピソード"
+  },
+  "sidebar": {
+    "tabs": {
+      "episodes": "エピソード",
+      "analysis": "分析"
+    },
+    "episodesTitle": "エピソード",
+    "searchPlaceholder": "検索...",
+    "noDescription": "説明なし",
+    "errorLoading": "データの読み込みエラー",
+    "emptyNoDataset": "LeRobot データセットを読み込むとエピソードを表示します",
+    "emptyNoMatch": "検索に一致するエピソードはありません",
+    "episodeAbbr": "EP",
+    "selectEpisode": "エピソード {{index}} を選択",
+    "expand": "サイドバーを展開",
+    "collapse": "サイドバーを折りたたむ",
+    "editTask": "タスクを編集",
+    "deleteEpisode": "エピソードを削除",
+    "restoreEpisode": "エピソードを復元",
+    "edit": "編集",
+    "done": "完了",
+    "enterEditMode": "エピソードを編集",
+    "exitEditMode": "編集を完了",
+    "feedback": "フィードバック",
+    "website": "公式サイト",
+    "multiSelect": "選択",
+    "selectAll": "すべて選択（フィルタ済み）",
+    "clearSelection": "選択をクリア",
+    "filterByTask": "タスク",
+    "filterByDuration": "時間（秒）",
+    "filterTaskAll": "すべてのタスク",
+    "bulkEdit": "タスクを編集",
+    "bulkDelete": "選択を削除",
+    "bulkRestore": "選択を復元",
+    "selectedCount": "{{count}} 件選択中",
+    "currentEpisode": "現在",
+    "selectEpisodeForBulk": "エピソードを選択",
+    "deselectEpisode": "選択を解除",
+    "exportSubset": "選択がある場合、エクスポートは選択サブセットのみ含みます",
+    "advanced": "詳細"
+  },
+  "editTask": {
+    "title": "エピソードタスクを編集",
+    "episodeIndex": "エピソード番号",
+    "taskDescription": "タスク説明",
+    "taskPlaceholder": "タスク説明を入力...",
+    "save": "保存"
+  },
+  "chart": {
+    "tooltip": {
+      "time": "秒",
+      "moreSeries": "+ {{count}} 件"
+    },
+    "joints": {
+      "all": "全系列",
+      "none": "未選択",
+      "selectedCount": "{{count}} 件選択",
+      "label": "関節",
+      "selectAll": "すべて選択",
+      "clear": "クリア",
+      "searchPlaceholder": "Feature / 関節を検索（action、left、observation.state…）",
+      "noResults": "一致する Feature または関節がありません",
+      "groupToggleTitle": "{{group}}: すべて切り替え",
+      "selectedOverTotal": "選択/合計"
+    },
+    "series": {
+      "state": "状態",
+      "action": "アクション"
+    },
+    "legend": {
+      "actionAbbr": "Act",
+      "stateAbbr": "Sta",
+      "toggleAction": "アクションデータの表示を切り替え",
+      "toggleState": "状態データの表示を切り替え"
+    },
+    "sampling": {
+      "enabled": "サンプリング: {{originalPoints}}→{{displayedPoints}} (stride≈{{stride}})",
+      "disabled": "サンプリングなし",
+      "mode": {
+        "performance": "パフォーマンス",
+        "precision": "精度"
+      }
+    },
+    "split": {
+      "open": "分割ビュー",
+      "openTitle": "サイドパネルで関節ごとのグラフを分割表示（再生を一時停止します）",
+      "emptySelection": "表示する関節を選択してください。",
+      "noSeriesForJoint": "現在のフィルターではこの関節に表示できる系列がありません。",
+      "headerSelectAll": "すべて選択",
+      "headerClear": "クリア",
+      "comboboxSearchPlaceholder": "関節を検索…",
+      "comboboxAll": "全関節",
+      "comboboxNone": "未選択",
+      "comboboxPartial": "{{count}} / {{total}} 関節"
+    }
+  },
+  "panels": {
+    "video": {
+      "title": "動画パネル",
+      "placeholder": "動画ファイルを待機中...",
+      "debug": {
+        "title": "メディアデバッグ",
+        "feature": "Feature",
+        "dtype": "DType",
+        "shape": "Shape",
+        "fps": "FPS",
+        "resolution": "解像度",
+        "codec": "コーデック",
+        "pixelFormat": "ピクセル形式",
+        "channels": "チャンネル",
+        "hasAudio": "音声",
+        "clipRange": "クリップ範囲",
+        "yes": "あり",
+        "no": "なし"
+      }
+    },
+    "image": {
+      "title": "画像パネル",
+      "placeholder": "画像ファイルを待機中...",
+      "debug": {
+        "title": "メディアデバッグ",
+        "feature": "Feature",
+        "dtype": "DType",
+        "shape": "Shape",
+        "fps": "FPS",
+        "resolution": "解像度",
+        "codec": "コーデック",
+        "pixelFormat": "ピクセル形式",
+        "channels": "チャンネル",
+        "hasAudio": "音声",
+        "clipRange": "クリップ範囲",
+        "yes": "あり",
+        "no": "なし"
+      }
+    },
+    "chart": {
+      "title": "グラフ",
+      "dataLabel": "データ",
+      "xAxisLabel": "X 軸",
+      "yAxisLabel": "Y 軸"
+    },
+    "summary": {
+      "title": "データセット概要"
+    },
+    "health": {
+      "title": "データセットヘルス"
+    },
+    "raw": {
+      "title": "生メッセージ",
+      "select_feature": "Feature を選択",
+      "loading": "データを読み込み中...",
+      "no_feature": "生データを表示する Feature を選択してください",
+      "downloadBinary": "クリックでバイナリをダウンロード",
+      "allFeatures": "全 Feature",
+      "none": "未選択",
+      "featuresCount": "{{count}} Feature",
+      "features": "Features",
+      "selectAll": "すべて選択",
+      "reset": "プリセット",
+      "clear": "クリア",
+      "searchFeature": "Feature を検索",
+      "noSearchResult": "Feature が見つかりません",
+      "undefined": "未記録",
+      "itemsCount": "{{count}} 件",
+      "keysCount": "{{count}} キー",
+      "pause": "自動更新を一時停止",
+      "resume": "自動更新を再開",
+      "refresh": "現在フレームに更新",
+      "showLess": "折りたたむ",
+      "showMore": "さらに表示"
+    },
+    "keyboardShortcuts": {
+      "title": "キーボードショートカット",
+      "description": "キーボードで再生/シーク/エピソード切り替えができます。",
+      "playPause": {
+        "action": "再生/一時停止",
+        "key": "Space"
+      },
+      "prevFrame": {
+        "action": "前のフレーム",
+        "key": "←"
+      },
+      "nextFrame": {
+        "action": "次のフレーム",
+        "key": "→"
+      },
+      "fastBackward": {
+        "action": "10 フレーム戻る",
+        "key": "Shift + ←"
+      },
+      "fastForward": {
+        "action": "10 フレーム進む",
+        "key": "Shift + →"
+      },
+      "prevEpisode": {
+        "action": "前のエピソード",
+        "key": "Alt + ↑"
+      },
+      "nextEpisode": {
+        "action": "次のエピソード",
+        "key": "Alt + ↓"
+      },
+      "firstFrame": {
+        "action": "先頭フレーム",
+        "key": "Home"
+      },
+      "lastFrame": {
+        "action": "最終フレーム",
+        "key": "End"
+      }
+    },
+    "welcome": {
+      "banner": {
+        "text": "オープンソース mcap/rosbag/hdf5/bvh 可視化ツール",
+        "url": "https://github.com/ioai-tech/rosview"
+      },
+      "title": "データを開く",
+      "subtitle": "ローカルファイル/フォルダを選択するか、リモート URL を入力",
+      "quickStart": "クイックスタート",
+      "loading": "読み込み中",
+      "suggest": "おすすめ",
+      "urlIntent": "ローカルディレクトリへのアクセス許可が必要です",
+      "urlIntentFile": "ローカルファイルへのアクセス許可が必要です",
+      "urlIntentHint": "ページがローカルファイルを読み取れるよう、手動でディレクトリを開いて許可してください。下のボタンからプロジェクトを選択できます。",
+      "restoreHint": "前回開いたプロジェクトが見つかりました。下のボタンで再認可するとアクセスを復元できます。",
+      "restoreButton": "再認可して開く",
+      "sources": {
+        "dir": "ローカルディレクトリを開く（meta/data/videos）",
+        "localArchive": "ローカルアーカイブを開く（.zip/.tar/.tar.gz/.tgz）",
+        "remoteArchive": "リモートアーカイブ URL（.zip/.tar/.tar.gz/.tgz）",
+        "browseSamples": "サンプルを閲覧"
+      },
+      "samples": {
+        "title": "サンプルデータセット",
+        "description": "カードをクリックしてデータセットを開く",
+        "requirements": "CORS + Range",
+        "requirementsTooltip": "リモートサンプルは CORS と Range リクエストに対応したサーバーが必要です",
+        "viewMore": "さらにサンプルを見る"
+      },
+      "dragDropHint": "または {{type}} をここにドラッグ＆ドロップ",
+      "dragDropFolder": "フォルダ",
+      "dragDropArchive": "アーカイブ",
+      "step1": {
+        "title": "データソースを選択（ローカル/アーカイブ、リモート URL、サンプル）",
+        "description": "CORS + Range 対応のリモートアーカイブ、またはローカルディレクトリ/アーカイブを直接開くことを推奨します。"
+      },
+      "step2": {
+        "title": "再生と同期",
+        "description": "アップロード不要。ブラウザで LeRobot データセットをそのまま可視化"
+      },
+      "getData": "データを取得",
+      "getDataDescription": "LeRobot リポジトリまたはドキュメントでフォーマットとダウンロード方法を確認してください。",
+      "lerobotRepo": "LeRobot リポジトリ",
+      "documentation": "ドキュメント",
+      "features": "主な機能",
+      "feature1": {
+        "title": "グラフ同期",
+        "description": "高性能な曲線表示。クリックでシーク、サンプリング/精度の切り替えに対応。"
+      },
+      "feature2": {
+        "title": "マルチビュー動画",
+        "description": "複数カメラを同期再生。フレームオーバーレイ付き。"
+      },
+      "feature3": {
+        "title": "生メッセージ",
+        "description": "フレームごとの action/observation を確認。コピーやバイナリダウンロードに対応。"
+      },
+      "feature4": {
+        "title": "柔軟なソース",
+        "description": "ローカル、アーカイブ、リモート URL、サンプルをワンクリックで開けます。"
+      },
+      "dropToOpen": "LeRobot データセットを開くにはここにドロップ",
+      "dropHint": "ローカルフォルダまたはアーカイブ（.zip, .tar, .tar.gz）に対応",
+      "copyright": "© {{year}} IO-AI.TECH. All rights reserved."
+    }
+  },
+  "app": {
+    "title": "LeRobot Studio - データ可視化",
+    "enterRemoteArchiveUrl": "リモートアーカイブ URL を入力"
+  },
+  "seo": {
+    "title": "LeRobot Visualizer - LeRobot Studio",
+    "description": "LeRobot Visualizer は IO-AI.TECH が提供する LeRobot データ可視化ツールです。ブラウザ上で動画、グラフ、Raw 特徴量を同期表示できます。",
+    "keywords": "lerobot visualizer, lerobot dataset visualizer, ロボットデータセット 可視化, lerobot studio, robotics data visualization",
+    "ogTitle": "LeRobot Visualizer - LeRobot Studio",
+    "ogDescription": "LeRobot データセットを動画・グラフ・Raw 特徴量で同期可視化。"
+  },
+  "navbar": {
+    "hideSidebar": "サイドバーを隠す",
+    "showSidebar": "サイドバーを表示",
+    "hidePlaybackBar": "再生バーを隠す",
+    "showPlaybackBar": "再生バーを表示",
+    "openLocalDir": "ローカルディレクトリ",
+    "openLocalArchive": "ローカルアーカイブ",
+    "openRemoteArchive": "リモートアーカイブ",
+    "history": "履歴",
+    "goHome": "ホームへ",
+    "export": "エクスポート",
+    "analysis": "分析"
+  },
+  "export": {
+    "title": "データセットをエクスポート",
+    "format": "エクスポート形式",
+    "directory": "ローカルディレクトリ",
+    "targetVersion": "対象バージョン",
+    "keepOriginal": "維持",
+    "changesSummary": "変更概要",
+    "modifiedCount": "変更済み",
+    "deletedCount": "削除済み",
+    "totalEpisodes": "エピソード総数",
+    "metadataOnlyHint": "現在のエクスポートはメタデータのみ（info, episodes, tasks）です。",
+    "export": "エクスポート",
+    "exporting": "エクスポート中...",
+    "noData": "データセットが読み込まれていません。",
+    "preparing": "準備中...",
+    "includeData": "データファイル（Parquet）を含める",
+    "includeVideos": "動画を含める（コピー）",
+    "videoFps": "動画エクスポート FPS",
+    "videoFpsHint": "FPS を下げるとエクスポートは速くなりますが、時間分解能は低下します。",
+    "percentDone": "{{percent}}%",
+    "errorUnknown": "エクスポートに失敗しました",
+    "cancelled": "エクスポートをキャンセルしました。",
+    "cancelExport": "エクスポートをキャンセル"
+  },
+  "dialogs": {
+    "remoteArchive": {
+      "description": "リモート HTTP サーバーから LeRobot アーカイブを読み込みます。CORS と Range リクエスト対応が必要です。",
+      "preflight": "プリフライト",
+      "error": {
+        "range_http": "Range プリフライト失敗: HTTP 206（Partial Content）を想定、実際は {{actualStatus}}。",
+        "range_headers": "Range 未対応: Accept-Ranges: bytes または bytes の Content-Range が必要です。実際: {{headerSummary}}。",
+        "cors": "CORS によりリクエストがブロックされました。ブラウザ: {{detail}}。",
+        "network": "ネットワークまたは認証エラー: {{detail}}。",
+        "unknown": "プリフライト失敗: {{detail}}。"
+      }
+    },
+    "samples": {
+      "description": "事前処理済み LeRobot サンプルデータセットをすぐに体験できます。",
+      "empty": "サンプルデータがありません。しばらくしてからお試しください。",
+      "emptyHint": "ローカルディレクトリを開くか、リモート URL を入力できます。",
+      "requirements": "CORS + Range 対応が必要。署名付き URL は有効期限内であること",
+      "openDirect": "公式サンプルを開く/ダウンロード",
+      "preview": "プレビュー",
+      "download": "ダウンロード"
+    }
+  },
+  "validation": {
+    "urlRequired": "URL は必須です",
+    "invalidUrl": "有効な HTTP/HTTPS URL を入力してください",
+    "unsupportedFormat": "未対応の形式です（.zip/.tar/.tar.gz/.tgz が必要）",
+    "browserNotSupported": "お使いのブラウザはローカルディレクトリに直接アクセスできません。Chrome/Edge をご利用か、アーカイブをアップロードしてください。"
+  },
+  "source": {
+    "restoreHandleMissing": "保存されたファイルアクセスの有効期限が切れました。ファイルまたはフォルダを再度選択してください。",
+    "restorePermissionDenied": "権限が拒否されました。ファイルまたはフォルダを再度選択してください。",
+    "restoreHandleMismatch": "保存されたアクセスが無効です。ファイルまたはフォルダを再度選択してください。",
+    "restoreHandleNotFound": "ファイルまたはフォルダが移動または削除されました。再度選択してください。"
+  },
+  "pagination": {
+    "previous": "前へ",
+    "next": "次へ",
+    "rowsPerPage": "ページあたり行数",
+    "range": "{{from}}-{{to}} / {{count}}",
+    "prevAriaLabel": "前のページへ",
+    "nextAriaLabel": "次のページへ"
+  }
+}

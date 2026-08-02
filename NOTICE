@@ -1,0 +1,21 @@
+LeRobot Studio Third-Party Notice
+=================================
+
+This repository depends on third-party packages. The exact dependency graph,
+versions, package registry locations, integrity hashes, and SPDX license
+identifiers are recorded in `package-lock.json`.
+
+The following non-MIT license identifiers are present in the current lockfile:
+
+- `@fontsource-variable/geist` 5.3.0 — OFL-1.1
+- `argparse` 2.0.1 — Python-2.0
+- `caniuse-lite` 1.0.30001799 — CC-BY-4.0
+- `isexe` 3.1.5 — BlueOak-1.0.0
+- `lightningcss` 1.32.0 and 1.33.0 — MPL-2.0
+- `spawndamnit` 3.0.1 — `SEE LICENSE IN LICENSE`
+- `tslib` 2.8.1 — 0BSD
+
+Transitive copies of the packages above may also appear in the lockfile. This
+notice is an index, not a replacement for the applicable third-party license
+texts. Before distributing a built artifact, regenerate and review the
+dependency inventory for the lockfile used to produce that artifact.

@@ -1,0 +1,38 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "useDefineForClassFields": true,
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "types": ["vite/client"],
+    "skipLibCheck": true,
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
+    "verbatimModuleSyntax": true,
+    "moduleDetection": "force",
+    "noEmit": true,
+    "jsx": "react-jsx",
+    "ignoreDeprecations": "6.0",
+    "baseUrl": ".",
+    "paths": {
+      "@": ["./src/react/index.ts"],
+      "@/*": ["./src/react/*"],
+      "@/core": ["./src/core/index.ts"],
+      "@/core/*": ["./src/core/*"],
+      "@/platform": ["./src/platform/index.ts"],
+      "@/platform/*": ["./src/platform/*"],
+      "@/ui": ["./src/ui/index.ts"],
+      "@/ui/*": ["./src/ui/*"],
+      "@/web/*": ["./src/web/*"],
+      "react-i18next": ["./src/react/i18n/reactI18nextCompat.ts"]
+    },
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "erasableSyntaxOnly": true,
+    "noFallthroughCasesInSwitch": true,
+    "noUncheckedSideEffectImports": true
+  },
+  "include": ["src"],
+  "exclude": ["src/platform/workers/**/*.worker.ts"]
+}

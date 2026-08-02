@@ -1,0 +1,10 @@
+{
+  // Deployed via Cloudflare Workers Git integration (ioai-tech/lerobot-studio → lerobot.studio).
+  // Dashboard build: `npm ci && npm run build` with SITE_URL=https://lerobot.studio
+  "name": "lerobot-studio",
+  "compatibility_date": "2026-03-18",
+  "assets": {
+    "directory": "./dist",
+    "not_found_handling": "single-page-application",
+  },
+}

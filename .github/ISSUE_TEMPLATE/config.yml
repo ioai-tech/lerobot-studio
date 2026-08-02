@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security vulnerability report
+    url: https://github.com/ioai-tech/lerobot-studio/security/advisories/new
+    about: Report suspected vulnerabilities privately. Do not disclose them in a public issue.
+  - name: Contributing guide
+    url: https://github.com/ioai-tech/lerobot-studio/blob/main/CONTRIBUTING.md
+    about: Read the development and pull-request guidance before contributing.

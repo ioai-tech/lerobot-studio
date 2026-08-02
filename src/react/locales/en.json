@@ -1,0 +1,736 @@
+{
+  "common": {
+    "appName": "LeRobot Studio",
+    "companyWebsite": "https://io-ai.tech",
+    "companyName": "IO-AI.TECH",
+    "browseLeRobot": "Browse LeRobot",
+    "of": "of",
+    "copy": "Copy",
+    "copied": "Copied",
+    "close": "Close",
+    "clearSearch": "Clear search",
+    "loading": "Loading...",
+    "addPanel": "Add Panel",
+    "deletePanel": "Delete Panel",
+    "addToRight": "Add to Right",
+    "addBelow": "Add Below",
+    "video": "Video",
+    "image": "Image",
+    "chart": "Chart",
+    "language": "Language",
+    "theme": "Theme",
+    "light": "Light",
+    "dark": "Dark",
+    "system": "System",
+    "cancel": "Cancel",
+    "retry": "Retry",
+    "back": "Back",
+    "error": "Error Occurred",
+    "hint": "Hint",
+    "hintArchiveUrl": "Please provide a URL to a direct .zip/.tar/.tar.gz/.tgz file (or have the server expose the filename via Content-Disposition)",
+    "initializing": "Initializing...",
+    "loadingLayout": "Loading layout components...",
+    "firstLoadNote": "This may take a few seconds on first load.",
+    "open": "Open",
+    "languages": {
+      "zh": "中文",
+      "en": "English",
+      "ja": "日本語"
+    }
+  },
+  "loading": {
+    "phase": {
+      "idle": "Idle",
+      "preflight": "Preflighting...",
+      "download": "Downloading data...",
+      "index": "Indexing...",
+      "gunzip": "Decompressing...",
+      "read": "Reading data...",
+      "render": "Rendering panels...",
+      "ready": "Ready",
+      "error": "Load Failed"
+    }
+  },
+  "errors": {
+    "generic": "Something went wrong while loading the data.",
+    "loadFailed": "Failed to load the dataset.",
+    "details": "Error Details"
+  },
+  "units": {
+    "frame": "frame",
+    "second": {
+      "short": "s"
+    },
+    "minute": {
+      "short": "min"
+    }
+  },
+  "playback": {
+    "noData": "Select an episode to start playback",
+    "progress": "Playback progress",
+    "a11y": {
+      "valuetext": "{{time}} / {{totalTime}}, frame {{frame}}/{{totalFrames}}"
+    },
+    "mode": {
+      "toggle": "Toggle playback mode",
+      "loop": "Loop current episode",
+      "shuffle": "Shuffle playlist",
+      "sequential": "Play in order"
+    },
+    "meta": {
+      "fps": "FPS",
+      "version": "Version"
+    },
+    "speed": "Playback speed"
+  },
+  "onboarding": {
+    "playback": {
+      "title": "Auto-play Enabled",
+      "body": "Playback has started automatically. Click here or press Space to play/pause anytime.",
+      "gotIt": "Got it"
+    }
+  },
+  "health": {
+    "noData": "Load a dataset to see health checks",
+    "statusErrors": "Validation reported errors",
+    "statusWarnings": "Validation reported warnings",
+    "statusOk": "Format checks passed",
+    "checks": "Checks",
+    "noIssues": "No issues reported",
+    "fpsInvalid": "info.fps is missing or ≤ 0; playback may be incorrect",
+    "zeroLengthEpisodes": "{{count}} episode(s) have length 0",
+    "episodeCountMismatch": "Effective episodes ({{effective}}) differ from info.total_episodes ({{total}}); edits/deletes applied.",
+    "footnote": "Format validation runs at load. Data quality (NaN/outliers) can be improved in a future release.",
+    "healthCheckButton": "Dataset health check",
+    "check": "Check",
+    "validation": {
+      "columns": {
+        "field": "Check item",
+        "current": "Current",
+        "expected": "Expected",
+        "suggestion": "Suggestion"
+      },
+      "dialog": {
+        "title": "Dataset quality report",
+        "summaryErrors": "Validation reported errors",
+        "summaryWarnings": "Validation reported warnings",
+        "summaryOk": "All checks passed",
+        "errorsCount": "{{count}} error(s)",
+        "warningsCount": "{{count}} warning(s)",
+        "passedCount": "{{count}} passed",
+        "close": "Close",
+        "retry": "Retry",
+        "export": "Export",
+        "exportCsv": "Export as CSV",
+        "exportPdf": "Export as PDF"
+      },
+      "categories": {
+        "file_structure": "File structure",
+        "meta_info": "Metadata",
+        "features": "Features",
+        "episodes": "Episodes"
+      },
+      "terms": {
+        "exists": "Exists",
+        "missing": "Missing",
+        "notExists": "Not found",
+        "invalidJson": "Invalid JSON",
+        "validJson": "Valid JSON file",
+        "positiveInteger": "Positive integer",
+        "nonNegativeInteger": "Non-negative integer",
+        "positiveNumber": "Positive number",
+        "nonEmptyString": "Non-empty string",
+        "present": "Present",
+        "unknown": "Unknown",
+        "validDtype": "Valid dtype",
+        "object": "Object",
+        "arrayOrNull": "Array or null",
+        "nFeatures": "{{count}} feature(s)",
+        "pathOrFileExists": "Path or file exists",
+        "fieldExists": "Field exists",
+        "positiveIntArray": "[positive integer, ...]",
+        "stringArrayMatchShape": "string[] (length = shape last dim)",
+        "objectWithFeatures": "Object with at least one feature",
+        "positiveIntMatchTotalEpisodes": "Positive integer, matches total_episodes",
+        "episodeLengthPositive": "Each episode length > 0",
+        "nonNegativeIntCount": "Non-negative integer (count)",
+        "requiredParquetColumns": "frame_index, episode_index, index, timestamp, etc.",
+        "objectWithTrainKey": "Object with \"train\" key",
+        "containsTrain": "Contains \"train\"",
+        "requiredEpisodesColumns": "episode_index, length, dataset_from_index, dataset_to_index",
+        "tasksPresent": "tasks.jsonl or tasks.parquet present"
+      },
+      "codes": {
+        "INFO_MISSING": {
+          "message": "meta/info.json does not exist or cannot be read",
+          "suggestion": "Ensure the current directory is the LeRobot dataset root and meta/info.json exists"
+        },
+        "INFO_PARSE_ERROR": {
+          "message": "meta/info.json JSON parse failed",
+          "suggestion": "Check JSON syntax, e.g. at https://jsonlint.com"
+        },
+        "VERSION_MISMATCH": {
+          "message": "codebase_version is not v2.x",
+          "suggestion": "If this is v3.0, use the correct loader; otherwise set codebase_version to v2.0 or v2.1"
+        },
+        "VERSION_MISMATCH_V3": {
+          "message": "codebase_version is not v3.x",
+          "suggestion": "Set codebase_version to v3.0"
+        },
+        "ROBOT_TYPE_MISSING": {
+          "message": "robot_type is missing or empty",
+          "suggestion": "Set robot type, e.g. \"so100\" or \"lekiwi\""
+        },
+        "TOTAL_EPISODES_INVALID": {
+          "message": "total_episodes must be a positive integer",
+          "suggestion": "Set correct total episode count"
+        },
+        "TOTAL_FRAMES_INVALID": {
+          "message": "total_frames must be a positive integer",
+          "suggestion": "Set correct total frame count"
+        },
+        "TOTAL_TASKS_INVALID": {
+          "message": "total_tasks must be a non-negative integer",
+          "suggestion": "Set correct total task count (may be 0)"
+        },
+        "FPS_INVALID": {
+          "message": "fps must be a positive number",
+          "suggestion": "Set correct FPS, e.g. 30"
+        },
+        "CHUNKS_SIZE_MISSING": {
+          "message": "chunks_size is missing; default 1000 will be used",
+          "suggestion": "Add chunks_size field, recommended 1000"
+        },
+        "FEATURES_EMPTY": {
+          "message": "features is missing or empty",
+          "suggestion": "Add features in info.json defining all dataset columns"
+        },
+        "EPISODES_MISSING": {
+          "message": "meta/episodes.jsonl does not exist or cannot be read",
+          "suggestion": "Create meta/episodes.jsonl with one JSON object per line per episode"
+        },
+        "EPISODES_INVALID_JSONL": {
+          "message": "A line in episodes.jsonl failed to parse as JSON",
+          "suggestion": "Ensure each line is a valid JSON object"
+        },
+        "EPISODES_EMPTY": {
+          "message": "episodes.jsonl parsed but is empty",
+          "suggestion": "Check that episodes.jsonl is populated"
+        },
+        "EPISODES_COUNT_MISMATCH": {
+          "message": "Parsed episode count ({{parsed}}) does not match total_episodes ({{expected}})",
+          "suggestion": "Regenerate episodes.jsonl or fix total_episodes in info.json"
+        },
+        "ZERO_LENGTH_EPISODES": {
+          "message": "{{count}} episode(s) have length 0",
+          "suggestion": "Regenerate episodes.jsonl so each episode has a positive frame count"
+        },
+        "EPISODES_NO_LENGTH": {
+          "message": "{{count}} episode(s) lack length/num_frames",
+          "suggestion": "Add \"length\" to each line in episodes.jsonl"
+        },
+        "TASKS_MISSING": {
+          "message": "meta/tasks.jsonl does not exist or is empty",
+          "suggestion": "Create tasks.jsonl with one JSON per line: {\"task_index\": 0, \"task\": \"description\"}"
+        },
+        "DATA_FILE_MISSING": {
+          "message": "Data file does not exist",
+          "suggestion": "Generate Parquet data files under data/ per v2 format"
+        },
+        "DATA_FILE_CHECK_FAILED": {
+          "message": "Could not check if data file exists",
+          "suggestion": "Ensure data/chunk-xxx/episode_xxxxxx.parquet files exist"
+        },
+        "VIDEO_FILE_MISSING": {
+          "message": "Video file does not exist",
+          "suggestion": "Generate video files: videos/chunk-xxx/<key>/episode_xxxxxx.mp4"
+        },
+        "VIDEO_FILE_CHECK_FAILED": {
+          "message": "Could not check if video file exists",
+          "suggestion": "Ensure videos/chunk-xxx/<key>/episode_xxxxxx.mp4 exist"
+        },
+        "PARQUET_MISSING_COLS": {
+          "message": "Data Parquet is missing required columns: {{cols}}",
+          "suggestion": "Regenerate data Parquet with system columns"
+        },
+        "DEFAULT_FEATURE_MISSING": {
+          "message": "Missing system field {{key}}",
+          "suggestion": "Add \"{{key}}\" to features in meta/info.json"
+        },
+        "FEATURE_INVALID": {
+          "message": "features.{{key}} is not a valid object",
+          "suggestion": "Ensure each feature is an object with dtype and shape"
+        },
+        "DTYPE_MISSING": {
+          "message": "features.{{key}}.dtype is missing",
+          "suggestion": "Add dtype field (e.g. float32, int64, video, image, string)"
+        },
+        "DTYPE_INVALID": {
+          "message": "features.{{key}}.dtype is invalid: {{dtype}}",
+          "suggestion": "Use a standard dtype"
+        },
+        "SHAPE_INVALID": {
+          "message": "features.{{key}}.shape must be a non-empty array of positive integers",
+          "suggestion": "Set shape e.g. [7] or [3, 480, 640]"
+        },
+        "NAMES_INVALID": {
+          "message": "features.{{key}}.names is not an array",
+          "suggestion": "Set names to a string array or null"
+        },
+        "NAMES_LENGTH_MISMATCH": {
+          "message": "features.{{key}}.names length ({{actual}}) does not match shape last dim ({{expected}})",
+          "suggestion": "Make names array length equal to shape last dimension"
+        },
+        "VIDEO_FPS_MISSING": {
+          "message": "Video feature {{key}} has missing or ≤0 fps; fallback to global info.fps",
+          "suggestion": "Optional: set fps on this feature explicitly, otherwise info.fps will be used"
+        },
+        "VIDEO_SHAPE_CHANNELS": {
+          "message": "Video shape channel count is unusual",
+          "suggestion": "Typically channels are 3 (RGB); both [C,H,W] and [H,W,C] are supported"
+        },
+        "VIDEO_SHAPE_NDIM": {
+          "message": "Video shape should be 3D (C, H, W), got {{n}}D",
+          "suggestion": "Set shape to [C, H, W]"
+        },
+        "IMAGE_SHAPE_NDIM": {
+          "message": "Image shape should be 3D (C, H, W), got {{n}}D",
+          "suggestion": "Set shape to [C, H, W]"
+        },
+        "EPISODES_PARQUET_MISSING": {
+          "message": "meta/episodes first file does not exist",
+          "suggestion": "Generate meta/episodes/chunk-xxx/file-xxx.parquet per v3 format"
+        },
+        "EPISODES_PARQUET_INVALID": {
+          "message": "meta/episodes first file could not be parsed as Parquet",
+          "suggestion": "Ensure episodes Parquet files are valid"
+        },
+        "DATA_PATH_TEMPLATE": {
+          "message": "info.data_path does not match default template",
+          "suggestion": "Use default data path template or keep custom path consistent"
+        },
+        "VIDEO_PATH_TEMPLATE": {
+          "message": "info.video_path does not match default template",
+          "suggestion": "Use default video path template"
+        },
+        "TASKS_PRESENT": { "message": "Task metadata detected", "suggestion": "" },
+        "EPISODE_COUNT": { "message": "Parsed {{count}} episode(s)", "suggestion": "" },
+        "TASK_COUNT": { "message": "Parsed {{count}} task(s)", "suggestion": "" },
+        "SPLITS_MISSING_TRAIN": {
+          "message": "splits must contain \"train\"",
+          "suggestion": "Add splits with at least \"train\" key"
+        }
+      }
+    }
+  },
+  "summary": {
+    "noData": "Load a dataset to see summary",
+    "overview": "Overview",
+    "episodes": "Episodes",
+    "totalFrames": "Total frames",
+    "fps": "FPS",
+    "version": "Format",
+    "robotType": "Robot type",
+    "episodeLength": "Episode length",
+    "min": "Min",
+    "avg": "Avg",
+    "max": "Max",
+    "taskDistribution": "Task distribution",
+    "features": "Features",
+    "videoChannels": "Video",
+    "imageChannels": "Image",
+    "numericFeatures": "Numeric",
+    "more": "more"
+  },
+  "analysis": {
+    "noData": "Load a dataset to see analysis",
+    "overview": "Overview",
+    "episodeCount": "Episodes",
+    "totalFrames": "Total frames",
+    "fps": "FPS",
+    "version": "Format",
+    "robotType": "Robot type",
+    "duration": "Duration",
+    "totalDuration": "Total duration",
+    "avgDuration": "Avg / episode",
+    "minDuration": "Min",
+    "maxDuration": "Max",
+    "min": "Min",
+    "avg": "Avg",
+    "max": "Max",
+    "taskDistribution": "Task distribution",
+    "durationPerEpisode": "Duration per episode",
+    "episodeIndex": "Episode"
+  },
+  "sidebar": {
+    "tabs": {
+      "episodes": "Episodes",
+      "analysis": "Analysis"
+    },
+    "episodesTitle": "Episodes",
+    "searchPlaceholder": "Search...",
+    "noDescription": "No description",
+    "errorLoading": "Error loading data",
+    "emptyNoDataset": "Load a LeRobot dataset to see episodes",
+    "emptyNoMatch": "No episodes match your search",
+    "episodeAbbr": "EP",
+    "selectEpisode": "Select Episode {{index}}",
+    "expand": "Expand Sidebar",
+    "collapse": "Collapse Sidebar",
+    "editTask": "Edit task",
+    "deleteEpisode": "Delete episode",
+    "restoreEpisode": "Restore episode",
+    "edit": "Edit",
+    "done": "Done",
+    "enterEditMode": "Edit episodes",
+    "exitEditMode": "Done editing",
+    "feedback": "Feedback",
+    "website": "Official site",
+    "multiSelect": "Select",
+    "selectAll": "Select all (filtered)",
+    "clearSelection": "Clear selection",
+    "filterByTask": "Task",
+    "filterByDuration": "Duration (s)",
+    "filterTaskAll": "All tasks",
+    "bulkEdit": "Edit task",
+    "bulkDelete": "Delete selected",
+    "bulkRestore": "Restore selected",
+    "selectedCount": "{{count}} selected",
+    "currentEpisode": "Current",
+    "selectEpisodeForBulk": "Select episode",
+    "deselectEpisode": "Deselect episode",
+    "exportSubset": "Export uses selected subset when any selected",
+    "advanced": "Advanced"
+  },
+  "editTask": {
+    "title": "Edit Episode Task",
+    "episodeIndex": "Episode Index",
+    "taskDescription": "Task Description",
+    "taskPlaceholder": "Enter task description...",
+    "save": "Save"
+  },
+  "chart": {
+    "tooltip": {
+      "time": "sec",
+      "moreSeries": "+ {{count}} more"
+    },
+    "joints": {
+      "all": "All Series",
+      "none": "None Selected",
+      "selectedCount": "{{count}} Selected",
+      "label": "Joints",
+      "selectAll": "Select All",
+      "clear": "Clear",
+      "searchPlaceholder": "Search feature / joint (action, left, observation.state…)",
+      "noResults": "No matching feature or joint",
+      "groupToggleTitle": "{{group}}: toggle all",
+      "selectedOverTotal": "Selected/Total"
+    },
+    "series": {
+      "state": "State",
+      "action": "Action"
+    },
+    "legend": {
+      "actionAbbr": "Act",
+      "stateAbbr": "Sta",
+      "toggleAction": "Toggle action data",
+      "toggleState": "Toggle state data"
+    },
+    "sampling": {
+      "enabled": "Sampling: {{originalPoints}}→{{displayedPoints}} (stride≈{{stride}})",
+      "disabled": "No sampling",
+      "mode": {
+        "performance": "Performance",
+        "precision": "Precision"
+      }
+    },
+    "split": {
+      "open": "Split view",
+      "openTitle": "Open split joint charts in a side panel (pauses playback)",
+      "emptySelection": "Please select joints to view.",
+      "noSeriesForJoint": "No series for this joint with the current filters.",
+      "headerSelectAll": "Select all",
+      "headerClear": "Clear",
+      "comboboxSearchPlaceholder": "Search joints…",
+      "comboboxAll": "All joints",
+      "comboboxNone": "None selected",
+      "comboboxPartial": "{{count}} / {{total}} joints"
+    }
+  },
+  "panels": {
+    "video": {
+      "title": "Video Panel",
+      "placeholder": "Waiting for video file...",
+      "debug": {
+        "title": "Media debug",
+        "feature": "Feature",
+        "dtype": "DType",
+        "shape": "Shape",
+        "fps": "FPS",
+        "resolution": "Resolution",
+        "codec": "Codec",
+        "pixelFormat": "Pixel format",
+        "channels": "Channels",
+        "hasAudio": "Audio",
+        "clipRange": "Clip range",
+        "yes": "Yes",
+        "no": "No"
+      }
+    },
+    "image": {
+      "title": "Image Panel",
+      "placeholder": "Waiting for image file...",
+      "debug": {
+        "title": "Media debug",
+        "feature": "Feature",
+        "dtype": "DType",
+        "shape": "Shape",
+        "fps": "FPS",
+        "resolution": "Resolution",
+        "codec": "Codec",
+        "pixelFormat": "Pixel format",
+        "channels": "Channels",
+        "hasAudio": "Audio",
+        "clipRange": "Clip range",
+        "yes": "Yes",
+        "no": "No"
+      }
+    },
+    "chart": {
+      "title": "Chart",
+      "dataLabel": "Data",
+      "xAxisLabel": "X Axis",
+      "yAxisLabel": "Y Axis"
+    },
+    "summary": {
+      "title": "Dataset Summary"
+    },
+    "health": {
+      "title": "Dataset Health"
+    },
+    "raw": {
+      "title": "Raw Message",
+      "select_feature": "Select Feature",
+      "loading": "Loading data...",
+      "no_feature": "Please select a feature to view raw data",
+      "downloadBinary": "Click to download binary data",
+      "copyImage": "Copy image",
+      "copyingImage": "Copying",
+      "copiedImage": "COPIED",
+      "downloadedImage": "Downloaded PNG",
+      "imageDtype": "IMAGE",
+      "videoDtype": "VIDEO",
+      "allFeatures": "All Features",
+      "none": "None Selected",
+      "featuresCount": "{{count}} Features",
+      "features": "Features",
+      "selectAll": "Select All",
+      "reset": "Preset",
+      "clear": "Clear",
+      "searchFeature": "Search feature",
+      "noSearchResult": "No features found",
+      "undefined": "Not recorded",
+      "itemsCount": "{{count}} items",
+      "keysCount": "{{count}} keys",
+      "pause": "Pause auto-refresh",
+      "resume": "Resume auto-refresh",
+      "refresh": "Refresh to current frame",
+      "showLess": "Show less",
+      "showMore": "Show more"
+    },
+    "keyboardShortcuts": {
+      "title": "Keyboard Shortcuts",
+      "description": "Operate faster: play/seek/switch episode via keyboard.",
+      "playPause": {
+        "action": "Play/Pause",
+        "key": "Space"
+      },
+      "prevFrame": {
+        "action": "Prev frame",
+        "key": "←"
+      },
+      "nextFrame": {
+        "action": "Next frame",
+        "key": "→"
+      },
+      "fastBackward": {
+        "action": "Back 10 frames",
+        "key": "Shift + ←"
+      },
+      "fastForward": {
+        "action": "Forward 10 frames",
+        "key": "Shift + →"
+      },
+      "prevEpisode": {
+        "action": "Prev episode",
+        "key": "Alt + ↑"
+      },
+      "nextEpisode": {
+        "action": "Next episode",
+        "key": "Alt + ↓"
+      },
+      "firstFrame": {
+        "action": "First frame",
+        "key": "Home"
+      },
+      "lastFrame": {
+        "action": "Last frame",
+        "key": "End"
+      }
+    },
+    "welcome": {
+      "banner": {
+        "text": "Open-source mcap/rosbag/hdf5/bvh visualization tool",
+        "url": "https://github.com/ioai-tech/rosview"
+      },
+      "title": "Open Data",
+      "subtitle": "Select local file/folder or enter remote URL",
+      "quickStart": "Quick Start",
+      "loading": "Loading",
+      "suggest": "Suggest",
+      "urlIntent": "Permission needed for local directory",
+      "urlIntentFile": "Permission needed for local file",
+      "urlIntentHint": "Please open the directory manually to authorize the page to read local files. Click the button below to select the project.",
+      "restoreHint": "A previously opened project was found. Click below to re-authorize and restore access.",
+      "restoreButton": "Re-authorize and open",
+      "sources": {
+        "dir": "Open local directory (meta/data/videos)",
+        "localArchive": "Open local archive (.zip/.tar/.tar.gz/.tgz)",
+        "remoteArchive": "Remote archive URL (.zip/.tar/.tar.gz/.tgz)",
+        "browseSamples": "Browse samples"
+      },
+      "samples": {
+        "title": "Sample Datasets",
+        "description": "Click a card to open dataset",
+        "requirements": "CORS + Range",
+        "requirementsTooltip": "Remote samples require server support for CORS and Range requests",
+        "viewMore": "View More Samples"
+      },
+      "dragDropHint": "Or drag and drop {{type}} here",
+      "dragDropFolder": "folder",
+      "dragDropArchive": "archive",
+      "step1": {
+        "title": "Choose a data source (local dir/archive, remote URL, or sample)",
+        "description": "Prefer remote archives that support CORS + Range, or open local directory/archive directly."
+      },
+      "step2": {
+        "title": "Playback & sync",
+        "description": "Visualize LeRobot datasets locally, right in your browser"
+      },
+      "getData": "Get Data",
+      "getDataDescription": "Visit the LeRobot repo or docs to learn formats and downloads.",
+      "lerobotRepo": "LeRobot Repo",
+      "documentation": "Documentation",
+      "features": "Highlights",
+      "feature1": {
+        "title": "Chart Sync",
+        "description": "High-performance curves, click to seek, with sampling/precision toggle."
+      },
+      "feature2": {
+        "title": "Multi-view Video",
+        "description": "Multiple cameras in sync, with frame overlay."
+      },
+      "feature3": {
+        "title": "Raw Message",
+        "description": "Inspect action/observation per frame; copy or download binary."
+      },
+      "feature4": {
+        "title": "Flexible Sources",
+        "description": "Local dir, archive, remote URL, sample — open with one click."
+      },
+      "dropToOpen": "Drop to open LeRobot dataset",
+      "dropHint": "Supports local folders or archives (.zip, .tar, .tar.gz)",
+      "copyright": "© {{year}} IO-AI.TECH. All rights reserved."
+    }
+  },
+  "app": {
+    "title": "LeRobot Studio - Data Visualization",
+    "enterRemoteArchiveUrl": "Enter remote archive URL"
+  },
+  "seo": {
+    "title": "LeRobot Visualizer - LeRobot Studio",
+    "description": "LeRobot Visualizer by LeRobot Studio helps you inspect and analyze LeRobot datasets in your browser with synced video, charts, and raw features.",
+    "keywords": "lerobot visualizer, lerobot dataset visualizer, robot dataset viewer, lerobot studio, robotics data visualization",
+    "ogTitle": "LeRobot Visualizer - LeRobot Studio",
+    "ogDescription": "Visualize LeRobot datasets with synced video, chart playback, and raw feature panels."
+  },
+  "navbar": {
+    "hideSidebar": "Hide Sidebar",
+    "showSidebar": "Show Sidebar",
+    "hidePlaybackBar": "Hide Playback Bar",
+    "showPlaybackBar": "Show Playback Bar",
+    "openLocalDir": "Local Directory",
+    "openLocalArchive": "Local Archive",
+    "openRemoteArchive": "Remote Archive",
+    "history": "History",
+    "goHome": "Go to Home",
+    "export": "Export",
+    "analysis": "Analysis"
+  },
+  "export": {
+    "title": "Export Dataset",
+    "format": "Export Format",
+    "directory": "Local Directory",
+    "targetVersion": "Target Version",
+    "keepOriginal": "Keep",
+    "changesSummary": "Changes Summary",
+    "modifiedCount": "Modified",
+    "deletedCount": "Deleted",
+    "totalEpisodes": "Total episodes",
+    "metadataOnlyHint": "Current export includes metadata only (info, episodes, tasks).",
+    "export": "Export",
+    "exporting": "Exporting...",
+    "noData": "No dataset loaded.",
+    "preparing": "Preparing...",
+    "includeData": "Include data files (Parquet)",
+    "includeVideos": "Include videos (copy)",
+    "videoFps": "Video export FPS",
+    "videoFpsHint": "Lower FPS speeds up export but reduces temporal resolution.",
+    "percentDone": "{{percent}}%",
+    "errorUnknown": "Export failed",
+    "cancelled": "Export cancelled.",
+    "cancelExport": "Cancel export"
+  },
+  "dialogs": {
+    "remoteArchive": {
+      "description": "Load a LeRobot archive from a remote HTTP server. Requires CORS and Range request support.",
+      "preflight": "Preflight",
+      "error": {
+        "range_http": "Range preflight failed: expected HTTP 206 (Partial Content), actual {{actualStatus}}.",
+        "range_headers": "Range not supported: expected Accept-Ranges: bytes or a bytes Content-Range; actual: {{headerSummary}}.",
+        "cors": "CORS blocked the request. Browser reported: {{detail}}.",
+        "network": "Network or authentication failed: {{detail}}.",
+        "unknown": "Preflight failed: {{detail}}."
+      }
+    },
+    "samples": {
+      "description": "Quickly experience pre-processed LeRobot sample datasets.",
+      "empty": "No sample data available, please try again later.",
+      "emptyHint": "You can try opening a local directory or entering a remote URL.",
+      "requirements": "Requires CORS + Range; signed URLs must be valid",
+      "openDirect": "Open/Download Official Samples",
+      "preview": "Preview",
+      "download": "Download"
+    }
+  },
+  "validation": {
+    "urlRequired": "URL is required",
+    "invalidUrl": "Please enter a valid HTTP/HTTPS URL",
+    "unsupportedFormat": "Unsupported format (needs .zip/.tar/.tar.gz/.tgz)",
+    "browserNotSupported": "Your browser does not support direct access to local directories. Please use Chrome/Edge or upload an archive."
+  },
+  "source": {
+    "restoreHandleMissing": "Saved file access expired. Please select the file or folder again.",
+    "restorePermissionDenied": "Permission denied. Please select the file or folder again.",
+    "restoreHandleMismatch": "Saved access is invalid. Please select the file or folder again.",
+    "restoreHandleNotFound": "The file or folder was moved or deleted. Please select it again."
+  },
+  "pagination": {
+    "previous": "Previous",
+    "next": "Next",
+    "rowsPerPage": "Rows per page",
+    "range": "{{from}}-{{to}} of {{count}}",
+    "prevAriaLabel": "Go to previous page",
+    "nextAriaLabel": "Go to next page"
+  }
+}

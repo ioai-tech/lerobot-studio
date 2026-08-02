@@ -1,0 +1,17 @@
+node_modules
+**/node_modules
+.git
+.github
+coverage
+dist
+**/dist
+dist-lib
+**/dist-lib
+*.log
+.DS_Store
+.vscode
+.idea
+tests
+docs
+*.md
+!README.md

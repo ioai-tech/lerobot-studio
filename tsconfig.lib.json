@@ -1,0 +1,37 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "useDefineForClassFields": true,
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "skipLibCheck": true,
+    "moduleResolution": "bundler",
+    "verbatimModuleSyntax": true,
+    "moduleDetection": "force",
+    "jsx": "react-jsx",
+    "declaration": true,
+    "declarationMap": true,
+    "emitDeclarationOnly": true,
+    "outDir": "dist-lib/types",
+    "rootDir": "src",
+    "ignoreDeprecations": "6.0",
+    "baseUrl": ".",
+    "paths": {
+      "@": ["./src/react/index.ts"],
+      "@/*": ["./src/react/*"],
+      "@/core": ["./src/core/index.ts"],
+      "@/core/*": ["./src/core/*"],
+      "@/platform": ["./src/platform/index.ts"],
+      "@/platform/*": ["./src/platform/*"],
+      "@/ui": ["./src/ui/index.ts"],
+      "@/ui/*": ["./src/ui/*"],
+      "react-i18next": ["./src/react/i18n/reactI18nextCompat.ts"]
+    },
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noFallthroughCasesInSwitch": true
+  },
+  "include": ["src/react", "src/core", "src/platform", "src/ui"],
+  "exclude": ["**/*.worker.ts", "src/web"]
+}
