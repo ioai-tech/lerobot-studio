@@ -17,7 +17,7 @@ jobs:
           ref: adccdea1cfbec83ed98263feb7e59f7d047c5692
           path: official-lerobot
       - uses: astral-sh/setup-uv@v6
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version-file: '.nvmrc'
           cache: npm
