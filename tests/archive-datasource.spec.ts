@@ -125,7 +125,8 @@ describe('archive type detection and construction', () => {
     vi.stubGlobal(
       'fetch',
       vi.fn(async (input: RequestInfo | URL) => {
-        const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+        const url =
+          typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
         if (url.includes('.zip')) {
           return new Response(zipBytes, { status: 200 });
         }
