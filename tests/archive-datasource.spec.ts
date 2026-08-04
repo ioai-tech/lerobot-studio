@@ -113,6 +113,8 @@ describe('archive type detection and construction', () => {
       TarDataSourceLocal,
     );
     const gzipBytes = gzipSync(makeTar('meta/info.json', '{}'));
+    const zipBytes = await makeZip({ 'meta/info.json': '{}' });
+    const tarBytes = makeTar('meta/info.json', '{}');
     const localTarGz = createArchiveDataSourceFromFile(new File([gzipBytes], 'a.tgz'));
     expect(localTarGz).toBeInstanceOf(TarGzDataSourceLocal);
     await expect(localTarGz.exists('meta/info.json')).resolves.toBe(true);
@@ -120,16 +122,29 @@ describe('archive type detection and construction', () => {
       /unsupported archive type/i,
     );
 
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+        if (url.includes('.zip')) {
+          return new Response(zipBytes, { status: 200 });
+        }
+        if (url.includes('.tgz') || url.includes('.tar.gz')) {
+          return new Response(gzipBytes, { status: 200 });
+        }
+        if (url.includes('.tar')) {
+          return new Response(tarBytes, { status: 200 });
+        }
+        return new Response('not found', { status: 404 });
+      }),
+    );
+
     expect(createArchiveDataSourceFromUrl('https://example.test/a.zip')).toBeInstanceOf(
       ZipDataSourceHttp,
     );
-    expect(createArchiveDataSourceFromUrl('https://example.test/a.tar')).toBeInstanceOf(
-      TarDataSourceHttp,
-    );
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(async () => new Response(gzipBytes, { status: 200 })),
-    );
+    const remoteTar = createArchiveDataSourceFromUrl('https://example.test/a.tar');
+    expect(remoteTar).toBeInstanceOf(TarDataSourceHttp);
+    await expect(remoteTar.exists('meta/info.json')).resolves.toBe(true);
     const remoteTarGz = createArchiveDataSourceFromUrl('https://example.test/a.tgz');
     expect(remoteTarGz).toBeInstanceOf(TarGzDataSourceHttp);
     await expect(remoteTarGz.exists('meta/info.json')).resolves.toBe(true);
