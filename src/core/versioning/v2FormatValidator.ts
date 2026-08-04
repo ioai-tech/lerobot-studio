@@ -2,13 +2,14 @@ import type { LeRobotInfo } from '../types/lerobot';
 import type { DataSource } from '../datasource/types';
 import type { MetadataLoadingHelpers } from './types';
 import { BaseLeRobotValidator, createReport } from './validation';
+import { classifyLeRobotVersion } from './versionCapability';
 
 const INFO_JSON = 'meta/info.json';
 const EPISODES_JSONL = 'meta/episodes.jsonl';
 const TASKS_JSONL = 'meta/tasks.jsonl';
 
 /**
- * Comprehensive validator for LeRobot v2.0 / v2.1 datasets.
+ * Comprehensive validator for LeRobot v2.1 and same-major read-only datasets.
  * Checks: file structure, meta/info.json fields, features, episodes consistency.
  */
 export class V2FormatValidator extends BaseLeRobotValidator {
@@ -57,32 +58,43 @@ export class V2FormatValidator extends BaseLeRobotValidator {
     }
 
     // ── 2. codebase_version ─────────────────────────────────────────────────
-    const ver = (resolvedInfo.codebase_version || '').trim().toLowerCase();
-    if (!ver.startsWith('v2')) {
+    const versionCapability = classifyLeRobotVersion(resolvedInfo.codebase_version);
+    if (versionCapability.adapterVersion !== 'v2.1') {
       this.fail(
         'meta_info',
         'codebase_version',
         'VERSION_MISMATCH',
-        'codebase_version is not v2.x',
+        'codebase_version is not supported by the v2.1 reader',
         resolvedInfo.codebase_version ?? 'Missing',
-        '"v2.0" or "v2.1"',
-        'If this is v3.0, use the correct loader; otherwise set codebase_version to v2.0 or v2.1',
+        '"v2.1"',
+        'Use a v2.1 dataset, or the matching reader for another major version',
       );
       return createReport(this.items);
+    }
+    if (versionCapability.status === 'read-only') {
+      this.warn(
+        'meta_info',
+        'codebase_version',
+        'VERSION_READ_ONLY',
+        'This newer v2 version is opened in read-only compatibility mode',
+        `"${resolvedInfo.codebase_version}"`,
+        '"v2.1" for export',
+        'Convert with an official compatible tool before exporting',
+      );
     }
     this.pass(
       'meta_info',
       'codebase_version',
       `"${resolvedInfo.codebase_version}"`,
-      '"v2.0" or "v2.1"',
+      '"v2.1" or a newer read-only v2 minor',
     );
 
     // ── 3. Meta info fields ──────────────────────────────────────────────────
     this.checkScalar(
       resolvedInfo.robot_type,
       'robot_type',
-      'Non-empty string',
-      (v) => typeof v === 'string' && (v as string).trim().length > 0,
+      'Non-empty string or null',
+      (v) => v === null || (typeof v === 'string' && (v as string).trim().length > 0),
       'ROBOT_TYPE_MISSING',
       'robot_type is missing or empty',
       'Set robot type, e.g. "so100" or "lekiwi"',

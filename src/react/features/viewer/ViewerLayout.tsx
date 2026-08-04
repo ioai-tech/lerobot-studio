@@ -86,10 +86,17 @@ export function ViewerLayout({
                 ) : null}
                 <Suspense
                   fallback={
-                    <div className="w-full h-full flex items-center justify-center text-muted-foreground bg-background/50 backdrop-blur-sm z-50">
+                    <div
+                      className="w-full h-full flex items-center justify-center text-muted-foreground bg-background/50 backdrop-blur-sm z-50"
+                      role="status"
+                      aria-live="polite"
+                    >
                       <div className="flex flex-col items-center gap-4">
                         <div className="flex items-center gap-3">
-                          <div className="h-5 w-5 border-2 border-primary border-t-transparent rounded-full animate-spin motion-reduce:animate-none" />
+                          <div
+                            className="h-5 w-5 border-2 border-primary border-t-transparent rounded-full animate-spin motion-reduce:animate-none"
+                            aria-hidden
+                          />
                           <span className="text-sm font-medium">{t('common.loadingLayout')}</span>
                         </div>
                         <p className="text-xs text-muted-foreground">{t('common.firstLoadNote')}</p>
@@ -101,9 +108,16 @@ export function ViewerLayout({
                 </Suspense>
               </>
             ) : activeTask ? (
-              <div className="w-full h-full flex items-center justify-center text-muted-foreground">
+              <div
+                className="w-full h-full flex items-center justify-center text-muted-foreground"
+                role="status"
+                aria-live="polite"
+              >
                 <div className="flex flex-col items-center gap-4 max-w-md text-center px-6">
-                  <div className="h-10 w-10 border-4 border-primary border-t-transparent rounded-full animate-spin motion-reduce:animate-none" />
+                  <div
+                    className="h-10 w-10 border-4 border-primary border-t-transparent rounded-full animate-spin motion-reduce:animate-none"
+                    aria-hidden
+                  />
                   <div className="space-y-2">
                     <h3 className="text-lg font-semibold text-foreground">
                       {t(`loading.phase.${activeTask.phase}`)}
@@ -123,7 +137,11 @@ export function ViewerLayout({
               />
             ) : (
               (emptyState ?? (
-                <div className="w-full h-full flex items-center justify-center text-muted-foreground">
+                <div
+                  className="w-full h-full flex items-center justify-center text-muted-foreground"
+                  role="status"
+                  aria-live="polite"
+                >
                   <div className="text-center">
                     <p>{t('common.loading')}</p>
                   </div>

@@ -56,6 +56,19 @@
     "loadFailed": "数据集加载失败。",
     "details": "错误详情"
   },
+  "errorBoundary": {
+    "title": "应用出现错误",
+    "description": "应用发生意外错误，请重新加载后再试。",
+    "errorLabel": "错误",
+    "unknownError": "未知错误",
+    "stackTrace": "堆栈信息",
+    "reload": "重新加载应用"
+  },
+  "panelErrorBoundary": {
+    "title": "面板加载失败",
+    "namedTitle": "{{panelName}} 加载失败",
+    "description": "发生了意外错误，其他面板不受影响。"
+  },
   "units": {
     "frame": "帧",
     "second": {
@@ -377,6 +390,7 @@
     "editTask": "编辑任务",
     "deleteEpisode": "删除 Episode",
     "restoreEpisode": "恢复 Episode",
+    "readOnlyVersion": "LeRobot {{version}} 以只读模式打开，已禁用 Episode 编辑和删除。",
     "edit": "编辑",
     "done": "完成",
     "enterEditMode": "编辑 Episodes",

@@ -113,7 +113,7 @@ export default defineConfig(() => {
         { find: /^@\/platform(?:\/|$)/, replacement: path.resolve(__dirname, './src/platform') },
         { find: /^@\/ui(?:\/|$)/, replacement: path.resolve(__dirname, './src/ui') },
         { find: /^@\/web(?:\/|$)/, replacement: path.resolve(__dirname, './src/web') },
-        { find: /^@$/, replacement: path.resolve(__dirname, './src/react/index.ts') },
+        { find: /^@$/, replacement: path.resolve(__dirname, './src/react/internal.ts') },
         { find: /^@\//, replacement: path.resolve(__dirname, './src/react') + '/' },
       ],
     },

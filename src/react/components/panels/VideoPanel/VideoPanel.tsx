@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import { AlertTriangle } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
-import { useLeRobot } from '../../../contexts/LeRobotContext';
+import { useLeRobotData, useLeRobotSelection } from '../../../contexts/LeRobotContext';
 import { buildMediaDebugMetadata } from '@/core';
 import { VideoUrlCache } from '@/platform';
 import { getFeatureDisplayType, getFirstVisualFeatureName } from '@/core';
@@ -25,7 +25,8 @@ interface VideoPanelProps {
  */
 const VideoPanelContent: React.FC<VideoPanelProps> = ({ params }) => {
   const { t } = useTranslation();
-  const { info, selectedEpisodeIndex, dataLoader, subscribeFrameIndex } = useLeRobot();
+  const { info, dataLoader, subscribeFrameIndex } = useLeRobotData();
+  const { selectedEpisodeIndex } = useLeRobotSelection();
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const [hasVideo, setHasVideo] = useState(false); // 是否有可用的视频
@@ -339,10 +340,13 @@ const VideoPanelContent: React.FC<VideoPanelProps> = ({ params }) => {
         <div className="absolute inset-0 flex items-center justify-center text-center text-muted-foreground">
           <div>
             {isInitialLoading ? (
-              <>
-                <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-4" />
+              <div role="status" aria-live="polite">
+                <div
+                  className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin motion-reduce:animate-none mx-auto mb-4"
+                  aria-hidden
+                />
                 <p className="text-sm opacity-50">{t('panels.video.placeholder')}</p>
-              </>
+              </div>
             ) : loadError ? (
               <div className="text-destructive max-w-xs mx-auto">
                 <div className="flex justify-center mb-2">
@@ -369,7 +373,7 @@ const VideoPanelContent: React.FC<VideoPanelProps> = ({ params }) => {
  * 智能视频/图像面板 - 自动检测并使用正确的显示组件
  */
 export const VideoPanel: React.FC<VideoPanelProps> = ({ params }) => {
-  const { info } = useLeRobot();
+  const { info } = useLeRobotData();
 
   // 自动检测featureKey：优先使用params中指定的，否则自动检测第一个可视化特征
   const featureKey = useMemo(() => {

@@ -2,6 +2,7 @@ import React from 'react';
 import { AspectRatio } from '@/ui';
 import { Play } from 'lucide-react';
 import type { SampleDataset } from '@/platform';
+import { useTranslation } from 'react-i18next';
 
 interface SampleDatasetCardProps {
   sample: SampleDataset;
@@ -14,6 +15,7 @@ export const SampleDatasetCard: React.FC<SampleDatasetCardProps> = ({
   onSelect,
   fallbackImageUrl,
 }) => {
+  const { t } = useTranslation();
   const title = sample.title || sample.name;
   const coverImageUrl = sample.coverImageUrl;
   const [imgError, setImgError] = React.useState(false);
@@ -105,8 +107,13 @@ export const SampleDatasetCard: React.FC<SampleDatasetCardProps> = ({
 
         {/* 加载状态遮罩层 - 纯 CSS 动画 */}
         {isLoading && (
-          <div className="absolute inset-0 bg-background/60 flex items-center justify-center">
-            <div className="loading-spinner" />
+          <div
+            className="absolute inset-0 bg-background/60 flex items-center justify-center"
+            role="status"
+            aria-live="polite"
+            aria-label={t('common.loading')}
+          >
+            <div className="loading-spinner" aria-hidden />
           </div>
         )}
       </AspectRatio>

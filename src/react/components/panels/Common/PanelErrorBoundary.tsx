@@ -2,16 +2,61 @@ import React, { Component } from 'react';
 import type { ErrorInfo, ReactNode } from 'react';
 import { AlertTriangle, RotateCcw } from 'lucide-react';
 import { Button } from '@/ui';
+import { useTranslation } from 'react-i18next';
 
 interface Props {
   children: ReactNode;
   panelName?: string;
+  renderFallback?: (props: PanelErrorFallbackProps) => ReactNode;
 }
 
 interface State {
   hasError: boolean;
   error: Error | null;
   retryKey: number;
+}
+
+export interface PanelErrorFallbackProps {
+  error: Error | null;
+  panelName?: string;
+  onRetry: () => void;
+}
+
+export function PanelErrorFallback({ error, panelName, onRetry }: PanelErrorFallbackProps) {
+  const { t } = useTranslation();
+
+  return (
+    <div
+      className="flex flex-col items-center justify-center h-full w-full bg-background p-4 text-center"
+      role="alert"
+    >
+      <div className="bg-destructive/10 p-3 rounded-full mb-4">
+        <AlertTriangle className="h-6 w-6 text-destructive" aria-hidden />
+      </div>
+      <h3 className="text-sm font-semibold mb-1">
+        {panelName
+          ? t('panelErrorBoundary.namedTitle', { panelName })
+          : t('panelErrorBoundary.title')}
+      </h3>
+      <p className="text-xs text-muted-foreground mb-4 max-w-[200px]">
+        {t('panelErrorBoundary.description')}
+      </p>
+      <div className="bg-muted/50 p-2 rounded text-left mb-4 max-w-full overflow-auto">
+        <pre className="font-mono text-[10px] text-destructive/80 whitespace-pre-wrap break-all">
+          {error?.message || t('errorBoundary.unknownError')}
+        </pre>
+      </div>
+      <Button
+        variant="outline"
+        size="sm"
+        onClick={onRetry}
+        className="flex items-center gap-1.5 text-xs"
+      >
+        <RotateCcw className="h-3 w-3" aria-hidden />
+        {t('common.retry')}
+      </Button>
+    </div>
+  );
 }
 
 /**
@@ -47,32 +92,15 @@ export class PanelErrorBoundary extends Component<Props, State> {
 
   public render() {
     if (this.state.hasError) {
-      return (
-        <div className="flex flex-col items-center justify-center h-full w-full bg-background p-4 text-center">
-          <div className="bg-destructive/10 p-3 rounded-full mb-4">
-            <AlertTriangle className="h-6 w-6 text-destructive" />
-          </div>
-          <h3 className="text-sm font-semibold mb-1">
-            {this.props.panelName ? `${this.props.panelName} 加载失败` : '面板加载失败'}
-          </h3>
-          <p className="text-xs text-muted-foreground mb-4 max-w-[200px]">
-            发生了意外错误，其他面板不受影响
-          </p>
-          <div className="bg-muted/50 p-2 rounded text-left mb-4 max-w-full overflow-auto">
-            <pre className="font-mono text-[10px] text-destructive/80 whitespace-pre-wrap break-all">
-              {this.state.error?.message || 'Unknown error'}
-            </pre>
-          </div>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={this.handleRetry}
-            className="flex items-center gap-1.5 text-xs"
-          >
-            <RotateCcw className="h-3 w-3" />
-            重试
-          </Button>
-        </div>
+      const fallbackProps = {
+        error: this.state.error,
+        panelName: this.props.panelName,
+        onRetry: this.handleRetry,
+      };
+      return this.props.renderFallback ? (
+        this.props.renderFallback(fallbackProps)
+      ) : (
+        <PanelErrorFallback {...fallbackProps} />
       );
     }
 

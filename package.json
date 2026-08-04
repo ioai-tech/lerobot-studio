@@ -4,15 +4,21 @@
   "version": "1.0.0",
   "type": "module",
   "packageManager": "npm@11.7.0",
-  "engines": {
-    "node": ">=24.0.0 <25"
-  },
   "scripts": {
     "dev": "vite",
     "build": "tsc -p tsconfig.app.json --noEmit && vite build",
-    "build:lib": "vite build --config vite.lib.config.ts",
+    "build:lib": "vite build --config vite.lib.config.ts && api-extractor run",
+    "docs:dev": "vitepress dev docs",
+    "docs:build": "vitepress build docs",
+    "api:report": "api-extractor run --local",
+    "api:report:check": "api-extractor run",
+    "check:package": "npm run api:report:check && publint && attw --pack . --profile esm-only --exclude-entrypoints ./style.css ./index.css && npm run verify:npm-consumer",
+    "check:bundle-size": "node scripts/check-bundle-size.mjs",
+    "sbom": "npm sbom --sbom-format cyclonedx > sbom.cdx.json",
+    "changeset": "changeset",
+    "version-packages": "changeset version",
     "verify:npm-consumer": "node scripts/verify-npm-consumer.mjs",
-    "lint": "eslint .",
+    "lint": "eslint . --max-warnings 0",
     "format": "prettier --write .",
     "format:check": "prettier --check \"*.{md,json}\" \"docs/**/*.md\" \".github/**/*.{yml,yaml,md}\" \"src/**/*.{ts,tsx,js,mjs,css,json,md}\" \"vite/**/*.{ts,tsx}\" \"scripts/**/*.{ts,tsx,js,mjs,json}\" \"tests/**/*.{ts,tsx,js,mjs,json}\"",
     "fixtures:generate": "node scripts/generate-test-fixtures.mjs",
@@ -20,12 +26,16 @@
     "test": "vitest run",
     "test:unit": "vitest run",
     "test:browser": "vitest run --config vitest.browser.config.ts",
+    "test:browser:smoke": "vitest run --config vitest.browser.smoke.config.ts",
     "test:compat": "vitest run tests/compat",
     "test:coverage": "vitest run --coverage",
     "preview": "vite preview"
   },
   "devDependencies": {
+    "@arethetypeswrong/cli": "^0.18.5",
+    "@changesets/cli": "^2.31.1",
     "@eslint/js": "^10.0.1",
+    "@microsoft/api-extractor": "^7.58.12",
     "@playwright/test": "^1.62.0",
     "@tailwindcss/vite": "^4.3.3",
     "@types/node": "^26.1.2",
@@ -35,6 +45,7 @@
     "@vitest/browser": "^4.1.10",
     "@vitest/browser-playwright": "^4.1.10",
     "@vitest/coverage-v8": "^4.1.10",
+    "axe-core": "^4.12.1",
     "eslint": "^10.8.0",
     "eslint-plugin-react-hooks": "^7.1.1",
     "eslint-plugin-react-refresh": "^0.5.3",
@@ -42,24 +53,26 @@
     "lightningcss": "^1.33.0",
     "playwright": "^1.62.0",
     "prettier": "^3.6.2",
+    "publint": "^0.3.23",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
+    "shadcn": "^4.16.0",
     "tailwindcss": "^4.3.3",
     "typescript": "6.0.3",
     "typescript-eslint": "^8.65.0",
     "vite": "^8.1.5",
     "vite-plugin-dts": "^5.0.3",
-    "vitest": "^4.1.10",
-    "react": "^19.2.8",
-    "react-dom": "^19.2.8",
-    "shadcn": "^4.16.0"
+    "vitepress": "2.0.0-alpha.19",
+    "vitest": "^4.1.10"
   },
   "description": "Browser-based LeRobot dataset visualizer and React embeddable studio",
   "license": "MIT",
   "main": "./dist-lib/lerobot.es.js",
   "module": "./dist-lib/lerobot.es.js",
-  "types": "./dist-lib/react/index.d.ts",
+  "types": "./dist-lib/lerobot.d.ts",
   "exports": {
     ".": {
-      "types": "./dist-lib/react/index.d.ts",
+      "types": "./dist-lib/lerobot.d.ts",
       "import": "./dist-lib/lerobot.es.js",
       "default": "./dist-lib/lerobot.es.js"
     },
@@ -67,11 +80,14 @@
     "./index.css": "./dist-lib/lerobot-studio.css"
   },
   "files": [
-    "dist-lib"
+    "dist-lib",
+    "CHANGELOG.md",
+    "LICENSE",
+    "NOTICE",
+    "README.md"
   ],
   "sideEffects": [
-    "**/*.css",
-    "./src/platform/workers/**"
+    "**/*.css"
   ],
   "repository": {
     "type": "git",
@@ -82,8 +98,8 @@
   },
   "homepage": "https://github.com/ioai-tech/lerobot-studio#readme",
   "peerDependencies": {
-    "react": "^19.2.8",
-    "react-dom": "^19.2.8"
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
   },
   "publishConfig": {
     "access": "public"

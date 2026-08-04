@@ -1,11 +1,14 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { AlertCircle } from 'lucide-react';
+import { List, type RowComponentProps } from 'react-window';
 import type { EpisodeMetadata } from '@/core';
 import { ScrollArea } from '@/ui';
 import { EpisodeRow } from './EpisodeRow';
 
-interface EpisodeListItem {
+export const EPISODE_VIRTUALIZATION_THRESHOLD = 100;
+
+export interface EpisodeListItem {
   episode: EpisodeMetadata;
   taskDescription: string;
   formattedDuration: string;
@@ -28,6 +31,71 @@ interface EpisodeListProps {
   onRestore: (episodeIndex: number, event: React.MouseEvent) => void;
 }
 
+type VirtualEpisodeRowProps = Pick<
+  EpisodeListProps,
+  | 'filteredEpisodes'
+  | 'isLoading'
+  | 'multiSelectMode'
+  | 'editMode'
+  | 'onRowClick'
+  | 'onToggleSelection'
+  | 'onEdit'
+  | 'onDelete'
+  | 'onRestore'
+>;
+
+function EpisodeListRow({
+  item,
+  isLoading,
+  multiSelectMode,
+  editMode,
+  onRowClick,
+  onToggleSelection,
+  onEdit,
+  onDelete,
+  onRestore,
+}: {
+  item: EpisodeListItem;
+} & Omit<VirtualEpisodeRowProps, 'filteredEpisodes'>) {
+  return (
+    <EpisodeRow
+      episode={item.episode}
+      taskDescription={item.taskDescription}
+      formattedDuration={item.formattedDuration}
+      isDeleted={item.isDeleted}
+      isSelected={item.isSelected}
+      isChecked={item.isChecked}
+      isLoading={isLoading}
+      multiSelectMode={multiSelectMode}
+      showActions={editMode}
+      onRowClick={() => onRowClick(item.episode)}
+      onToggleSelection={(event) => onToggleSelection(item.episode, event)}
+      onEdit={(event) => onEdit(item.episode, event)}
+      onDelete={(event) => onDelete(item.episode.episode_index, event)}
+      onRestore={(event) => onRestore(item.episode.episode_index, event)}
+    />
+  );
+}
+
+function VirtualEpisodeRow({
+  ariaAttributes,
+  index,
+  style,
+  filteredEpisodes,
+  ...rowProps
+}: RowComponentProps<VirtualEpisodeRowProps>) {
+  const item = filteredEpisodes[index];
+  return (
+    <div {...ariaAttributes} style={style} className="overflow-hidden">
+      <EpisodeListRow item={item} {...rowProps} />
+    </div>
+  );
+}
+
+function episodeRowKey(index: number, data: VirtualEpisodeRowProps) {
+  return data.filteredEpisodes[index].episode.episode_index;
+}
+
 export const EpisodeList: React.FC<EpisodeListProps> = ({
   error,
   episodes,
@@ -42,6 +110,30 @@ export const EpisodeList: React.FC<EpisodeListProps> = ({
   onRestore,
 }) => {
   const { t } = useTranslation();
+  const virtualRowProps = useMemo<VirtualEpisodeRowProps>(
+    () => ({
+      filteredEpisodes,
+      isLoading,
+      multiSelectMode,
+      editMode,
+      onRowClick,
+      onToggleSelection,
+      onEdit,
+      onDelete,
+      onRestore,
+    }),
+    [
+      filteredEpisodes,
+      isLoading,
+      multiSelectMode,
+      editMode,
+      onRowClick,
+      onToggleSelection,
+      onEdit,
+      onDelete,
+      onRestore,
+    ],
+  );
 
   if (error) {
     return (
@@ -63,27 +155,27 @@ export const EpisodeList: React.FC<EpisodeListProps> = ({
     );
   }
 
+  if (filteredEpisodes.length >= EPISODE_VIRTUALIZATION_THRESHOLD) {
+    return (
+      <List
+        rowCount={filteredEpisodes.length}
+        rowHeight={editMode && !multiSelectMode ? 102 : 61}
+        rowComponent={VirtualEpisodeRow}
+        rowProps={virtualRowProps}
+        rowKey={episodeRowKey}
+        overscanCount={4}
+        className="flex-1 min-h-0 w-full min-w-0 overflow-x-hidden"
+        style={{ height: '100%', width: '100%' }}
+        aria-label={t('sidebar.episodesTitle')}
+      />
+    );
+  }
+
   return (
     <ScrollArea className="flex-1 min-h-0 w-full min-w-0">
       <div className="w-full min-w-0 overflow-x-hidden">
         {filteredEpisodes.map((item) => (
-          <EpisodeRow
-            key={item.episode.episode_index}
-            episode={item.episode}
-            taskDescription={item.taskDescription}
-            formattedDuration={item.formattedDuration}
-            isDeleted={item.isDeleted}
-            isSelected={item.isSelected}
-            isChecked={item.isChecked}
-            isLoading={isLoading}
-            multiSelectMode={multiSelectMode}
-            showActions={editMode}
-            onRowClick={() => onRowClick(item.episode)}
-            onToggleSelection={(event) => onToggleSelection(item.episode, event)}
-            onEdit={(event) => onEdit(item.episode, event)}
-            onDelete={(event) => onDelete(item.episode.episode_index, event)}
-            onRestore={(event) => onRestore(item.episode.episode_index, event)}
-          />
+          <EpisodeListRow key={item.episode.episode_index} item={item} {...virtualRowProps} />
         ))}
       </div>
     </ScrollArea>

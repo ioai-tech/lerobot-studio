@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { userEvent } from 'vitest/browser';
 import {
   Button,
   Dialog,
@@ -9,6 +10,7 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
+  DialogTrigger,
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
@@ -25,6 +27,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/ui';
+import { expectNoBlockingA11yViolations } from './a11y';
 
 function waitFor(predicate: () => boolean, timeoutMs = 2000): Promise<void> {
   const start = performance.now();
@@ -68,9 +71,12 @@ describe('browser: shadcn Base UI primitives', () => {
 
   it('portals dialog overlays into #lerobot-root and traps Escape', async () => {
     function Harness() {
-      const [open, setOpen] = useState(true);
+      const [open, setOpen] = useState(false);
       return (
         <Dialog open={open} onOpenChange={setOpen}>
+          <DialogTrigger asChild>
+            <Button>Open health dialog</Button>
+          </DialogTrigger>
           <DialogContent>
             <DialogHeader>
               <DialogTitle>Health dialog</DialogTitle>
@@ -87,6 +93,10 @@ describe('browser: shadcn Base UI primitives', () => {
     }
 
     root.render(<Harness />);
+    await waitFor(() => Boolean(host.querySelector('[data-slot="dialog-trigger"]')));
+    const trigger = host.querySelector<HTMLElement>('[data-slot="dialog-trigger"]')!;
+    trigger.focus();
+    await userEvent.keyboard('{Enter}');
     await waitFor(() => Boolean(document.querySelector('[data-slot="dialog-content"]')));
 
     const content = document.querySelector('[data-slot="dialog-content"]');
@@ -97,9 +107,22 @@ describe('browser: shadcn Base UI primitives', () => {
     // Use viewport coordinates so the modal cannot be positioned below it.
     expect((content as HTMLElement).style.top).toBe('50vh');
     expect((content as HTMLElement).style.left).toBe('50vw');
+    expect(content?.contains(document.activeElement)).toBe(true);
 
-    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    const closeButton = content?.querySelector<HTMLElement>('[data-slot="dialog-close"]');
+    const doneButton = Array.from(content?.querySelectorAll<HTMLElement>('button') ?? []).find(
+      (button) => button.textContent === 'Done',
+    );
+    expect(closeButton).toBeTruthy();
+    expect(doneButton).toBeTruthy();
+    closeButton!.focus();
+    await userEvent.tab();
+    expect(document.activeElement).toBe(doneButton);
+    await expectNoBlockingA11yViolations(host);
+
+    await userEvent.keyboard('{Escape}');
     await waitFor(() => !document.querySelector('[data-slot="dialog-content"]'));
+    expect(document.activeElement).toBe(trigger);
   });
 
   it('supports tabs keyboard activation and line variant', async () => {
@@ -131,7 +154,7 @@ describe('browser: shadcn Base UI primitives', () => {
 
   it('opens nested dropdown menus and closes on outside Escape', async () => {
     root.render(
-      <DropdownMenu defaultOpen>
+      <DropdownMenu>
         <DropdownMenuTrigger render={<Button />}>Open menu</DropdownMenuTrigger>
         <DropdownMenuContent>
           <DropdownMenuItem>Root item</DropdownMenuItem>
@@ -145,7 +168,12 @@ describe('browser: shadcn Base UI primitives', () => {
       </DropdownMenu>,
     );
 
+    await waitFor(() => Boolean(host.querySelector('[data-slot="dropdown-menu-trigger"]')));
+    const trigger = host.querySelector<HTMLElement>('[data-slot="dropdown-menu-trigger"]')!;
+    trigger.focus();
+    await userEvent.keyboard('{Enter}');
     await waitFor(() => Boolean(document.querySelector('[data-slot="dropdown-menu-content"]')));
+    await expectNoBlockingA11yViolations(host);
     const subTrigger = document.querySelector(
       '[data-slot="dropdown-menu-sub-trigger"]',
     ) as HTMLElement | null;
@@ -154,13 +182,14 @@ describe('browser: shadcn Base UI primitives', () => {
     subTrigger!.focus();
     subTrigger!.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
 
-    await waitFor(
-      () => document.querySelectorAll('[data-slot="dropdown-menu-content"]').length >= 1,
-    );
-    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    await waitFor(() => Boolean(document.querySelector('[data-slot="dropdown-menu-sub-content"]')));
+    await userEvent.keyboard('{Escape}');
+    await waitFor(() => document.querySelector('[data-slot="dropdown-menu-sub-content"]') === null);
+    await userEvent.keyboard('{Escape}');
     await waitFor(
       () => document.querySelectorAll('[data-slot="dropdown-menu-content"]').length === 0,
     );
+    expect(document.activeElement).toBe(trigger);
   });
 
   it('maps legacy menu item onClick handlers to the Radix select event', async () => {
@@ -199,5 +228,6 @@ describe('browser: shadcn Base UI primitives', () => {
     expect(tip?.textContent).toContain('Tooltip body');
     expect(host.contains(tip)).toBe(true);
     expect(tip?.closest('#lerobot-root')).toBe(host);
+    await expectNoBlockingA11yViolations(host);
   });
 });

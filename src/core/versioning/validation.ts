@@ -196,6 +196,8 @@ export abstract class BaseLeRobotValidator {
       'image',
       'video',
       'string',
+      'language',
+      'depth',
     ]);
 
     const DEFAULT_FEATURE_KEYS = new Set([

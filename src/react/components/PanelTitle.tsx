@@ -15,7 +15,7 @@ import {
 import { Plus, X, Video, Image, TrendingUp, FileText, ArrowDown, ArrowRight } from 'lucide-react';
 import type { IDockviewPanelHeaderProps } from 'dockview-react';
 import { useTranslation } from 'react-i18next';
-import { useLeRobot } from '../contexts/LeRobotContext';
+import { useLeRobotData } from '../contexts/LeRobotContext';
 import { safeAddPanel } from '../utils/dockviewPanelId';
 
 type PanelType = 'video' | 'image' | 'chart' | 'raw';
@@ -23,7 +23,7 @@ type PanelType = 'video' | 'image' | 'chart' | 'raw';
 export const PanelTitle: React.FC<IDockviewPanelHeaderProps> = (props) => {
   const { api, containerApi } = props;
   const { t } = useTranslation();
-  const { info } = useLeRobot();
+  const { info } = useLeRobotData();
   const panelId = api.id;
   const panel = containerApi.getPanel(panelId);
 

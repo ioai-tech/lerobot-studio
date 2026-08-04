@@ -19,17 +19,18 @@ const TASKS_PARQUET_PATH = 'meta/tasks.parquet';
 const DEFAULT_CHUNKS_SIZE = 1000;
 const DEFAULT_DATA_PATH = 'data/chunk-{chunk_index:03d}/file-{file_index:03d}.parquet';
 const DEFAULT_VIDEO_PATH = 'videos/{video_key}/chunk-{chunk_index:03d}/file-{file_index:03d}.mp4';
-const BASE_EPISODE_COLUMNS = [
-  'episode_index',
-  'length',
-  'task_index',
-  'dataset_from_index',
-  'dataset_to_index',
-  'chunk_index',
-  'file_index',
-  'data/chunk_index',
-  'data/file_index',
-] as const;
+
+function normalizeV3EpisodeTasks(rawTasks: unknown, taskMap: Record<number, string>): string[] {
+  const values = Array.isArray(rawTasks) ? rawTasks : rawTasks == null ? [] : [rawTasks];
+  return values
+    .map((value) => {
+      if (typeof value === 'number' && Number.isSafeInteger(value)) {
+        return taskMap[value] ?? '';
+      }
+      return normalizeTaskDisplay(value).trim();
+    })
+    .filter((value) => value.length > 0);
+}
 
 function pad(n: number): string {
   return String(n).padStart(3, '0');
@@ -67,20 +68,6 @@ function getDataChunkValue(episode: EpisodeMetadata): unknown {
 function getDataFileValue(episode: EpisodeMetadata): unknown {
   const record = episode as Record<string, unknown>;
   return record['data/file_index'] ?? record.file_index;
-}
-
-function getEpisodeColumnsToLoad(info?: LeRobotInfo): string[] {
-  const columns = new Set<string>(BASE_EPISODE_COLUMNS);
-
-  Object.entries(info?.features ?? {}).forEach(([featureKey, feature]) => {
-    if (feature?.dtype !== 'video') return;
-    columns.add(`videos/${featureKey}/chunk_index`);
-    columns.add(`videos/${featureKey}/file_index`);
-    columns.add(`videos/${featureKey}/from_timestamp`);
-    columns.add(`videos/${featureKey}/to_timestamp`);
-  });
-
-  return Array.from(columns);
 }
 
 /**
@@ -166,7 +153,6 @@ export class V3Adapter extends LeRobotVersionAdapter {
     const chunksSize =
       ((info as Record<string, unknown> | undefined)?.chunks_size as number | undefined) ??
       DEFAULT_CHUNKS_SIZE;
-    const requestedColumns = getEpisodeColumnsToLoad(info);
     const allEpisodes: EpisodeMetadataV3[] = [];
     let chunkIdx = 0;
     let fileIdx = 0;
@@ -188,7 +174,10 @@ export class V3Adapter extends LeRobotVersionAdapter {
       const path = paths?.[pathIndex] ?? episodeFilePath(chunkIdx, fileIdx);
       let ipcBytes: Uint8Array;
       try {
-        ipcBytes = await helpers.readParquetToIPC(path, requestedColumns);
+        // Load the complete schema. Episode parquet also carries per-episode
+        // stats and forward-compatible extension columns that must survive an
+        // edit/export roundtrip.
+        ipcBytes = await helpers.readParquetToIPC(path);
       } catch {
         if (paths) {
           throw new Error(`Failed to read v3 episode metadata shard: ${path}`);
@@ -237,6 +226,11 @@ export class V3Adapter extends LeRobotVersionAdapter {
       );
     });
 
+    const taskMap = await this.loadTasks(dataSource, helpers);
+    allEpisodes.forEach((episode) => {
+      episode.tasks = normalizeV3EpisodeTasks((episode as Record<string, unknown>).tasks, taskMap);
+    });
+
     return allEpisodes;
   }
 
@@ -266,7 +260,8 @@ export class V3Adapter extends LeRobotVersionAdapter {
         tasks[index] = display !== '' ? display : 'Unknown Task';
       }
       return tasks;
-    } catch {
+    } catch (error) {
+      if (error instanceof RangeError) throw error;
       try {
         const text = await dataSource.readText('meta/tasks.jsonl');
         return LeRobotVersionAdapter.parseTasksFromJsonl(text);

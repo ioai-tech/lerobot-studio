@@ -5,32 +5,79 @@ on:
     - cron: '0 3 * * *'
   workflow_dispatch:
 
+permissions:
+  contents: read
+
+concurrency:
+  group: nightly-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   browser:
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           repository: huggingface/lerobot
-          ref: adccdea1cfbec83ed98263feb7e59f7d047c5692
+          ref: 7e241bd630a3719a56157a497ce5d08f244784f1 # v0.6.1
           path: official-lerobot
-      - uses: astral-sh/setup-uv@v6
-      - uses: actions/setup-node@v4
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@d0d8abe699bfb85fec6de9f7adb5ae17292296ff # v6
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version-file: '.nvmrc'
           cache: npm
       - run: npm ci
+      - name: Generate test fixtures
+        run: npm run fixtures:generate
       - name: Install official LeRobot dataset reader
         working-directory: official-lerobot
         run: uv sync --extra dataset
-      - run: npx playwright install --with-deps chromium
+      - name: Install browser engines
+        run: npx playwright install --with-deps chromium firefox webkit
       - run: npm run test:unit
-      - run: npm run test:browser
+      - name: Chromium full browser suite
+        run: npm run test:browser
+      - name: Cross-browser compatibility smoke
+        run: npm run test:browser:smoke
       - name: Official LeRobot metadata compatibility
         run: npx vitest run tests/compat
         env:
           LEROBOT_PYTHON: ${{ github.workspace }}/official-lerobot/.venv/bin/python
       - run: npm run build
       - run: npm run build:lib
+
+  upstream-main-compat:
+    name: Upstream main compatibility (warning)
+    continue-on-error: true
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          repository: huggingface/lerobot
+          ref: main
+          path: official-lerobot
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version-file: '.nvmrc'
+          cache: npm
+      - uses: astral-sh/setup-uv@d0d8abe699bfb85fec6de9f7adb5ae17292296ff # v6
+      - run: npm ci
+      - name: Generate test fixtures
+        run: npm run fixtures:generate
+      - name: Install upstream LeRobot dataset reader
+        working-directory: official-lerobot
+        run: uv sync --extra dataset
+      - name: Check compatibility with upstream main
+        env:
+          LEROBOT_PYTHON: ${{ github.workspace }}/official-lerobot/.venv/bin/python
+        run: npm run test:compat

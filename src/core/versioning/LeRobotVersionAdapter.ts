@@ -8,7 +8,7 @@ import type {
 import { normalizeTaskDisplay } from './arrowUtils';
 
 /**
- * Abstract base for LeRobot codebase version adapters (v2.0, v2.1, v3.0, etc.).
+ * Abstract base for LeRobot codebase version adapters.
  * Subclasses must implement version and the four methods. Path resolution and
  * metadata loading are delegated to the adapter so DataLoader, panels, and
  * export do not branch on version.

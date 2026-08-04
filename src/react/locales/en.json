@@ -56,6 +56,19 @@
     "loadFailed": "Failed to load the dataset.",
     "details": "Error Details"
   },
+  "errorBoundary": {
+    "title": "Something went wrong",
+    "description": "An unexpected application error occurred. Reload the application to try again.",
+    "errorLabel": "Error",
+    "unknownError": "Unknown error",
+    "stackTrace": "Stack trace",
+    "reload": "Reload application"
+  },
+  "panelErrorBoundary": {
+    "title": "Panel failed to load",
+    "namedTitle": "{{panelName}} failed to load",
+    "description": "An unexpected error occurred. Other panels are unaffected."
+  },
   "units": {
     "frame": "frame",
     "second": {
@@ -380,6 +393,7 @@
     "editTask": "Edit task",
     "deleteEpisode": "Delete episode",
     "restoreEpisode": "Restore episode",
+    "readOnlyVersion": "LeRobot {{version}} is opened read-only. Episode editing and deletion are disabled.",
     "edit": "Edit",
     "done": "Done",
     "enterEditMode": "Edit episodes",

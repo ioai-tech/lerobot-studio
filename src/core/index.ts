@@ -21,12 +21,22 @@ export type {
   ExportOptions,
   TargetVersion,
   EpisodeVideoOffsets,
+  V3DataEpisodeLocation,
+  V3DataLayout,
 } from './export/types';
 
 export { computeSplits, splitsIndicesToInfoSplits } from './analysis/SplitService';
 export type { SplitStrategy, SplitConfig, SplitsIndices } from './analysis/SplitService';
-export type { FeatureStats, DatasetStats, StatsDataLoader } from './analysis/StatsService';
-export { computeDatasetStats } from './analysis/StatsService';
+export type {
+  FeatureStats,
+  DatasetStats,
+  StatsArray,
+  StatsDataLoader,
+  NumericFeatureRow,
+  NumericStatsRowContext,
+  ComputeDatasetStatsOptions,
+} from './analysis/StatsService';
+export { aggregateEpisodeStats, computeDatasetStats } from './analysis/StatsService';
 
 export {
   getEagerEpisodeColumns,

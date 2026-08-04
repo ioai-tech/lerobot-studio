@@ -17,10 +17,46 @@ Node 24 is required (`.nvmrc`). This repository is a single npm package with two
 | `npm run dev`               | Start the SPA                              |
 | `npm run build`             | Build the SPA to `dist/`                   |
 | `npm run build:lib`         | Build the published library to `dist-lib/` |
+| `npm run docs:dev`          | Start the VitePress documentation site     |
+| `npm run docs:build`        | Build documentation and check links        |
+| `npm run check:bundle-size` | Enforce npm and Web bundle size budgets    |
 | `npm run typecheck`         | Type-check application and library sources |
 | `npm run test:unit`         | Run Node-based Vitest tests                |
 | `npm run test:browser`      | Run Playwright browser tests               |
 | `npm run fixtures:generate` | Recreate synthetic LeRobot fixtures        |
+
+## Bundle size gate
+
+Build both targets before running the size gate:
+
+```bash
+npm run build:lib
+npm run build
+npm run check:bundle-size
+```
+
+The gate measures raw and gzip sizes for the stable library entry, library and
+initial Web CSS, Web entry/modulepreload chunks, lazy DataLoader and Dockview
+chunks, Worker/WASM artifacts, and the packed npm tarball. It also fails when
+required artifacts are missing, an unexpected JavaScript chunk exceeds the
+per-chunk ceiling, or the complete npm tarball exceeds its packed or unpacked
+budget. Hashed filenames are discovered from build output and `dist/index.html`
+rather than being fixed in the script.
+
+The hard limits are approximately 5% above the measured baseline. The roughly
+26 MB library Worker chunk is a known baseline that still needs optimization,
+not an ideal or optimized target. Passing this gate only means that bundle size
+has not materially regressed.
+
+For a local negative test, lower every budget without changing the checked-in
+limits:
+
+```bash
+BUNDLE_SIZE_BUDGET_SCALE=0.01 npm run check:bundle-size
+```
+
+The scale override can only tighten budgets (`0 < scale <= 1`); it cannot relax
+the CI gate.
 
 ## Package validation
 
@@ -28,6 +64,27 @@ Node 24 is required (`.nvmrc`). This repository is a single npm package with two
 npm run build:lib
 npm run verify:npm-consumer
 ```
+
+The 1.0 release requires consumer fixtures for Vite and Next.js client-only
+usage, React/React DOM `^19.0.0`, ESM import, CSS loading, workers, and WASM.
+Server rendering, React Server Components, CommonJS, and Node.js execution are
+outside the package contract.
+
+## Compatibility work
+
+Use [Compatibility and release gates](./compatibility.md) as the acceptance
+source for version and browser work. In particular:
+
+- match dataset versions exactly (`v2.1` and `v3.0`), never by major prefix;
+- keep unknown versions warning-marked, read-only, and unable to reach any
+  export UI or service;
+- treat official LeRobot training-readiness checks as required export tests;
+  and
+- record actual browser versions and results rather than inferring support from
+  API detection.
+
+Changes to public behavior must follow the
+[deprecation policy](./deprecation.md).
 
 ## UI components
 

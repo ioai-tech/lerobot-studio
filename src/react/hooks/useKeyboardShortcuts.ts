@@ -1,5 +1,9 @@
 import { useEffect, useCallback, useRef } from 'react';
-import { useLeRobot } from '../contexts/LeRobotContext';
+import {
+  useLeRobotData,
+  useLeRobotPlayback,
+  useLeRobotSelection,
+} from '../contexts/LeRobotContext';
 import { usePortalContainer } from '@/ui';
 
 /**
@@ -8,16 +12,9 @@ import { usePortalContainer } from '@/ui';
  */
 export const useKeyboardShortcuts = (enabled: boolean = true) => {
   const portalContainer = usePortalContainer();
-  const {
-    episodes,
-    selectedEpisodeIndex,
-    selectEpisode,
-    setFrameIndex,
-    togglePlay,
-    getFrameIndex,
-    currentFrames,
-    isLoading,
-  } = useLeRobot();
+  const { episodes, getFrameIndex, isLoading } = useLeRobotData();
+  const { selectedEpisodeIndex, selectEpisode } = useLeRobotSelection();
+  const { setFrameIndex, togglePlay, currentFrames } = useLeRobotPlayback();
 
   // 使用ref存储，避免闭包问题
   const enabledRef = useRef(enabled);

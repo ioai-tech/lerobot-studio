@@ -56,6 +56,19 @@
     "loadFailed": "データセットの読み込みに失敗しました。",
     "details": "エラー詳細"
   },
+  "errorBoundary": {
+    "title": "エラーが発生しました",
+    "description": "予期しないアプリケーションエラーが発生しました。再読み込みしてもう一度お試しください。",
+    "errorLabel": "エラー",
+    "unknownError": "不明なエラー",
+    "stackTrace": "スタックトレース",
+    "reload": "アプリケーションを再読み込み"
+  },
+  "panelErrorBoundary": {
+    "title": "パネルの読み込みに失敗しました",
+    "namedTitle": "{{panelName}} の読み込みに失敗しました",
+    "description": "予期しないエラーが発生しました。他のパネルには影響しません。"
+  },
   "units": {
     "frame": "フレーム",
     "second": {
@@ -380,6 +393,7 @@
     "editTask": "タスクを編集",
     "deleteEpisode": "エピソードを削除",
     "restoreEpisode": "エピソードを復元",
+    "readOnlyVersion": "LeRobot {{version}} は読み取り専用です。エピソードの編集と削除は無効です。",
     "edit": "編集",
     "done": "完了",
     "enterEditMode": "エピソードを編集",

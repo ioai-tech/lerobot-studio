@@ -1,6 +1,6 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useLeRobot } from '../../contexts/LeRobotContext';
+import { useLeRobotData, useLeRobotSelection } from '../../contexts/LeRobotContext';
 import type { EpisodeMetadata } from '@/core';
 import { EditTaskDialog } from '../dialogs/EditTaskDialog';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/ui';
@@ -15,24 +15,21 @@ import { SidebarFooter } from './shared/SidebarFooter';
 
 export const EpisodeSidebar: React.FC = () => {
   const { t } = useTranslation();
+  const { episodes, tasks, isLoading, error, info, versionCapability, isReadOnly } =
+    useLeRobotData();
   const {
-    episodes,
-    tasks,
     selectEpisode,
     selectedEpisodeIndex,
     selectedEpisodeIndices,
     toggleEpisodeSelection,
     selectAllInList,
     clearEpisodeSelection,
-    isLoading,
-    error,
-    info,
     deletedEpisodes,
     getEffectiveEpisode,
     editEpisodeTask,
     deleteEpisode,
     restoreEpisode,
-  } = useLeRobot();
+  } = useLeRobotSelection();
   const [searchTerm, setSearchTerm] = useState('');
   const [editMode, setEditMode] = useState(false);
   const [multiSelectMode, setMultiSelectMode] = useState(false);
@@ -43,6 +40,16 @@ export const EpisodeSidebar: React.FC = () => {
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [bulkEditOpen, setBulkEditOpen] = useState(false);
   const [bulkEditText, setBulkEditText] = useState('');
+  const mutationDisabled = isReadOnly || Boolean(info && versionCapability?.status !== 'supported');
+
+  useEffect(() => {
+    if (!mutationDisabled) return;
+    setEditMode(false);
+    setMultiSelectMode(false);
+    setEditDialogOpen(false);
+    setBulkEditOpen(false);
+    clearEpisodeSelection();
+  }, [mutationDisabled, clearEpisodeSelection]);
 
   const filteredEpisodes = useMemo(() => {
     if (!episodes) return [];
@@ -75,17 +82,20 @@ export const EpisodeSidebar: React.FC = () => {
 
   const openEditDialog = (e: React.MouseEvent, episode: EpisodeMetadata) => {
     e.stopPropagation();
+    if (mutationDisabled) return;
     setEpisodeToEdit(getEffectiveEpisode(episode));
     setEditDialogOpen(true);
   };
 
   const handleDelete = (e: React.MouseEvent, episodeIndex: number) => {
     e.stopPropagation();
+    if (mutationDisabled) return;
     deleteEpisode(episodeIndex);
   };
 
   const handleRestore = (e: React.MouseEvent, episodeIndex: number) => {
     e.stopPropagation();
+    if (mutationDisabled) return;
     restoreEpisode(episodeIndex);
   };
 
@@ -112,6 +122,7 @@ export const EpisodeSidebar: React.FC = () => {
   );
 
   const handleBulkEditSave = () => {
+    if (mutationDisabled) return;
     const text = bulkEditText.trim();
     selectedInFiltered.forEach((ep) => editEpisodeTask(ep.episode_index, text || ''));
     setBulkEditOpen(false);
@@ -157,12 +168,20 @@ export const EpisodeSidebar: React.FC = () => {
           totalCount={episodes?.length}
           editMode={editMode}
           multiSelectMode={multiSelectMode}
+          isReadOnly={mutationDisabled}
           onToggleEditMode={() => setEditMode((v) => !v)}
           onToggleMultiSelectMode={() => {
             setMultiSelectMode((v) => !v);
             if (multiSelectMode) clearEpisodeSelection();
           }}
         />
+        {mutationDisabled && versionCapability && (
+          <p className="rounded-md border border-border/60 bg-muted/40 px-2 py-1.5 text-xs text-muted-foreground">
+            {t('sidebar.readOnlyVersion', {
+              version: versionCapability.normalizedVersion ?? info?.codebase_version ?? 'unknown',
+            })}
+          </p>
+        )}
         <EpisodeSearch
           searchTerm={searchTerm}
           showAdvanced={showAdvanced}
@@ -177,7 +196,7 @@ export const EpisodeSidebar: React.FC = () => {
             onDurationMaxChange={setDurationMax}
           />
         )}
-        {multiSelectMode && (
+        {!mutationDisabled && multiSelectMode && (
           <EpisodeToolbar
             selectedCount={selectedEpisodeIndices.size}
             selectedDeletedCount={selectedDeleted.length}
@@ -197,8 +216,8 @@ export const EpisodeSidebar: React.FC = () => {
           episodes={episodes}
           filteredEpisodes={listRows}
           isLoading={isLoading}
-          multiSelectMode={multiSelectMode}
-          editMode={editMode}
+          multiSelectMode={!mutationDisabled && multiSelectMode}
+          editMode={!mutationDisabled && editMode}
           onRowClick={handleRowClick}
           onToggleSelection={(episode, event) => {
             event.preventDefault();
@@ -213,39 +232,43 @@ export const EpisodeSidebar: React.FC = () => {
 
       <SidebarFooter />
 
-      <EditTaskDialog
-        key={episodeToEdit?.episode_index ?? 'edit-dialog'}
-        open={editDialogOpen}
-        onOpenChange={setEditDialogOpen}
-        episode={episodeToEdit}
-        onSave={editEpisodeTask}
-      />
-      <Dialog open={bulkEditOpen} onOpenChange={setBulkEditOpen}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>{t('sidebar.bulkEdit', 'Edit task')}</DialogTitle>
-          </DialogHeader>
-          <div className="py-2">
-            <p className="mb-2 text-xs text-muted-foreground">
-              {t('sidebar.selectedCount', { count: selectedInFiltered.length })} -{' '}
-              {t('editTask.taskDescription')}
-            </p>
-            <Textarea
-              value={bulkEditText}
-              onChange={(e) => setBulkEditText(e.target.value)}
-              placeholder={t('editTask.taskPlaceholder', 'Enter task description...')}
-              rows={3}
-              className="resize-none"
-            />
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setBulkEditOpen(false)}>
-              {t('common.cancel', 'Cancel')}
-            </Button>
-            <Button onClick={handleBulkEditSave}>{t('editTask.save', 'Save')}</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      {!mutationDisabled && (
+        <EditTaskDialog
+          key={episodeToEdit?.episode_index ?? 'edit-dialog'}
+          open={editDialogOpen}
+          onOpenChange={setEditDialogOpen}
+          episode={episodeToEdit}
+          onSave={editEpisodeTask}
+        />
+      )}
+      {!mutationDisabled && (
+        <Dialog open={bulkEditOpen} onOpenChange={setBulkEditOpen}>
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle>{t('sidebar.bulkEdit', 'Edit task')}</DialogTitle>
+            </DialogHeader>
+            <div className="py-2">
+              <p className="mb-2 text-xs text-muted-foreground">
+                {t('sidebar.selectedCount', { count: selectedInFiltered.length })} -{' '}
+                {t('editTask.taskDescription')}
+              </p>
+              <Textarea
+                value={bulkEditText}
+                onChange={(e) => setBulkEditText(e.target.value)}
+                placeholder={t('editTask.taskPlaceholder', 'Enter task description...')}
+                rows={3}
+                className="resize-none"
+              />
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setBulkEditOpen(false)}>
+                {t('common.cancel', 'Cancel')}
+              </Button>
+              <Button onClick={handleBulkEditSave}>{t('editTask.save', 'Save')}</Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
     </div>
   );
 };

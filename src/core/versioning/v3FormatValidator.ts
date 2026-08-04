@@ -4,6 +4,7 @@ import type { DataSource } from '../datasource/types';
 import type { MetadataLoadingHelpers } from './types';
 import { BaseLeRobotValidator, createReport } from './validation';
 import { convertArrowValue } from './arrowUtils';
+import { classifyLeRobotVersion } from './versionCapability';
 
 const INFO_JSON = 'meta/info.json';
 const EPISODES_PARQUET_PATH = 'meta/episodes/chunk-000/file-000.parquet';
@@ -62,20 +63,36 @@ export class V3FormatValidator extends BaseLeRobotValidator {
     }
 
     // ── 2. codebase_version ─────────────────────────────────────────────────
-    const ver = (resolvedInfo.codebase_version || '').trim().toLowerCase();
-    if (!ver.startsWith('v3')) {
+    const versionCapability = classifyLeRobotVersion(resolvedInfo.codebase_version);
+    if (versionCapability.adapterVersion !== 'v3.0') {
       this.fail(
         'meta_info',
         'codebase_version',
         'VERSION_MISMATCH_V3',
-        'codebase_version is not v3.x',
+        'codebase_version is not supported by the v3.0 reader',
         resolvedInfo.codebase_version ?? 'Missing',
         '"v3.0"',
         'Set codebase_version to v3.0',
       );
       return createReport(this.items);
     }
-    this.pass('meta_info', 'codebase_version', `"${resolvedInfo.codebase_version}"`, '"v3.0"');
+    if (versionCapability.status === 'read-only') {
+      this.warn(
+        'meta_info',
+        'codebase_version',
+        'VERSION_READ_ONLY',
+        'This newer v3 version is opened in read-only compatibility mode',
+        `"${resolvedInfo.codebase_version}"`,
+        '"v3.0" for export',
+        'Convert with an official compatible tool before exporting',
+      );
+    }
+    this.pass(
+      'meta_info',
+      'codebase_version',
+      `"${resolvedInfo.codebase_version}"`,
+      '"v3.0" or a newer read-only v3 minor',
+    );
 
     const infoV3 = resolvedInfo as LeRobotInfo & {
       data_path?: string;
@@ -133,8 +150,8 @@ export class V3FormatValidator extends BaseLeRobotValidator {
     this.checkScalar(
       resolvedInfo.robot_type,
       'robot_type',
-      'Non-empty string',
-      (v) => typeof v === 'string' && (v as string).trim().length > 0,
+      'Non-empty string or null',
+      (v) => v === null || (typeof v === 'string' && (v as string).trim().length > 0),
       'ROBOT_TYPE_MISSING',
       'robot_type is missing or empty',
       'Set robot type, e.g. "so100" or "lekiwi"',

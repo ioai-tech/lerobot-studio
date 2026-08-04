@@ -19,7 +19,15 @@ function tryParseJsonString(str: string): unknown {
 
 export function convertArrowValue(val: unknown): unknown {
   if (val === null || val === undefined) return val;
-  if (typeof val === 'bigint') return Number(val);
+  if (typeof val === 'bigint') {
+    const converted = Number(val);
+    if (!Number.isSafeInteger(converted)) {
+      throw new RangeError(
+        `Parquet int64 value is outside JavaScript's safe integer range: ${val}`,
+      );
+    }
+    return converted;
+  }
   if (typeof val === 'string') return tryParseJsonString(val);
   if (typeof val !== 'object') return val;
 

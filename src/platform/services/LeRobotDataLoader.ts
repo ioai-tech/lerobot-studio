@@ -9,8 +9,9 @@ import type {
   EpisodeVideoPathResult,
   LeRobotVersionAdapter,
   ValidationReport,
+  LeRobotVersionCapability,
 } from '@/core';
-import { getAdapterForVersion, getValidatorForVersion } from '@/core';
+import { classifyLeRobotVersion, getAdapterForVersion, getValidatorForVersion } from '@/core';
 import { tableFromIPC, Table } from 'apache-arrow';
 import { LRUCache } from '../utils/MediaCache';
 import type { DataSource } from '../datasource/dataSources';
@@ -42,6 +43,11 @@ export class LeRobotDataLoader {
   private fileUrlCache: LRUCache<string, string>;
   private disposed = false;
   private validationReport: ValidationReport | null = null;
+  private versionCapability: LeRobotVersionCapability = {
+    status: 'unsupported',
+    normalizedVersion: null,
+    adapterVersion: null,
+  };
 
   // 文件解析缓存 - 避免重复读取和解析同一个文件
   private parsedFileCache: ParsedFileCache | null = null;
@@ -73,9 +79,14 @@ export class LeRobotDataLoader {
     }
     try {
       await this.worker.clearCache();
-      terminateWorker(this.worker);
     } catch {
       // ignore
+    } finally {
+      try {
+        terminateWorker(this.worker);
+      } catch {
+        // ignore
+      }
     }
     try {
       await this._dataSource.clear();
@@ -95,8 +106,11 @@ export class LeRobotDataLoader {
         );
       }
 
-      if (!this.info.codebase_version) {
-        throw new Error('Invalid info.json: codebase_version is missing');
+      this.versionCapability = classifyLeRobotVersion(this.info.codebase_version);
+      if (this.versionCapability.status === 'unsupported') {
+        throw new Error(
+          `Unsupported LeRobot codebase_version: ${String(this.info.codebase_version ?? 'missing')}`,
+        );
       }
 
       this.adapter = getAdapterForVersion(this.info.codebase_version);
@@ -120,7 +134,7 @@ export class LeRobotDataLoader {
       // meta/tasks.parquet. Official Python writers store per-episode labels in the
       // ``tasks`` list column only — there is often no episode-level ``task_index``.
       // Defaulting missing task_index to 0 incorrectly showed every episode as task 0.
-      if (this.adapter.version.startsWith('v3')) {
+      if (this.versionCapability.adapterVersion === 'v3.0') {
         this.episodes.forEach((ep) => {
           if (ep.task_index == null) return;
           const idx = Number(ep.task_index);
@@ -337,6 +351,10 @@ export class LeRobotDataLoader {
    */
   getValidationReport(): ValidationReport | null {
     return this.validationReport;
+  }
+
+  getVersionCapability(): LeRobotVersionCapability {
+    return { ...this.versionCapability };
   }
 
   /**

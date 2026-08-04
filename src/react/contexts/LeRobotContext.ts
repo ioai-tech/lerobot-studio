@@ -1,5 +1,11 @@
 import { createContext, useContext } from 'react';
-import type { LeRobotInfo, EpisodeMetadata, FrameData, PlaybackMode } from '@/core';
+import type {
+  LeRobotInfo,
+  EpisodeMetadata,
+  FrameData,
+  PlaybackMode,
+  LeRobotVersionCapability,
+} from '@/core';
 import type { LeRobotDataLoader } from '@/platform';
 import type { NumericalColumnMap } from '@/platform';
 import type { DataSource } from '@/platform';
@@ -12,6 +18,8 @@ export type FrameIndexSubscriber = (frameIndex: number) => void;
 /** RawPanel 等仅需数据与订阅的组件使用，避免播放状态变化触发重渲染 */
 export interface LeRobotDataContextType {
   info: LeRobotInfo | null;
+  versionCapability: LeRobotVersionCapability | null;
+  isReadOnly: boolean;
   featureData: Record<string, unknown[]>;
   subscribeFeature: (featureName: string) => Promise<void>;
   unsubscribeFeature: (featureName: string) => void;

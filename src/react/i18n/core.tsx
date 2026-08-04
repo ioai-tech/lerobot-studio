@@ -22,6 +22,12 @@ interface I18nContextValue {
 
 const I18nContext = createContext<I18nContextValue | null>(null);
 
+export function reportIntlError(error: unknown, isDevelopment = import.meta.env.DEV) {
+  if (isDevelopment) {
+    console.error('[i18n] react-intl formatting error:', error);
+  }
+}
+
 function TranslateBridge({ children }: { children: React.ReactNode }) {
   const intl = useIntl();
   const { locale, setLocale } = useI18nController();
@@ -95,7 +101,7 @@ export function I18nProvider({
 
   return (
     <I18nContext.Provider value={value}>
-      <IntlProvider locale={locale} messages={messagesByLocale[locale]} onError={() => {}}>
+      <IntlProvider locale={locale} messages={messagesByLocale[locale]} onError={reportIntlError}>
         <TranslateBridge>{children}</TranslateBridge>
       </IntlProvider>
     </I18nContext.Provider>
