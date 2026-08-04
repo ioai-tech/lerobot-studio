@@ -4,6 +4,7 @@ import { AlertCircle, RotateCcw } from 'lucide-react';
 import { Button } from '@/ui';
 import { useTranslation } from 'react-i18next';
 import { I18nProvider } from '../i18n/core';
+import { formatErrorForDisplay } from './errorDetails';
 
 interface Props {
   children?: ReactNode;
@@ -19,12 +20,6 @@ interface State {
 export interface ErrorFallbackProps {
   error: Error | null;
   onReset: () => void;
-}
-
-export function formatErrorForDisplay(error: Error | null, includeStack: boolean): string {
-  if (!error) return '';
-  if (!includeStack || !error.stack) return error.message;
-  return `${error.message}\n\n${error.stack}`;
 }
 
 /** Function component kept separate so the class boundary can use i18n and tests can render it directly. */
@@ -44,11 +39,15 @@ export function ErrorFallback({ error, onReset }: ErrorFallbackProps) {
       <p className="text-muted-foreground mb-8 max-w-md mx-auto">
         {t('errorBoundary.description')}
       </p>
-      <div className="bg-muted p-4 rounded-lg mb-8 max-w-2xl w-full overflow-auto text-left">
-        <p className="font-mono text-xs text-destructive mb-1 font-bold">
+      <div
+        className="bg-muted p-4 rounded-lg mb-8 max-w-2xl w-full overflow-auto text-left"
+        tabIndex={0}
+        aria-label={t('errorBoundary.errorLabel')}
+      >
+        <p className="font-mono text-xs text-foreground mb-1 font-bold">
           {t('errorBoundary.errorLabel')}:
         </p>
-        <pre className="font-mono text-xs text-muted-foreground whitespace-pre-wrap">
+        <pre className="font-mono text-xs text-foreground/80 whitespace-pre-wrap">
           {errorDetails || t('errorBoundary.unknownError')}
         </pre>
       </div>

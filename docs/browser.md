@@ -1,5 +1,7 @@
 # Browser support
 
+> **Language / 语言：** [English](./browser.md) | [简体中文](./browser.zh-CN.md)
+
 LeRobot Studio targets modern browsers, but feature availability depends on
 browser APIs, media codecs, dataset encoding, and deployment policy. “Modern”
 does not guarantee that every video can be decoded or encoded.
@@ -11,15 +13,15 @@ Firefox and WebKit. The smoke suite covers viewer composition, localized error
 states, keyboard and accessibility primitives, unknown-version read-only
 behavior, and remote or custom `DataSource` contracts.
 
-| Capability                   | Chromium                  | Firefox               | WebKit                |
-| ---------------------------- | ------------------------- | --------------------- | --------------------- |
-| Viewer and error states      | CI smoke                  | CI smoke              | CI smoke              |
-| Remote/custom data source    | CI smoke                  | CI smoke              | CI smoke              |
-| Local archive viewing        | Planned validation        | Planned validation    | Planned validation    |
-| Restorable directory handles | Capability detected       | Archive-only fallback | Archive-only fallback |
-| Directory export             | Chromium only             | Unavailable           | Unavailable           |
-| Video encoding/export        | Full suite with WebCodecs | Capability detected   | Capability detected   |
-| Video playback               | Codec dependent           | Codec dependent       | Codec dependent       |
+| Capability                   | Chromium                    | Firefox                     | WebKit                      |
+| ---------------------------- | --------------------------- | --------------------------- | --------------------------- |
+| Viewer and error states      | CI smoke                    | CI smoke                    | CI smoke                    |
+| Remote/custom data source    | CI smoke                    | CI smoke                    | CI smoke                    |
+| Local archive viewing        | Extended validation pending | Extended validation pending | Extended validation pending |
+| Restorable directory handles | Capability detected         | Archive-only fallback       | Archive-only fallback       |
+| Directory export             | Chromium only               | Unavailable                 | Unavailable                 |
+| Video encoding/export        | Full suite with WebCodecs   | Capability detected         | Capability detected         |
+| Video playback               | Codec dependent             | Codec dependent             | Codec dependent             |
 
 This matrix separates tested scope from intended support. Release evidence must
 record actual browser versions, and all 1.0 claims remain subject to the

@@ -1,0 +1,21 @@
+{
+  "name": "lerobot-studio-docker-next-consumer",
+  "private": true,
+  "version": "0.0.0",
+  "scripts": {
+    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.probe.json",
+    "build": "next build"
+  },
+  "dependencies": {
+    "@ioai/lerobot-studio": "file:./lerobot-studio.tgz",
+    "next": "^15.0.0",
+    "react": "19.2.8",
+    "react-dom": "19.2.8"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "typescript": "^6.0.0"
+  }
+}

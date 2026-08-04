@@ -1,5 +1,7 @@
 # Deprecation policy
 
+> **Language / 语言：** [English](./deprecation.md) | [简体中文](./deprecation.zh-CN.md)
+
 LeRobot Studio follows Semantic Versioning for the public
 `@ioai/lerobot-studio` API.
 

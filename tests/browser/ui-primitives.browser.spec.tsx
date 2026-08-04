@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { userEvent } from 'vitest/browser';
+import { page, userEvent } from 'vitest/browser';
 import {
   Button,
   Dialog,
@@ -28,6 +28,7 @@ import {
   TooltipTrigger,
 } from '@/ui';
 import { expectNoBlockingA11yViolations } from './a11y';
+import '../../src/react/index.css';
 
 function waitFor(predicate: () => boolean, timeoutMs = 2000): Promise<void> {
   const start = performance.now();
@@ -50,9 +51,23 @@ function waitFor(predicate: () => boolean, timeoutMs = 2000): Promise<void> {
 describe('browser: shadcn Base UI primitives', () => {
   let host: HTMLDivElement;
   let root: Root;
+  let stableStyle: HTMLStyleElement;
 
-  beforeEach(() => {
+  beforeEach(async () => {
+    await page.viewport(1_280, 720);
     document.documentElement.classList.remove('dark');
+    document.documentElement.style.colorScheme = 'light';
+    stableStyle = document.createElement('style');
+    stableStyle.textContent = `
+      *, *::before, *::after {
+        animation-duration: 0s !important;
+        transition-duration: 0s !important;
+        caret-color: transparent !important;
+      }
+      body { margin: 0; font-family: "Geist Variable", sans-serif; }
+    `;
+    document.head.appendChild(stableStyle);
+    await document.fonts.ready;
     host = document.createElement('div');
     host.id = 'lerobot-root';
     document.body.appendChild(host);
@@ -62,6 +77,8 @@ describe('browser: shadcn Base UI primitives', () => {
   afterEach(() => {
     root.unmount();
     host.remove();
+    stableStyle.remove();
+    document.documentElement.style.removeProperty('color-scheme');
     document.body
       .querySelectorAll(
         '[data-slot="dialog-portal"], [data-slot="dropdown-menu-portal"], [data-slot="tooltip-portal"]',
@@ -108,6 +125,11 @@ describe('browser: shadcn Base UI primitives', () => {
     expect((content as HTMLElement).style.top).toBe('50vh');
     expect((content as HTMLElement).style.left).toBe('50vw');
     expect(content?.contains(document.activeElement)).toBe(true);
+    const contentRect = (content as HTMLElement).getBoundingClientRect();
+    expect(contentRect.width).toBeGreaterThanOrEqual(320);
+    expect(contentRect.width).toBeLessThanOrEqual(512);
+    expect(contentRect.top).toBeGreaterThanOrEqual(0);
+    expect(contentRect.height).toBeLessThan(360);
 
     const closeButton = content?.querySelector<HTMLElement>('[data-slot="dialog-close"]');
     const doneButton = Array.from(content?.querySelectorAll<HTMLElement>('button') ?? []).find(
@@ -122,6 +144,7 @@ describe('browser: shadcn Base UI primitives', () => {
 
     await userEvent.keyboard('{Escape}');
     await waitFor(() => !document.querySelector('[data-slot="dialog-content"]'));
+    await waitFor(() => document.activeElement === trigger);
     expect(document.activeElement).toBe(trigger);
   });
 

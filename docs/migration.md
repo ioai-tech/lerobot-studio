@@ -1,5 +1,7 @@
 # Migration
 
+> **Language / 语言：** [English](./migration.md) | [简体中文](./migration.zh-CN.md)
+
 ## Before 1.0
 
 The package has not been published, so there is no supported npm upgrade path

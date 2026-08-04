@@ -1,24 +1,16 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import type { EpisodeMetadata } from '../src/core';
 import {
   deriveEffectiveEpisodes,
   selectEpisodesForExport,
 } from '../src/react/contexts/useEpisodeView';
-import {
-  PlaybackEngine,
-  type PlaybackEngineCallbacks,
-} from '../src/react/services/PlaybackEngine';
+import { PlaybackEngine, type PlaybackEngineCallbacks } from '../src/react/services/PlaybackEngine';
 
 function reportMetric(name: string, elapsedMs: number, operations: number, budgetMs: number) {
-  console.info(
-    `[performance] ${name}: ${elapsedMs.toFixed(2)}ms for ${operations.toLocaleString()} operations (budget ${budgetMs}ms)`,
+  process.stdout.write(
+    `[performance] ${name}: ${elapsedMs.toFixed(2)}ms for ${operations.toLocaleString()} operations (budget ${budgetMs}ms)\n`,
   );
 }
-
-afterEach(() => {
-  vi.unstubAllGlobals();
-  vi.restoreAllMocks();
-});
 
 describe('frontend performance budgets', () => {
   it('derives and filters 1000 episodes without order-of-magnitude regression', () => {
@@ -30,13 +22,17 @@ describe('frontend performance budgets', () => {
       length: 30 + (index % 300),
       tasks: [`task-${index % 20}`],
     }));
-    const deleted = new Set(episodes.filter((_, index) => index % 11 === 0).map((ep) => ep.episode_index));
+    const deleted = new Set(
+      episodes.filter((_, index) => index % 11 === 0).map((ep) => ep.episode_index),
+    );
     const modified = new Map(
       episodes
         .filter((_, index) => index % 13 === 0)
         .map((ep) => [ep.episode_index, { tasks: [`edited-${ep.episode_index}`] }]),
     );
-    const selected = new Set(episodes.filter((_, index) => index % 7 === 0).map((ep) => ep.episode_index));
+    const selected = new Set(
+      episodes.filter((_, index) => index % 7 === 0).map((ep) => ep.episode_index),
+    );
 
     for (let index = 0; index < 5; index += 1) {
       deriveEffectiveEpisodes(episodes, deleted, modified);
@@ -64,7 +60,10 @@ describe('frontend performance budgets', () => {
     let frameIndex = 0;
     const notifyFrame = vi.fn();
     let animationFrameId = 0;
-    vi.stubGlobal('requestAnimationFrame', vi.fn(() => ++animationFrameId));
+    vi.stubGlobal(
+      'requestAnimationFrame',
+      vi.fn(() => ++animationFrameId),
+    );
     vi.stubGlobal('cancelAnimationFrame', vi.fn());
     vi.stubGlobal('window', globalThis);
 
@@ -103,7 +102,10 @@ describe('frontend performance budgets', () => {
   it('cancels both animation and timer resources on dispose', () => {
     const cancelAnimationFrame = vi.fn();
     const clearTimeout = vi.fn();
-    vi.stubGlobal('requestAnimationFrame', vi.fn(() => 41));
+    vi.stubGlobal(
+      'requestAnimationFrame',
+      vi.fn(() => 41),
+    );
     vi.stubGlobal('cancelAnimationFrame', cancelAnimationFrame);
     vi.stubGlobal('clearTimeout', clearTimeout);
     vi.stubGlobal('window', {

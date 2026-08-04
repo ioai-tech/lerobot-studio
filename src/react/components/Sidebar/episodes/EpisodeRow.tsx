@@ -128,8 +128,8 @@ export const EpisodeRow: React.FC<EpisodeRowProps> = ({
                 selectedActive
                   ? 'font-medium text-foreground/80'
                   : checkedOnly
-                    ? 'text-foreground/70'
-                    : 'text-muted-foreground/60',
+                    ? 'text-foreground/80'
+                    : 'text-muted-foreground',
               )}
               title={formattedDuration}
             >
@@ -142,8 +142,8 @@ export const EpisodeRow: React.FC<EpisodeRowProps> = ({
               selectedActive
                 ? 'font-medium text-foreground'
                 : checkedOnly
-                  ? 'text-foreground/90'
-                  : 'text-muted-foreground/90',
+                  ? 'text-foreground'
+                  : 'text-muted-foreground',
             )}
             title={taskDescription}
           >

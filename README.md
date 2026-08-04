@@ -1,5 +1,7 @@
 # LeRobot Studio
 
+> **Language / 语言：** [English](./README.md) | [简体中文](./README.zh-CN.md)
+
 Browser-based viewer for [LeRobot](https://github.com/huggingface/lerobot)
 datasets, by [IO-AI.TECH](https://io-ai.tech).
 
@@ -48,7 +50,7 @@ Docker:
 
 ```bash
 docker build -t lerobot-studio .
-docker run --rm -p 8080:80 lerobot-studio
+docker run --rm -p 8080:8080 lerobot-studio
 ```
 
 Then open [http://localhost:8080](http://localhost:8080). For production
@@ -119,13 +121,17 @@ CommonJS, or execution in Node.js.
 
 - Stable line: `1.0.0`; minor and patch releases remain backward compatible
   within major version 1, subject to the [deprecation policy](./docs/deprecation.md).
-- Dataset formats planned for exact 1.0 support: LeRobot `v2.1` and `v3.0`.
-  Prefix-compatible variants such as `v2.0`, `v2.x`, or `v3.x` are not covered.
-- Unknown versions must open only in warning-marked read-only mode when they can
-  be parsed safely, and export must remain disabled. This behavior is a 1.0
-  release gate and is not yet guaranteed by the current implementation.
-- Export for supported versions may be released only after official LeRobot
-  training-readiness validation. No best-effort export is considered supported.
+- Exact 1.0 dataset support targets LeRobot `v2.1` and `v3.0`. Prefix-compatible
+  variants such as `v2.0`, `v2.x`, or `v3.x` are not covered. Open and inspect
+  behavior for exact versions is **automated CI verified**; the final manual
+  release gate for `1.0.0` is still pending.
+- Unknown versions open in warning-marked read-only mode when safely parseable,
+  with export disabled. Automated CI and browser suites verify this behavior;
+  the final manual release gate for `1.0.0` is still pending.
+- Export for supported versions is verified against official LeRobot readers in
+  CI, but must not be advertised as generally supported until maintainers
+  complete the final manual release gate. No best-effort export is considered
+  supported.
 - The npm library ships with zero telemetry. It must not send analytics,
   diagnostics, dataset metadata, filenames, or usage events.
 

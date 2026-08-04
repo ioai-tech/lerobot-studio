@@ -4,7 +4,7 @@
 
 ```ts
 
-import { default as default_2 } from 'react';
+import { default as React_2 } from 'react';
 
 // @public
 export function createArchiveDataSourceFromFile(file: File): DataSource;
@@ -24,7 +24,7 @@ export interface DataSource {
 }
 
 // @public (undocumented)
-export const LeRobotViewer: default_2.FC<LeRobotViewerProps>;
+export const LeRobotViewer: React_2.FC<LeRobotViewerProps>;
 
 // @public
 export interface LeRobotViewerError {
@@ -64,7 +64,5 @@ export interface ProgressInfo {
     phase: LoadingPhase;
     total?: number;
 }
-
-// (No @packageDocumentation comment for this package)
 
 ```

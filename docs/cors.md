@@ -1,5 +1,7 @@
 # CORS and HTTP Range
 
+> **Language / 语言：** [English](./cors.md) | [简体中文](./cors.zh-CN.md)
+
 The browser fetches a remote archive from the URL supplied by the host or user.
 That archive server controls CORS, byte-range behavior, authentication, and
 request logging.

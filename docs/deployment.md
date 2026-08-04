@@ -1,5 +1,7 @@
 # Deployment
 
+> **Language / 语言：** [English](./deployment.md) | [简体中文](./deployment.zh-CN.md)
+
 ## Production target (Cloudflare Workers)
 
 Production is served at **https://lerobot.studio**.
@@ -46,7 +48,13 @@ npx wrangler deploy
 
 ```bash
 docker build -t lerobot-studio .
-docker run --rm -p 8080:80 lerobot-studio
+docker run --rm -p 8080:8080 lerobot-studio
+```
+
+Or use the root `docker-compose.yml` (maps host port 8080):
+
+```bash
+docker compose up --build
 ```
 
 Optional build args:

@@ -1,5 +1,7 @@
 # Quick Start
 
+> **Language / 语言：** [English](./quick-start.md) | [简体中文](./quick-start.zh-CN.md)
+
 LeRobot Studio has two entry points:
 
 - the hosted application at [lerobot.studio](https://lerobot.studio); and

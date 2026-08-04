@@ -1,5 +1,7 @@
 # Migrating to a fresh GitHub repository
 
+> **Language / 语言：** [English](./github-migration.md) | [简体中文](./github-migration.zh-CN.md)
+
 This branch is prepared to be copied into a new public GitHub repository
 **without private Git history**.
 

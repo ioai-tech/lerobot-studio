@@ -1,5 +1,7 @@
 # Architecture
 
+> **Language / 语言：** [English](./architecture.md) | [简体中文](./architecture.zh-CN.md)
+
 LeRobot Studio is a single npm package and client-rendered SPA repository. The
 directory boundaries are architectural, not separately published packages.
 
@@ -56,6 +58,6 @@ Public APIs remain backward compatible within major version 1 according to the
 - Browser storage is optional and failure-tolerant. See [Privacy](./privacy.md).
 - The npm library has a zero-telemetry contract.
 
-These trust-boundary guarantees include 1.0 release gates that are tracked in
-[Compatibility](./compatibility.md); they are not all enforced by the current
-pre-release implementation.
+These trust-boundary guarantees include 1.0 release gates tracked in
+[Compatibility](./compatibility.md). Core paths are **automated CI verified**;
+the final manual release gate for `1.0.0` is still pending.

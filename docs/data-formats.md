@@ -1,21 +1,23 @@
 # Data formats
 
+> **Language / 语言：** [English](./data-formats.md) | [简体中文](./data-formats.zh-CN.md)
+
 Format support is version-specific. A matching major prefix is not enough:
 `v2.0`, future `v2.x`, future `v3.x`, malformed values, and missing
 `codebase_version` are unknown formats.
 
-## Intended 1.0 matrix
+## 1.0 format matrix
 
-| Declared version           | Open and inspect                                    | Export                         | Status   |
-| -------------------------- | --------------------------------------------------- | ------------------------------ | -------- |
-| Exactly `v2.1`             | Planned support                                     | Only after official validation | 1.0 gate |
-| Exactly `v3.0`             | Planned support                                     | Only after official validation | 1.0 gate |
-| Missing or any other value | Warning-marked read-only mode when safely parseable | Prohibited                     | 1.0 gate |
+| Declared version           | Open and inspect                                    | Export                                   | Status                            |
+| -------------------------- | --------------------------------------------------- | ---------------------------------------- | --------------------------------- |
+| Exactly `v2.1`             | Automated CI verified                               | Official reader roundtrip verified in CI | CI verified; release gate pending |
+| Exactly `v3.0`             | Automated CI verified                               | Official reader roundtrip verified in CI | CI verified; release gate pending |
+| Missing or any other value | Warning-marked read-only mode when safely parseable | Prohibited (enforced in CI)              | CI verified; release gate pending |
 
-These entries describe the release contract, not a claim that the current
-pre-release implementation has passed every gate. See
-[Compatibility and release gates](./compatibility.md) for the acceptance
-criteria.
+These entries reflect automated verification in CI. Advertising a capability as
+generally supported for the `1.0.0` release still requires the final manual
+release gate. See [Compatibility and release gates](./compatibility.md) for the
+full matrix and acceptance checklist.
 
 ## Inputs
 
@@ -42,7 +44,7 @@ Video layout differs from official LeRobot:
   size-bounded MP4.
 
 Studio therefore does **not** claim byte-for-byte video sharding parity.
-Per-episode layout and metadata references have been read successfully by the
-pinned official LeRobot `v0.6.1` reader, but supported export still requires
-complete official training-readiness validation. Until that gate passes,
-export remains experimental and outside the stable npm API.
+Per-episode layout and metadata references are verified in CI against the
+pinned official LeRobot `v0.6.1` reader. Advertising export as generally
+supported still requires the final manual release gate; export remains outside
+the stable npm API until then.

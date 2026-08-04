@@ -2,11 +2,10 @@ import { defineConfig, type Plugin } from 'vite';
 import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
 import path from 'node:path';
-import dts from 'vite-plugin-dts';
-import { cssScopePlugin } from './vite/cssScopePlugin';
+import { cssScopePlugin } from './scripts/vite/cssScopePlugin.ts';
 
 const parquetWasmModule = path.resolve(
-  __dirname,
+  import.meta.dirname,
   './node_modules/parquet-wasm/esm/parquet_wasm.js',
 );
 
@@ -44,30 +43,25 @@ export default defineConfig({
     react(),
     tailwindcss(),
     cssScopePlugin({ rootClass: 'lerobot-root' }),
-    dts({
-      tsconfigPath: './tsconfig.lib.json',
-      entryRoot: 'src',
-      // API Extractor consumes these declarations and emits one public rollup
-      // into dist-lib; intermediate implementation declarations are not packed.
-      outDirs: 'temp/types',
-      rollupTypes: false,
-    }),
   ],
   resolve: {
     alias: [
       {
         find: '@/workers/workerManager',
-        replacement: path.resolve(__dirname, './src/platform/workers/workerManager.ts'),
+        replacement: path.resolve(import.meta.dirname, './src/platform/workers/workerManager.ts'),
       },
       {
         find: 'react-i18next',
-        replacement: path.resolve(__dirname, './src/react/i18n/reactI18nextCompat.ts'),
+        replacement: path.resolve(import.meta.dirname, './src/react/i18n/reactI18nextCompat.ts'),
       },
-      { find: /^@\/core(?:\/|$)/, replacement: path.resolve(__dirname, './src/core') },
-      { find: /^@\/platform(?:\/|$)/, replacement: path.resolve(__dirname, './src/platform') },
-      { find: /^@\/ui(?:\/|$)/, replacement: path.resolve(__dirname, './src/ui') },
-      { find: /^@$/, replacement: path.resolve(__dirname, './src/react/index.ts') },
-      { find: /^@\//, replacement: path.resolve(__dirname, './src/react') + '/' },
+      { find: /^@\/core(?:\/|$)/, replacement: path.resolve(import.meta.dirname, './src/core') },
+      {
+        find: /^@\/platform(?:\/|$)/,
+        replacement: path.resolve(import.meta.dirname, './src/platform'),
+      },
+      { find: /^@\/ui(?:\/|$)/, replacement: path.resolve(import.meta.dirname, './src/ui') },
+      { find: /^@$/, replacement: path.resolve(import.meta.dirname, './src/react/index.ts') },
+      { find: /^@\//, replacement: path.resolve(import.meta.dirname, './src/react') + '/' },
     ],
   },
   worker: {

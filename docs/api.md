@@ -1,5 +1,7 @@
 # Stable API
 
+> **Language / 语言：** [English](./api.md) | [简体中文](./api.zh-CN.md)
+
 The generated API report is the source of truth for the publishable surface.
 The stable `1.0` contract is **viewer-only**: it contains the viewer, browser
 data-source factories, and their public types. Product internals, source

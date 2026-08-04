@@ -1,5 +1,7 @@
 # Contributing to LeRobot Studio
 
+> **Language / 语言：** [English](./CONTRIBUTING.md) | [简体中文](./CONTRIBUTING.zh-CN.md)
+
 ## Development setup
 
 Requirements: Node.js 24 and npm 11.7.0.

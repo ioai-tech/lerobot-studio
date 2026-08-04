@@ -1,8 +1,12 @@
 # Compatibility and release gates
 
-This document separates the stable `1.0.0` contract from behavior that still
-requires implementation or verification. A row marked **1.0 gate** must not be
-presented as supported until its automated and manual acceptance checks pass.
+> **Language / 语言：** [English](./compatibility.md) | [简体中文](./compatibility.zh-CN.md)
+
+This document separates the stable `1.0.0` contract from final release
+approval. Rows marked **CI verified; release gate pending** pass automated
+acceptance checks (unit, browser, and official LeRobot compatibility jobs).
+They must not be advertised as generally supported until maintainers complete
+the final manual release gate for `1.0.0`.
 
 ## Runtime contract
 
@@ -21,11 +25,11 @@ client-only consumers remains a 1.0 release gate.
 
 ## Dataset support
 
-| Dataset `codebase_version` | Open and inspect                               | Export                        | 1.0 status |
-| -------------------------- | ---------------------------------------------- | ----------------------------- | ---------- |
-| Exactly `v2.1`             | Planned support                                | Planned only after validation | 1.0 gate   |
-| Exactly `v3.0`             | Planned support                                | Planned only after validation | 1.0 gate   |
-| Missing or any other value | Warning-marked read-only when safely parseable | Prohibited                    | 1.0 gate   |
+| Dataset `codebase_version` | Open and inspect                               | Export                                   | Status                            |
+| -------------------------- | ---------------------------------------------- | ---------------------------------------- | --------------------------------- |
+| Exactly `v2.1`             | Automated CI verified                          | Official reader roundtrip verified in CI | CI verified; release gate pending |
+| Exactly `v3.0`             | Automated CI verified                          | Official reader roundtrip verified in CI | CI verified; release gate pending |
+| Missing or any other value | Warning-marked read-only when safely parseable | Prohibited (enforced in CI)              | CI verified; release gate pending |
 
 “Exact” applies to the declared dataset version, not a prefix family. In
 particular, `v2.0`, future `v2.x`, future `v3.x`, and malformed or missing
@@ -35,9 +39,10 @@ source.
 
 Supported export means that the complete exported dataset can be consumed by
 the corresponding official LeRobot release for training without manual repair.
-The validation fixture set must cover metadata, tasks, episodes, Parquet data,
-timestamps, images/video, and cross-version export where offered. Until those
-checks pass, export is experimental and must not be advertised as supported.
+The validation fixture set covers metadata, tasks, episodes, Parquet data,
+timestamps, images/video, and cross-version export where offered. CI verifies
+these paths against the pinned official LeRobot `v0.6.1` reader; advertising
+export as generally supported still requires the final manual release gate.
 
 For v3 data, Studio rolls Parquet files by the configured data-file size and
 uses `chunks_size` as the maximum number of files per chunk. Browser export
@@ -78,16 +83,16 @@ means Viewer composition, localized error states, keyboard/accessibility
 primitives, unknown-version read-only behavior, and remote/custom `DataSource`
 contracts. It does not imply codec support for every dataset.
 
-| Capability                              | Chromium (Chrome/Edge)                         | Firefox                                    | WebKit (Safari engine)                     |
-| --------------------------------------- | ---------------------------------------------- | ------------------------------------------ | ------------------------------------------ |
-| Viewer/error/accessibility/read-only    | CI smoke                                       | CI smoke                                   | CI smoke                                   |
-| Remote or custom `DataSource`           | CI smoke                                       | CI smoke                                   | CI smoke                                   |
-| Local archive viewing                   | Planned validation                             | Planned validation                         | Planned validation                         |
-| Directory picker and restorable handles | File System Access capability detected         | Explicit ZIP-only fallback when absent     | Explicit ZIP-only fallback when absent     |
-| ZIP download                            | Capability detected; export suite exercised    | Capability detected in smoke               | Capability detected in smoke               |
-| Directory export                        | Chromium-only; requires File System Access     | Not run; directory option must stay absent | Not run; directory option must stay absent |
-| Video encoding/export                   | Full browser export suite, including WebCodecs | Not run; WebCodecs capability is detected  | Not run; WebCodecs capability is detected  |
-| Video decode/playback                   | Dataset/codec dependent                        | Dataset/codec dependent                    | Dataset/codec dependent                    |
+| Capability                              | Chromium (Chrome/Edge)                           | Firefox                                    | WebKit (Safari engine)                     |
+| --------------------------------------- | ------------------------------------------------ | ------------------------------------------ | ------------------------------------------ |
+| Viewer/error/accessibility/read-only    | CI smoke                                         | CI smoke                                   | CI smoke                                   |
+| Remote or custom `DataSource`           | CI smoke                                         | CI smoke                                   | CI smoke                                   |
+| Local archive viewing                   | Extended validation pending                      | Extended validation pending                | Extended validation pending                |
+| Directory picker and restorable handles | File System Access capability detected           | Explicit ZIP-only fallback when absent     | Explicit ZIP-only fallback when absent     |
+| ZIP download                            | Capability detected; export suite verified in CI | Capability detected in smoke               | Capability detected in smoke               |
+| Directory export                        | Chromium-only; requires File System Access       | Not run; directory option must stay absent | Not run; directory option must stay absent |
+| Video encoding/export                   | Full browser export suite, including WebCodecs   | Not run; WebCodecs capability is detected  | Not run; WebCodecs capability is detected  |
+| Video decode/playback                   | Dataset/codec dependent                          | Dataset/codec dependent                    | Dataset/codec dependent                    |
 
 CI installs all three engines. Chromium retains the complete browser suite,
 including export and encoding scenarios. Firefox and WebKit run only the smoke
@@ -103,10 +108,12 @@ inspection remains available where safe.
 
 ## 1.0 acceptance gates
 
-- Enforce exact `v2.1` and `v3.0` detection.
+- Enforce exact `v2.1` and `v3.0` detection (**automated CI verified**).
 - Provide a visible warning and immutable mode for unknown versions; disable
-  every export entry point and service call in that mode.
-- Validate supported exports with official LeRobot training workflows.
+  every export entry point and service call in that mode (**automated CI
+  verified**).
+- Validate supported exports with official LeRobot training workflows (**CI
+  verified**; final manual release approval still pending).
 - Keep React peer dependencies at `^19.0.0` and test Vite and Next.js
   client-only consumers.
 - Run the browser matrix and retain versioned evidence.

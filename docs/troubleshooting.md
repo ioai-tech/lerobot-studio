@@ -1,5 +1,7 @@
 # Troubleshooting
 
+> **Language / 语言：** [English](./troubleshooting.md) | [简体中文](./troubleshooting.zh-CN.md)
+
 ## The viewer has zero height
 
 `LeRobotViewer` fills its container. Give the host element an explicit height

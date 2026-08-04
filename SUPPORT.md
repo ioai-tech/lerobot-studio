@@ -1,5 +1,7 @@
 # Support
 
+> **Language / 语言：** [English](./SUPPORT.md) | [简体中文](./SUPPORT.zh-CN.md)
+
 LeRobot Studio is community-supported open-source software. No response time,
 availability, compatibility, or remediation commitment is created by this
 document. Security reports use the separate targets in

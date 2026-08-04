@@ -1,6 +1,7 @@
 import React, { act } from 'react';
 import { createRoot } from 'react-dom/client';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { page } from 'vitest/browser';
 import { classifyLeRobotVersion, type EpisodeMetadata, type LeRobotInfo } from '@/core';
 import { EpisodeSidebar } from '../../src/react/components/Sidebar/EpisodeSidebar';
 import {
@@ -15,15 +16,36 @@ import {
 } from '../../src/react/contexts/versionMutationPolicy';
 import { I18nProvider } from '../../src/react/i18n/core';
 import { expectNoBlockingA11yViolations } from './a11y';
+import '../../src/react/index.css';
 
 const roots: Array<ReturnType<typeof createRoot>> = [];
+let stableStyle: HTMLStyleElement;
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+
+beforeEach(async () => {
+  await page.viewport(1_280, 720);
+  document.documentElement.classList.remove('dark');
+  document.documentElement.style.colorScheme = 'light';
+  stableStyle = document.createElement('style');
+  stableStyle.textContent = `
+    *, *::before, *::after {
+      animation-duration: 0s !important;
+      transition-duration: 0s !important;
+      caret-color: transparent !important;
+    }
+    body { margin: 0; font-family: "Geist Variable", sans-serif; }
+  `;
+  document.head.appendChild(stableStyle);
+  await document.fonts.ready;
+});
 
 afterEach(async () => {
   await act(async () => {
     roots.splice(0).forEach((root) => root.unmount());
   });
   document.body.innerHTML = '';
+  stableStyle.remove();
+  document.documentElement.style.removeProperty('color-scheme');
 });
 
 describe('read-only future dataset episodes', () => {
@@ -37,18 +59,18 @@ describe('read-only future dataset episodes', () => {
       task_index: undefined,
     });
 
-    const episode: EpisodeMetadata = {
-      episode_index: 0,
+    const episodes: EpisodeMetadata[] = Array.from({ length: 1_200 }, (_, index) => ({
+      episode_index: index,
       length: 2,
-      tasks: ['pick'],
-      dataset_from_index: 0,
-      dataset_to_index: 2,
-    };
+      tasks: [`pick-${index}`],
+      dataset_from_index: index * 2,
+      dataset_to_index: index * 2 + 2,
+    }));
     const dataValue = {
       info: { codebase_version: 'v3.1', fps: 30 } as unknown as LeRobotInfo,
       versionCapability: capability,
       isReadOnly: true,
-      episodes: [episode],
+      episodes,
       tasks: { 0: 'pick' },
       isLoading: false,
       error: null,
@@ -69,6 +91,8 @@ describe('read-only future dataset episodes', () => {
     } as unknown as LeRobotSelectionContextType;
 
     const container = document.createElement('div');
+    container.style.width = '320px';
+    container.style.height = '480px';
     document.body.appendChild(container);
     const root = createRoot(container);
     roots.push(root);
@@ -89,6 +113,14 @@ describe('read-only future dataset episodes', () => {
     expect(container.querySelector('[title="Select"]')).toBeNull();
     expect(container.querySelector('[title="Edit task"]')).toBeNull();
     expect(container.querySelector('[title="Delete episode"]')).toBeNull();
+    await act(async () => {
+      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+    });
+    const renderedRows = container.querySelectorAll('[role="listitem"]');
+    expect(container.querySelector('[role="list"]')).toBeTruthy();
+    expect(renderedRows.length).toBeGreaterThan(0);
+    expect(renderedRows.length).toBeLessThanOrEqual(20);
+    expect(container.scrollWidth).toBeLessThanOrEqual(container.clientWidth);
     await expectNoBlockingA11yViolations(container);
   });
 });

@@ -4,7 +4,6 @@ import '@ioai/lerobot-studio/style.css';
 import './styles.css';
 
 // Next.js requires route metadata to be exported from the layout module.
-// eslint-disable-next-line react-refresh/only-export-components
 export const metadata: Metadata = {
   title: 'LeRobot Studio Next.js consumer',
 };

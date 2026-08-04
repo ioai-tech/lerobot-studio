@@ -25,6 +25,8 @@ features:
     details: Exact dataset versions, browser capabilities, and release gates are documented separately.
 ---
 
+> **Language / 语言：** [English](./index.md) | [简体中文](./index.zh-CN.md)
+
 ## Current release status
 
 LeRobot Studio is preparing the stable `1.0.0` contract. The package is not yet

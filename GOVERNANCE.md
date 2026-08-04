@@ -1,5 +1,7 @@
 # Governance
 
+> **Language / 语言：** [English](./GOVERNANCE.md) | [简体中文](./GOVERNANCE.zh-CN.md)
+
 LeRobot Studio is stewarded by IO-AI.TECH. This document defines project
 decision-making and release authority; it does not grant legal authority on
 behalf of the company.

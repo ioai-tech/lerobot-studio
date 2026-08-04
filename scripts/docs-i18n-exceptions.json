@@ -1,0 +1,18 @@
+{
+  "exceptions": [
+    {
+      "path": "etc/lerobot-studio.api.md",
+      "reason": "api-extractor-generated",
+      "zhEntry": "docs/api.zh-CN.md",
+      "noteEn": "Machine-generated API Extractor report. Do not translate by hand; regenerate with `npm run api:report`. Chinese documentation wraps this report in docs/api.zh-CN.md.",
+      "noteZh": "由 API Extractor 自动生成的 API 报告，请勿手工翻译；使用 `npm run api:report` 重新生成。中文说明见 docs/api.zh-CN.md，正文仍引用本文件的英文报告。"
+    }
+  ],
+  "skipScanDirs": [
+    {
+      "dir": "temp",
+      "reasonEn": "Ephemeral build output (for example local API Extractor copies). Not repository documentation; excluded from Markdown pairing scans.",
+      "reasonZh": "临时构建输出（例如本地 API Extractor 副本），不属于仓库文档，不参与 Markdown 配对扫描。"
+    }
+  ]
+}

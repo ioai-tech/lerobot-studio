@@ -1,0 +1,22 @@
+{
+  "name": "lerobot-studio-docker-vite-consumer",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.probe.json",
+    "build": "vite build"
+  },
+  "dependencies": {
+    "@ioai/lerobot-studio": "file:./lerobot-studio.tgz",
+    "react": "19.2.8",
+    "react-dom": "19.2.8"
+  },
+  "devDependencies": {
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "@vitejs/plugin-react": "^6.0.0",
+    "typescript": "^6.0.0",
+    "vite": "^8.0.0"
+  }
+}

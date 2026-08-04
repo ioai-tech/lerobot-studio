@@ -4,13 +4,16 @@ import path from 'node:path';
 export default defineConfig({
   resolve: {
     alias: {
-      '@/workers/workerManager': path.resolve(__dirname, './src/platform/workers/workerManager.ts'),
-      '@/workers/wasmUrl': path.resolve(__dirname, './src/platform/workers/wasmUrl.ts'),
-      '@/core': path.resolve(__dirname, './src/core/index.ts'),
-      '@/platform': path.resolve(__dirname, './src/platform/index.ts'),
-      '@/ui': path.resolve(__dirname, './src/ui/index.ts'),
-      'react-i18next': path.resolve(__dirname, './src/react/i18n/reactI18nextCompat.ts'),
-      '@': path.resolve(__dirname, './src/react'),
+      '@/workers/workerManager': path.resolve(
+        import.meta.dirname,
+        './src/platform/workers/workerManager.ts',
+      ),
+      '@/workers/wasmUrl': path.resolve(import.meta.dirname, './src/platform/workers/wasmUrl.ts'),
+      '@/core': path.resolve(import.meta.dirname, './src/core/index.ts'),
+      '@/platform': path.resolve(import.meta.dirname, './src/platform/index.ts'),
+      '@/ui': path.resolve(import.meta.dirname, './src/ui/index.ts'),
+      'react-i18next': path.resolve(import.meta.dirname, './src/react/i18n/reactI18nextCompat.ts'),
+      '@': path.resolve(import.meta.dirname, './src/react'),
     },
   },
   test: {

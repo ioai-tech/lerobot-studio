@@ -1,5 +1,7 @@
 # Security Policy
 
+> **Language / 语言：** [English](./SECURITY.md) | [简体中文](./SECURITY.zh-CN.md)
+
 ## Supported versions
 
 After `1.0.0` is released, security fixes are provided for the latest minor

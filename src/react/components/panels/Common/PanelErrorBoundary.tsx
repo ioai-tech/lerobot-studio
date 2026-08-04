@@ -42,7 +42,7 @@ export function PanelErrorFallback({ error, panelName, onRetry }: PanelErrorFall
         {t('panelErrorBoundary.description')}
       </p>
       <div className="bg-muted/50 p-2 rounded text-left mb-4 max-w-full overflow-auto">
-        <pre className="font-mono text-[10px] text-destructive/80 whitespace-pre-wrap break-all">
+        <pre className="font-mono text-[10px] text-foreground/80 whitespace-pre-wrap break-all">
           {error?.message || t('errorBoundary.unknownError')}
         </pre>
       </div>

@@ -58,6 +58,7 @@ export default defineConfig([
             'buttonVariants',
             'tabsListVariants',
             'usePortalContainer',
+            'metadata',
           ],
         },
       ],

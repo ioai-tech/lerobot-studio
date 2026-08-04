@@ -1,5 +1,7 @@
 # Privacy
 
+> **Language / 语言：** [English](./privacy.md) | [简体中文](./privacy.zh-CN.md)
+
 ## Data processing
 
 LeRobot Studio is designed to process dataset content in the browser. Opening a
