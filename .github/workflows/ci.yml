@@ -41,6 +41,8 @@ jobs:
         run: npm run test:coverage
       - name: Build library
         run: npm run build:lib
+      - name: Install Chromium for npm consumer verification
+        run: npx playwright install --with-deps chromium
       - name: Verify publishable package and API report
         run: npm run check:package
       - name: Validate CycloneDX SBOM generation
