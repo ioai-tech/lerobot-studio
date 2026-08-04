@@ -43,4 +43,25 @@ describe('playback autoplay guard', () => {
       }),
     ).toBe(false);
   });
+
+  it.each([
+    [{ totalFrames: 0 }, 'empty timeline'],
+    [{ isLoading: true }, 'loading'],
+    [{ shouldAutoplay: false }, 'autoplay disabled'],
+    [{ shouldAutoplay: null }, 'autoplay unset'],
+    [{ isPlaying: true }, 'already playing'],
+  ] as const)('blocks autoplay when %s', (overrides) => {
+    expect(
+      shouldStartAutoplay({
+        totalFrames: 100,
+        isLoading: false,
+        shouldAutoplay: true,
+        isPlaying: false,
+        userPaused: false,
+        currentId: '0-100',
+        lastAutoPlayId: null,
+        ...overrides,
+      }),
+    ).toBe(false);
+  });
 });
