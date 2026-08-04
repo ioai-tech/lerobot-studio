@@ -11,7 +11,16 @@ import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
-import { tableToIPC, vectorFromArray, Binary, Table } from 'apache-arrow';
+import {
+  tableToIPC,
+  vectorFromArray,
+  Binary,
+  Field,
+  Float64,
+  Int64,
+  List,
+  Table,
+} from 'apache-arrow';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const outRoot = path.join(root, 'tests/fixtures/datasets');
@@ -21,6 +30,34 @@ const IMAGE_KEY = 'observation.images.cam';
 const FPS = 10;
 const FRAMES_PER_EP = 3;
 const EPISODE_DURATION_SEC = FRAMES_PER_EP / FPS;
+
+function solidVisualEpisodeStats(rgb, count = FRAMES_PER_EP) {
+  const shaped = rgb.map((value) => [[value]]);
+  return {
+    [`stats/${VIDEO_KEY}/min`]: shaped,
+    [`stats/${VIDEO_KEY}/max`]: shaped,
+    [`stats/${VIDEO_KEY}/mean`]: shaped,
+    [`stats/${VIDEO_KEY}/std`]: rgb.map(() => [[0]]),
+    [`stats/${VIDEO_KEY}/q01`]: shaped,
+    [`stats/${VIDEO_KEY}/q10`]: shaped,
+    [`stats/${VIDEO_KEY}/q50`]: shaped,
+    [`stats/${VIDEO_KEY}/q90`]: shaped,
+    [`stats/${VIDEO_KEY}/q99`]: shaped,
+    [`stats/${VIDEO_KEY}/count`]: [count],
+  };
+}
+
+function solidVisualStatsObject(rgb, count = FRAMES_PER_EP) {
+  const prefix = `stats/${VIDEO_KEY}/`;
+  return {
+    [VIDEO_KEY]: Object.fromEntries(
+      Object.entries(solidVisualEpisodeStats(rgb, count)).map(([key, value]) => [
+        key.slice(prefix.length),
+        value,
+      ]),
+    ),
+  };
+}
 
 /** Minimal 64×64 PNG — Chromium's AVC encoder rejects tiny frames (e.g. 2×2). */
 const TINY_PNG = Buffer.from(
@@ -68,12 +105,45 @@ async function writeParquetFromColumns(filePath, columns) {
       Array.isArray(values) &&
       values.length > 0 &&
       values.every((v) => v instanceof Uint8Array || v instanceof Buffer);
-    vectors[name] = isBinary
-      ? vectorFromArray(
-          values.map((v) => (v instanceof Uint8Array ? v : new Uint8Array(v))),
-          new Binary(),
-        )
-      : vectorFromArray(values);
+    if (isBinary) {
+      vectors[name] = vectorFromArray(
+        values.map((v) => (v instanceof Uint8Array ? v : new Uint8Array(v))),
+        new Binary(),
+      );
+      continue;
+    }
+    const sample = values.find((value) => value != null);
+    if (Array.isArray(sample)) {
+      const leaves = [];
+      const collect = (value) =>
+        Array.isArray(value)
+          ? value.forEach(collect)
+          : value == null
+            ? undefined
+            : leaves.push(value);
+      values.forEach(collect);
+      const integers = leaves.every(
+        (value) => typeof value === 'number' && Number.isInteger(value),
+      );
+      let type = integers ? new Int64() : new Float64();
+      let current = sample;
+      while (Array.isArray(current)) {
+        type = new List(new Field('item', type, true));
+        current = current[0];
+      }
+      const normalized = integers
+        ? values.map(function normalize(value) {
+            return Array.isArray(value)
+              ? value.map(normalize)
+              : value == null
+                ? null
+                : BigInt(value);
+          })
+        : values;
+      vectors[name] = vectorFromArray(normalized, type);
+      continue;
+    }
+    vectors[name] = vectorFromArray(values);
   }
   const table = new Table(vectors);
   const ipc = tableToIPC(table, 'stream');
@@ -169,6 +239,17 @@ async function createV2(mp4Bytes) {
     ].join('\n') + '\n',
   );
   await writeText(
+    path.join(base, 'meta/episodes_stats.jsonl'),
+    [0, 1]
+      .map((episode_index) =>
+        JSON.stringify({
+          episode_index,
+          stats: solidVisualStatsObject([0, 0, 1]),
+        }),
+      )
+      .join('\n') + '\n',
+  );
+  await writeText(
     path.join(base, 'meta/tasks.jsonl'),
     `${JSON.stringify({ task_index: 0, task: 'pick cube' })}\n`,
   );
@@ -222,6 +303,12 @@ async function createV3(mp4Bytes) {
     [`videos/${VIDEO_KEY}/file_index`]: [0, 1],
     [`videos/${VIDEO_KEY}/from_timestamp`]: [0, 0],
     [`videos/${VIDEO_KEY}/to_timestamp`]: [EPISODE_DURATION_SEC, EPISODE_DURATION_SEC],
+    ...Object.fromEntries(
+      Object.entries(solidVisualEpisodeStats([0, 0, 1])).map(([key, value]) => [
+        key,
+        [value, value],
+      ]),
+    ),
   });
 
   await writeParquetFromColumns(path.join(base, 'meta/tasks.parquet'), {
@@ -276,6 +363,17 @@ async function createV2Image() {
       JSON.stringify({ episode_index: 0, length: FRAMES_PER_EP, tasks: ['pick cube'] }),
       JSON.stringify({ episode_index: 1, length: FRAMES_PER_EP, tasks: ['pick cube'] }),
     ].join('\n') + '\n',
+  );
+  await writeText(
+    path.join(base, 'meta/episodes_stats.jsonl'),
+    [0, 1]
+      .map((episode_index) =>
+        JSON.stringify({
+          episode_index,
+          stats: solidVisualStatsObject([0, 100 / 255, 1]),
+        }),
+      )
+      .join('\n') + '\n',
   );
   await writeText(
     path.join(base, 'meta/tasks.jsonl'),

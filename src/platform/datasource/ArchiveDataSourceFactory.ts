@@ -1,4 +1,4 @@
-import type { ProgressHandler } from './dataSources';
+import type { DataSource, ProgressHandler } from './dataSources';
 import {
   TarDataSourceHttp,
   TarDataSourceLocal,
@@ -47,11 +47,18 @@ export function getArchiveKindFromHeaders(headers: Headers): ArchiveKind | null 
   if (cdLower.includes('.tar')) return 'tar';
   if (cdLower.includes('.zip')) return 'zip';
 
-  // content-type fallback (rough, but useful for same-origin/proxy downloads)
-  const ct = (headers.get('content-type') || '').toLowerCase();
-  if (ct.includes('zip')) return 'zip';
-  if (ct.includes('gzip')) return 'targz';
-  if (ct.includes('x-tar') || ct.includes('tar')) return 'tar';
+  // Content-Type fallback. Compare the media type rather than using substring
+  // matching: "application/gzip" itself contains "zip".
+  const contentType = (headers.get('content-type') || '').split(';', 1)[0].trim().toLowerCase();
+  if (contentType === 'application/gzip' || contentType === 'application/x-gzip') return 'targz';
+  if (
+    contentType === 'application/zip' ||
+    contentType === 'application/x-zip-compressed' ||
+    contentType === 'multipart/x-zip'
+  ) {
+    return 'zip';
+  }
+  if (contentType === 'application/x-tar' || contentType === 'application/tar') return 'tar';
   return null;
 }
 
@@ -92,7 +99,7 @@ export function createArchiveDataSourceFromUrl(
   onProgress?: ProgressHandler,
   knownKind?: ArchiveKind,
   options?: { accessMode?: RemoteArchiveAccessMode },
-) {
+): DataSource {
   const kind = knownKind || getArchiveKindFromUrl(url);
   if (!kind) throw new Error('Unsupported archive type (need .zip/.tar/.tar.gz/.tgz)');
   if (options?.accessMode === 'full') {
@@ -103,7 +110,10 @@ export function createArchiveDataSourceFromUrl(
   return new ZipDataSourceHttp(url);
 }
 
-export function createArchiveDataSourceFromFile(file: File, onProgress?: ProgressHandler) {
+export function createArchiveDataSourceFromFile(
+  file: File,
+  onProgress?: ProgressHandler,
+): DataSource {
   const kind = getArchiveKindFromFile(file);
   if (!kind) throw new Error('Unsupported archive type (need .zip/.tar/.tar.gz/.tgz)');
   if (kind === 'targz') return new TarGzDataSourceLocal(file, onProgress);

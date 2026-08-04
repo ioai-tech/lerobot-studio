@@ -129,7 +129,12 @@ export const PlaybackBar: React.FC = () => {
   // Render skeleton if loading
   if (isLoading || activeTask) {
     return (
-      <div className="h-16 border-t bg-background px-4 flex items-center gap-4 animate-pulse motion-reduce:animate-none pointer-events-none opacity-60">
+      <div
+        className="h-16 border-t bg-background px-4 flex items-center gap-4 animate-pulse motion-reduce:animate-none pointer-events-none opacity-60"
+        role="status"
+        aria-live="polite"
+        aria-label={activeTask?.message || t('common.loading')}
+      >
         <div className="flex items-center gap-1">
           <div className="h-8 w-8 rounded bg-muted" />
           <div className="h-8 w-12 rounded bg-muted" />

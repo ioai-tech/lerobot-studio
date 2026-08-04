@@ -1,7 +1,7 @@
 import React, { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { BarChart3 } from 'lucide-react';
-import { useLeRobot } from '../../contexts/LeRobotContext';
+import { useLeRobotData, useLeRobotSelection } from '../../contexts/LeRobotContext';
 import { ScrollArea } from '@/ui';
 import { Separator } from '@/ui';
 import { AnalysisOverview } from './analysis/AnalysisOverview';
@@ -10,7 +10,8 @@ import { AnalysisTaskDistribution } from './analysis/AnalysisTaskDistribution';
 
 export const AnalysisSidebarContent: React.FC = () => {
   const { t } = useTranslation();
-  const { info, effectiveEpisodes, tasks } = useLeRobot();
+  const { info, tasks } = useLeRobotData();
+  const { effectiveEpisodes } = useLeRobotSelection();
 
   const analysis = useMemo(() => {
     if (!info || effectiveEpisodes.length === 0) return null;
@@ -73,7 +74,7 @@ export const AnalysisSidebarContent: React.FC = () => {
             totalFrames={analysis.totalFrames}
             fps={analysis.fps}
             codebaseVersion={analysis.codebaseVersion}
-            robotType={analysis.robotType}
+            robotType={analysis.robotType ?? undefined}
           />
           <Separator />
           <AnalysisDuration

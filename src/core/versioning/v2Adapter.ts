@@ -40,7 +40,7 @@ function normalizeEpisodeTasks(tasks: unknown): string[] {
 }
 
 /**
- * Adapter for LeRobot codebase v2.0 / v2.1.
+ * Adapter for LeRobot codebase v2.1 and newer read-only v2 compatibility.
  * - Episodes: meta/episodes.jsonl
  * - Tasks: meta/tasks.jsonl
  * - Data: one Parquet file per episode, data/chunk-XXX/episode_YYYYYY.parquet, full file = one episode
@@ -109,6 +109,29 @@ export class V2Adapter extends LeRobotVersionAdapter {
       episodes.forEach((ep) => {
         ep.tasks = normalizeEpisodeTasks(ep.tasks);
       });
+      try {
+        const statsText = await dataSource.readText('meta/episodes_stats.jsonl');
+        const statsByEpisode = new Map<number, Record<string, unknown>>();
+        for (const line of statsText.split('\n').filter((item) => item.trim())) {
+          const row = JSON.parse(line) as {
+            episode_index: number;
+            stats?: Record<string, Record<string, unknown>>;
+          };
+          const flattened: Record<string, unknown> = {};
+          for (const [featureKey, featureStats] of Object.entries(row.stats ?? {})) {
+            for (const [statKey, value] of Object.entries(featureStats)) {
+              flattened[`stats/${featureKey}/${statKey}`] = value;
+            }
+          }
+          statsByEpisode.set(row.episode_index, flattened);
+        }
+        episodes.forEach((episode) => {
+          Object.assign(episode, statsByEpisode.get(episode.episode_index));
+        });
+      } catch {
+        // v2.1 permits datasets without legacy per-episode stats. Training
+        // export will reject missing visual stats explicitly when required.
+      }
       return episodes;
     } catch (e) {
       console.warn('Failed to load episodes.jsonl', e);

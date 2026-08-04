@@ -35,7 +35,21 @@ export interface ExportOptions {
   splitsConfig?: SplitConfig;
 }
 
-/** Per-episode video offsets for v3 (one file per chunk/key, segment by from_timestamp/to_timestamp). */
+export interface V3DataEpisodeLocation {
+  chunk_index: number;
+  file_index: number;
+  dataset_from_index: number;
+  dataset_to_index: number;
+}
+
+/** Actual v3 data shards produced by the exporter, keyed by source episode index. */
+export interface V3DataLayout {
+  episodes: Map<number, V3DataEpisodeLocation>;
+  total_chunks: number;
+  total_files: number;
+}
+
+/** Per-episode video offsets for v3, keyed by source episode index and video feature. */
 export type EpisodeVideoOffsets = Map<
   number,
   Record<

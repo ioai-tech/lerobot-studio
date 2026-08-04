@@ -17,7 +17,9 @@ import {
 import { buildPlaybackFrames, getEagerEpisodeColumns, getFirstAvailableEpisodeIndex } from '@/core';
 import { createParquetImageService, type ParquetImageServiceImpl } from '@/platform';
 import { getImageFeatureNames } from '@/core';
-import { PlaybackEngine } from '../services/PlaybackEngine';
+import { useEpisodeView } from './useEpisodeView';
+import { materializeNumericFeatureRows, useFeatureSubscriptions } from './useFeatureSubscriptions';
+import { usePlaybackBridge } from './usePlaybackBridge';
 
 /**
  * 规范化 info.features 中的 names 字段
@@ -59,20 +61,6 @@ function normalizeInfoNames(info: LeRobotInfo): LeRobotInfo {
   };
 }
 
-function materializeNumericFeatureRows(column: NumericalColumnMap[string]): unknown[] {
-  const rows: unknown[] = [];
-  for (let rowIndex = 0; rowIndex < column.rows; rowIndex++) {
-    const offset = rowIndex * column.width;
-    if (column.width <= 1) {
-      rows.push(column.values[offset] ?? 0);
-      continue;
-    }
-
-    rows.push(Array.from(column.values.slice(offset, offset + column.width)));
-  }
-  return rows;
-}
-
 export const LeRobotDataProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [dataLoader, setDataLoader] = useState<LeRobotDataLoader | null>(null);
   const imageServiceRef = useRef<ParquetImageServiceImpl | null>(null);
@@ -84,19 +72,10 @@ export const LeRobotDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
   const [info, setInfo] = useState<LeRobotInfo | null>(null);
   const [episodes, setEpisodes] = useState<EpisodeMetadata[]>([]);
   const [tasks, setTasks] = useState<Record<number, string>>({});
-  const [modifiedEpisodes, setModifiedEpisodes] = useState<Map<number, Partial<EpisodeMetadata>>>(
-    () => new Map(),
-  );
-  const [deletedEpisodes, setDeletedEpisodes] = useState<Set<number>>(() => new Set());
   const [selectedEpisodeIndex, setSelectedEpisodeIndex] = useState<number | null>(null);
-  const [selectedEpisodeIndices, setSelectedEpisodeIndices] = useState<Set<number>>(
-    () => new Set(),
-  );
   const [currentFrames, setCurrentFrames] = useState<FrameData[]>([]);
   const [chartData, setChartData] = useState<NumericalColumnMap>({});
   const [featureData, setFeatureData] = useState<Record<string, unknown[]>>({});
-  const [currentFrameIndex, setCurrentFrameIndex] = useState(0);
-  const [isPlaying, setIsPlaying] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [playbackMode, setPlaybackMode] = useState<PlaybackMode>('sequential');
@@ -116,10 +95,25 @@ export const LeRobotDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
   const isBusy =
     isLoading ||
     !!loadingTasks.find((t) => t.phase !== 'ready' && t.phase !== 'idle' && t.phase !== 'error');
-  // busy 期间用户通过 setPlaying 请求的目标状态（null 表示无挂起）
-  const pendingPlayRef = useRef<boolean | null>(null);
-  // busy 期间通过 togglePlay 请求的“翻转一次”（仅内部/autoplay 可能用到）
-  const pendingToggleOnceRef = useRef(false);
+  const versionCapability = dataLoader?.getVersionCapability() ?? null;
+  const isReadOnly = versionCapability?.status === 'read-only';
+  const {
+    modifiedEpisodes,
+    setModifiedEpisodes,
+    deletedEpisodes,
+    setDeletedEpisodes,
+    selectedEpisodeIndices,
+    setSelectedEpisodeIndices,
+    effectiveEpisodes,
+    episodesForExport,
+    editEpisodeTask,
+    deleteEpisode,
+    restoreEpisode,
+    getEffectiveEpisode,
+    toggleEpisodeSelection,
+    selectAllInList,
+    clearEpisodeSelection,
+  } = useEpisodeView({ episodes, versionCapability });
 
   // 使用 ref 跟踪当前数据源和加载器，用于清理和防止重复加载
   const dataLoaderRef = useRef<LeRobotDataLoader | null>(null);
@@ -132,6 +126,7 @@ export const LeRobotDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
   // 高性能播放：使用ref存储帧索引，避免触发React渲染
   const frameIndexRef = useRef(0);
   const frameSubscribersRef = useRef<Set<FrameIndexSubscriber>>(new Set());
+  const selectEpisodeRef = useRef<(episodeIndex: number) => Promise<boolean>>(async () => false);
 
   // 卸载时清理资源
   useEffect(() => {
@@ -147,135 +142,7 @@ export const LeRobotDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
     };
   }, []);
 
-  // 后台暂停逻辑
-  useEffect(() => {
-    const handleVisibilityChange = () => {
-      if (document.hidden && isPlaying) {
-        setIsPlaying(false);
-      }
-    };
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
-  }, [isPlaying]);
-
   const loadingEpisodeRef = useRef<number | null>(null);
-  const subscriptionsRef = useRef<Record<string, number>>({});
-  const infoRef = useRef<LeRobotInfo | null>(null);
-  const selectedEpisodeIndexRef = useRef<number | null>(null);
-  const chartDataRef = useRef<NumericalColumnMap>({});
-  const featureDataRef = useRef<Record<string, unknown[]>>({});
-  const pendingFeatureLoadsRef = useRef<Set<string>>(new Set());
-  const loadingFeatureLoadsRef = useRef<Set<string>>(new Set());
-  const featureLoadTimerRef = useRef<number | null>(null);
-
-  useEffect(() => {
-    infoRef.current = info;
-  }, [info]);
-
-  useEffect(() => {
-    selectedEpisodeIndexRef.current = selectedEpisodeIndex;
-  }, [selectedEpisodeIndex]);
-
-  useEffect(() => {
-    chartDataRef.current = chartData;
-  }, [chartData]);
-
-  useEffect(() => {
-    featureDataRef.current = featureData;
-  }, [featureData]);
-
-  const clearPendingFeatureLoads = useCallback(() => {
-    pendingFeatureLoadsRef.current.clear();
-    loadingFeatureLoadsRef.current.clear();
-    if (featureLoadTimerRef.current !== null) {
-      window.clearTimeout(featureLoadTimerRef.current);
-      featureLoadTimerRef.current = null;
-    }
-  }, []);
-
-  const flushPendingFeatureLoads = useCallback(async () => {
-    featureLoadTimerRef.current = null;
-
-    const episodeIndex = selectedEpisodeIndexRef.current;
-    const loader = dataLoaderRef.current;
-    const currentInfo = infoRef.current;
-    if (episodeIndex === null || !loader || !currentInfo) {
-      pendingFeatureLoadsRef.current.clear();
-      return;
-    }
-
-    const queuedFeatures = Array.from(pendingFeatureLoadsRef.current).filter((featureName) => {
-      if (loadingFeatureLoadsRef.current.has(featureName)) return false;
-      if (featureDataRef.current[featureName] !== undefined) return false;
-      const feature = currentInfo.features[featureName];
-      return !(feature && (feature.dtype === 'image' || feature.dtype === 'video'));
-    });
-
-    if (queuedFeatures.length === 0) {
-      pendingFeatureLoadsRef.current.clear();
-      return;
-    }
-
-    queuedFeatures.forEach((featureName) => {
-      pendingFeatureLoadsRef.current.delete(featureName);
-      loadingFeatureLoadsRef.current.add(featureName);
-    });
-
-    const eagerFeatureData: Record<string, unknown[]> = {};
-    const missingFeatures: string[] = [];
-
-    queuedFeatures.forEach((featureName) => {
-      const numericalColumn = chartDataRef.current[featureName];
-      if (numericalColumn) {
-        eagerFeatureData[featureName] = materializeNumericFeatureRows(numericalColumn);
-      } else {
-        missingFeatures.push(featureName);
-      }
-    });
-
-    if (
-      Object.keys(eagerFeatureData).length > 0 &&
-      selectedEpisodeIndexRef.current === episodeIndex
-    ) {
-      setFeatureData((prev) => ({ ...prev, ...eagerFeatureData }));
-    }
-
-    if (missingFeatures.length > 0) {
-      try {
-        const data = await loader.loadFeatureData(episodeIndex, missingFeatures);
-        if (selectedEpisodeIndexRef.current === episodeIndex) {
-          setFeatureData((prev) => ({ ...prev, ...data }));
-        }
-      } catch (e) {
-        console.error(`Failed to load batched feature data for episode ${episodeIndex}`, e);
-      }
-    }
-
-    queuedFeatures.forEach((featureName) => {
-      loadingFeatureLoadsRef.current.delete(featureName);
-    });
-
-    if (pendingFeatureLoadsRef.current.size > 0) {
-      featureLoadTimerRef.current = window.setTimeout(() => {
-        void flushPendingFeatureLoads();
-      }, 0);
-    }
-  }, []);
-
-  const scheduleFeatureLoad = useCallback(
-    (featureName: string) => {
-      const episodeIndex = selectedEpisodeIndexRef.current;
-      if (episodeIndex === null) return;
-
-      pendingFeatureLoadsRef.current.add(featureName);
-      if (featureLoadTimerRef.current === null) {
-        featureLoadTimerRef.current = window.setTimeout(() => {
-          void flushPendingFeatureLoads();
-        }, 0);
-      }
-    },
-    [flushPendingFeatureLoads],
-  );
 
   // 高性能帧索引订阅API
   const subscribeFrameIndex = useCallback((callback: FrameIndexSubscriber) => {
@@ -304,6 +171,43 @@ export const LeRobotDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
       }
     });
   }, []);
+
+  const {
+    subscribeFeature,
+    unsubscribeFeature,
+    clearPendingFeatureLoads,
+    getSubscribedFeatureNames,
+  } = useFeatureSubscriptions({
+    selectedEpisodeIndex,
+    dataLoader,
+    info,
+    chartData,
+    featureData,
+    setFeatureData,
+  });
+
+  const {
+    currentFrameIndex,
+    setCurrentFrameIndex,
+    isPlaying,
+    setIsPlaying,
+    setFrameIndex,
+    togglePlay,
+    setPlaying,
+    seek,
+  } = usePlaybackBridge({
+    isBusy,
+    frameCount: currentFrames.length,
+    frameIndexRef,
+    notifyFrameSubscribers,
+    fps: info?.fps,
+    playbackSpeed,
+    playbackMode,
+    episodes,
+    selectedEpisodeIndex,
+    deletedEpisodes,
+    selectEpisodeRef,
+  });
 
   const reset = useCallback(async () => {
     // 清理旧资源，回到欢迎页；bump generation 使在途 initialize 失效
@@ -347,7 +251,16 @@ export const LeRobotDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
     clearLoading();
     setLastValidationReport(null);
     setHealthDialogOpen(false);
-  }, [notifyFrameSubscribers, clearLoading, clearPendingFeatureLoads]);
+  }, [
+    notifyFrameSubscribers,
+    clearLoading,
+    clearPendingFeatureLoads,
+    setModifiedEpisodes,
+    setDeletedEpisodes,
+    setSelectedEpisodeIndices,
+    setCurrentFrameIndex,
+    setIsPlaying,
+  ]);
 
   const initialize = useCallback(
     async (dataSource: DataSource | FileSystemDirectoryHandle) => {
@@ -409,7 +322,8 @@ export const LeRobotDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
         setImageService(nextImageService);
 
         // 首屏优化：把重依赖（apache-arrow/worker 等）延迟到用户真正打开数据源时再加载
-        const { LeRobotDataLoader: LeRobotDataLoaderCtor } = await import('@/platform');
+        const { LeRobotDataLoader: LeRobotDataLoaderCtor } =
+          await import('../../platform/services/LeRobotDataLoader');
         loader = new LeRobotDataLoaderCtor(source);
 
         upsertTask({ id: taskId, phase: 'read', message: 'Reading metadata...' });
@@ -452,7 +366,16 @@ export const LeRobotDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
         }
       }
     },
-    [upsertTask, completeTask, failTask, notifyFrameSubscribers],
+    [
+      upsertTask,
+      completeTask,
+      failTask,
+      notifyFrameSubscribers,
+      setModifiedEpisodes,
+      setDeletedEpisodes,
+      setCurrentFrameIndex,
+      setIsPlaying,
+    ],
   );
 
   const selectEpisode = useCallback(
@@ -507,14 +430,7 @@ export const LeRobotDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
         }
 
         // 已订阅特征优先复用已加载的数值列，剩余列再按需补读。
-        const subscribedFeatures = Object.entries(subscriptionsRef.current)
-          .filter(([name, count]) => {
-            if (count <= 0) return false;
-            const feat = info.features[name];
-            if (feat && (feat.dtype === 'image' || feat.dtype === 'video')) return false;
-            return true;
-          })
-          .map(([name]) => name);
+        const subscribedFeatures = getSubscribedFeatureNames(info);
 
         if (subscribedFeatures.length > 0) {
           const eagerFeatureData: Record<string, unknown[]> = {};
@@ -579,166 +495,24 @@ export const LeRobotDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
         }
       }
     },
-    [dataLoader, imageService, info, upsertTask, completeTask, failTask, notifyFrameSubscribers],
+    [
+      dataLoader,
+      imageService,
+      info,
+      upsertTask,
+      completeTask,
+      failTask,
+      notifyFrameSubscribers,
+      getSubscribedFeatureNames,
+      setCurrentFrameIndex,
+      setIsPlaying,
+    ],
   );
-
-  useEffect(() => {
-    clearPendingFeatureLoads();
-  }, [selectedEpisodeIndex, clearPendingFeatureLoads]);
+  selectEpisodeRef.current = selectEpisode;
 
   const clearError = useCallback(() => {
     setError(null);
     failedSourcesRef.current.clear();
-  }, []);
-
-  const subscribeFeature = useCallback(
-    async (featureName: string) => {
-      subscriptionsRef.current[featureName] = (subscriptionsRef.current[featureName] || 0) + 1;
-
-      // Skip loading image/video features - they are loaded on-demand by ImagePanel/VideoPanel
-      const feature = info?.features?.[featureName];
-      if (feature && (feature.dtype === 'image' || feature.dtype === 'video')) {
-        return;
-      }
-
-      // 首次订阅时按 batch 合并补读，避免“恢复全选”触发逐列重复解析。
-      if (subscriptionsRef.current[featureName] === 1) {
-        if (featureDataRef.current[featureName] !== undefined) {
-          return;
-        }
-        scheduleFeatureLoad(featureName);
-      }
-    },
-    [info, scheduleFeatureLoad],
-  );
-
-  const unsubscribeFeature = useCallback((featureName: string) => {
-    if (subscriptionsRef.current[featureName] > 0) {
-      subscriptionsRef.current[featureName]--;
-    }
-  }, []);
-
-  const setFrameIndex = useCallback(
-    (index: number) => {
-      if (index >= 0 && index < currentFrames.length) {
-        frameIndexRef.current = index;
-        // 只在非播放状态时更新React state（用于UI同步）
-        if (!isPlaying) {
-          setCurrentFrameIndex(index);
-        }
-        // 通知所有订阅者（直接DOM更新，无React渲染）
-        notifyFrameSubscribers(index);
-      }
-    },
-    [currentFrames.length, isPlaying, notifyFrameSubscribers],
-  );
-
-  const togglePlay = useCallback(() => {
-    if (isBusy) {
-      pendingToggleOnceRef.current = !pendingToggleOnceRef.current;
-      return;
-    }
-    setIsPlaying((prev) => !prev);
-  }, [isBusy]);
-
-  const setPlaying = useCallback(
-    (target: boolean) => {
-      if (isBusy) {
-        pendingPlayRef.current = target;
-        return;
-      }
-      setIsPlaying(target);
-    },
-    [isBusy],
-  );
-
-  // busy -> idle 时，应用挂起的目标播放状态或一次翻转
-  useEffect(() => {
-    if (!isBusy) {
-      if (pendingPlayRef.current !== null) {
-        const target = pendingPlayRef.current;
-        pendingPlayRef.current = null;
-        pendingToggleOnceRef.current = false;
-        setIsPlaying(target);
-      } else if (pendingToggleOnceRef.current) {
-        pendingToggleOnceRef.current = false;
-        setIsPlaying((prev) => !prev);
-      }
-    }
-  }, [isBusy]);
-
-  const seek = useCallback(
-    (offset: number) => {
-      if (isBusy) return;
-      setFrameIndex(frameIndexRef.current + offset);
-    },
-    [setFrameIndex, isBusy],
-  );
-
-  const editEpisodeTask = useCallback(
-    (episodeIndex: number, newTask: string) => {
-      setModifiedEpisodes((prev) => {
-        const next = new Map(prev);
-        const existing = episodes.find((e) => e.episode_index === episodeIndex);
-        if (existing) {
-          next.set(episodeIndex, { ...existing, tasks: [newTask] });
-        }
-        return next;
-      });
-    },
-    [episodes],
-  );
-
-  const deleteEpisode = useCallback((episodeIndex: number) => {
-    setDeletedEpisodes((prev) => new Set(prev).add(episodeIndex));
-  }, []);
-
-  const restoreEpisode = useCallback((episodeIndex: number) => {
-    setDeletedEpisodes((prev) => {
-      const next = new Set(prev);
-      next.delete(episodeIndex);
-      return next;
-    });
-  }, []);
-
-  const getEffectiveEpisode = useCallback(
-    (episode: EpisodeMetadata): EpisodeMetadata => {
-      const modified = modifiedEpisodes.get(episode.episode_index);
-      if (modified) {
-        return { ...episode, ...modified } as EpisodeMetadata;
-      }
-      return episode;
-    },
-    [modifiedEpisodes],
-  );
-
-  const effectiveEpisodes = useMemo(() => {
-    return episodes
-      .filter((e) => !deletedEpisodes.has(e.episode_index))
-      .map((e) => getEffectiveEpisode(e));
-  }, [episodes, deletedEpisodes, getEffectiveEpisode]);
-
-  const episodesForExport = useMemo(() => {
-    if (selectedEpisodeIndices.size === 0) return effectiveEpisodes;
-    const set = selectedEpisodeIndices;
-    return effectiveEpisodes.filter((e) => set.has(e.episode_index));
-  }, [effectiveEpisodes, selectedEpisodeIndices]);
-
-  const toggleEpisodeSelection = useCallback((index: number) => {
-    setSelectedEpisodeIndices((prev) => {
-      const next = new Set(prev);
-      if (next.has(index)) next.delete(index);
-      else next.add(index);
-      return next;
-    });
-  }, []);
-
-  const selectAllInList = useCallback((indices: number[]) => {
-    setSelectedEpisodeIndices(new Set(indices));
-  }, []);
-
-  const clearEpisodeSelection = useCallback(() => {
-    setSelectedEpisodeIndices(new Set());
   }, []);
 
   // 当当前选中的 episode 被删除时，切换到第一个未删除的
@@ -786,62 +560,11 @@ export const LeRobotDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
     return () => window.clearTimeout(timer);
   }, [selectedEpisodeIndex, dataLoader, info, isLoading, episodes, deletedEpisodes, selectEpisode]);
 
-  // 高性能播放循环：委托给 PlaybackEngine（与 React render 解耦）
-  const playbackEngineRef = useRef<PlaybackEngine | null>(null);
-  useEffect(() => {
-    const engine = new PlaybackEngine({
-      getFrameIndex: () => frameIndexRef.current,
-      setFrameIndexSilent: (index) => {
-        frameIndexRef.current = index;
-      },
-      notifyFrame: notifyFrameSubscribers,
-      getFrameCount: () => currentFrames.length,
-      getFps: () => info?.fps || 30,
-      getPlaybackSpeed: () => playbackSpeed,
-      getPlaybackMode: () => playbackMode,
-      getEpisodes: () => episodes,
-      getSelectedEpisodeIndex: () => selectedEpisodeIndex,
-      getDeletedEpisodes: () => deletedEpisodes,
-      onStop: () => setIsPlaying(false),
-      onAdvanceEpisode: (episodeIndex) => selectEpisode(episodeIndex),
-      onResumeAfterEpisode: () => setIsPlaying(true),
-    });
-    playbackEngineRef.current = engine;
-    return () => {
-      engine.dispose();
-      playbackEngineRef.current = null;
-    };
-  }, [
-    currentFrames.length,
-    info?.fps,
-    playbackSpeed,
-    playbackMode,
-    episodes,
-    selectedEpisodeIndex,
-    deletedEpisodes,
-    selectEpisode,
-    notifyFrameSubscribers,
-  ]);
-
-  useEffect(() => {
-    const engine = playbackEngineRef.current;
-    if (!engine) return;
-    if (isPlaying && currentFrames.length > 0 && !isBusy) {
-      engine.start();
-    } else {
-      engine.stop();
-      if (!isPlaying && frameIndexRef.current !== currentFrameIndex) {
-        setCurrentFrameIndex(frameIndexRef.current);
-      }
-    }
-    return () => {
-      engine.stop();
-    };
-  }, [isPlaying, currentFrames.length, isBusy, currentFrameIndex]);
-
   const dataValue = useMemo(
     () => ({
       info,
+      versionCapability,
+      isReadOnly,
       featureData,
       subscribeFeature,
       unsubscribeFeature,
@@ -860,6 +583,8 @@ export const LeRobotDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
     }),
     [
       info,
+      versionCapability,
+      isReadOnly,
       featureData,
       subscribeFeature,
       unsubscribeFeature,
@@ -900,6 +625,7 @@ export const LeRobotDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
       selectedEpisodeIndex,
       selectedEpisodeIndices,
       toggleEpisodeSelection,
+      setSelectedEpisodeIndices,
       selectAllInList,
       clearEpisodeSelection,
       deletedEpisodes,

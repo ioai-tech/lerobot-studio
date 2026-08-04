@@ -2,6 +2,7 @@ import type { ArchiveKind } from './ArchiveDataSourceFactory';
 import {
   getArchiveKindFromHeaders,
   getArchiveKindFromMagicBytes,
+  getArchiveKindFromUrl,
 } from './ArchiveDataSourceFactory';
 
 export type RemotePreflightFailureCode =
@@ -113,6 +114,31 @@ async function readPrefix(response: Response, maxBytes: number): Promise<Uint8Ar
   return bytes;
 }
 
+function resolveRemoteArchiveKind(
+  url: string,
+  headers: Headers,
+  bytes: Uint8Array,
+): ArchiveKind | null {
+  // File signatures are authoritative; headers and URL extensions are useful
+  // fallbacks for empty or unusually chunked probe responses.
+  return (
+    getArchiveKindFromMagicBytes(bytes) ||
+    getArchiveKindFromHeaders(headers) ||
+    getArchiveKindFromUrl(url)
+  );
+}
+
+function unsupportedArchiveResult(): RemotePreflightResult {
+  return {
+    ok: false,
+    kind: 'unknown',
+    failure: {
+      code: 'unknown',
+      detail: 'Unsupported archive content: expected ZIP, TAR, or TAR.GZ/GZIP.',
+    },
+  };
+}
+
 /**
  * 远程压缩包轻量预检：
  * - 统一用 GET + Range（兼容只允许 GET 的签名 URL）
@@ -134,9 +160,9 @@ export async function preflightRemoteArchive(url: string): Promise<RemotePreflig
         };
       }
       const bytes = await readPrefix(rangeRes, REMOTE_ARCHIVE_PROBE_BYTES);
-      const headerKind = getArchiveKindFromHeaders(rangeRes.headers);
-      const magicKind = getArchiveKindFromMagicBytes(bytes);
-      return { ok: true, kind: headerKind || magicKind, accessMode: 'full', contentLength };
+      const kind = resolveRemoteArchiveKind(url, rangeRes.headers, bytes);
+      if (!kind) return unsupportedArchiveResult();
+      return { ok: true, kind, accessMode: 'full', contentLength };
     }
     if (rangeRes.status !== 206) {
       return {
@@ -162,10 +188,10 @@ export async function preflightRemoteArchive(url: string): Promise<RemotePreflig
       };
     }
 
-    const headerKind = getArchiveKindFromHeaders(rangeRes.headers);
     const bytes = await readPrefix(rangeRes, REMOTE_ARCHIVE_PROBE_BYTES);
-    const magicKind = getArchiveKindFromMagicBytes(bytes);
-    return { ok: true, kind: headerKind || magicKind, accessMode: 'range', contentLength };
+    const kind = resolveRemoteArchiveKind(url, rangeRes.headers, bytes);
+    if (!kind) return unsupportedArchiveResult();
+    return { ok: true, kind, accessMode: 'range', contentLength };
   } catch (e) {
     const msg = clampDetail((e as Error).message || String(e));
     const lower = msg.toLowerCase();

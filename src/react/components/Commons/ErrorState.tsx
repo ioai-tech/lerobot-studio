@@ -26,7 +26,11 @@ export const ErrorState: React.FC<ErrorStateProps> = ({ title, message, onRetry,
   };
 
   return (
-    <div className="flex flex-col items-center justify-center p-8 text-center max-w-md mx-auto h-full space-y-6">
+    <div
+      className="flex flex-col items-center justify-center p-8 text-center max-w-md mx-auto h-full space-y-6"
+      role="alert"
+      aria-live="assertive"
+    >
       <div className="bg-destructive/10 p-4 rounded-full">
         <AlertCircle className="h-12 w-12 text-destructive" />
       </div>
@@ -47,6 +51,7 @@ export const ErrorState: React.FC<ErrorStateProps> = ({ title, message, onRetry,
               size="icon"
               className="h-6 w-6"
               onClick={handleCopy}
+              aria-label={copied ? t('common.copied', 'Copied') : t('common.copy')}
               title={t('common.copy')}
             >
               {copied ? <Check className="h-3 w-3 text-green-500" /> : <Copy className="h-3 w-3" />}

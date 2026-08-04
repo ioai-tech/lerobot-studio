@@ -1,35 +1,68 @@
-import React, { useEffect, useState, useRef, useCallback } from 'react';
+import React, { useEffect, useState, useRef, useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { LeRobotStudioProvider } from './LeRobotStudioProvider';
 import { EpisodeSidebar } from './Sidebar/EpisodeSidebar';
 import { Button } from '@/ui';
 import { ArrowLeft, Download } from 'lucide-react';
-import type { DataSource } from '@/platform';
-import { createArchiveDataSourceFromUrl, getArchiveKindFromUrl } from '@/platform';
-import { preflightRemoteArchive, translateRemotePreflightFailure } from '@/platform';
+import type { DataSource } from '../../core/datasource/types';
+import {
+  createArchiveDataSourceFromUrl,
+  getArchiveKindFromUrl,
+} from '../../platform/datasource/ArchiveDataSourceFactory';
+import {
+  preflightRemoteArchive,
+  translateRemotePreflightFailure,
+} from '../../platform/datasource/remotePreflight';
 import { useLeRobotData } from '../contexts/LeRobotContext';
 import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts';
 import { ViewerLayout } from '../features/viewer/ViewerLayout';
 import { ErrorState } from './Commons/ErrorState';
 
+/** Stable error categories reported to an embedding host. */
+export type LeRobotViewerErrorCode =
+  | 'INVALID_DATA_SOURCE'
+  | 'REMOTE_SOURCE_UNAVAILABLE'
+  | 'UNSUPPORTED_ARCHIVE'
+  | 'DATASET_LOAD_FAILED';
+
+/** A fatal viewer error that requires host action or an explicit retry. */
+export interface LeRobotViewerError {
+  /** Machine-readable category. */
+  code: LeRobotViewerErrorCode;
+  /** Localized message suitable for display. */
+  message: string;
+  /** Whether retrying the same operation may succeed. */
+  recoverable: boolean;
+  /** Original failure when one is available. */
+  cause?: unknown;
+}
+
+/** Properties for the stable, client-only LeRobot dataset viewer. */
 export interface LeRobotViewerProps {
+  /** Remote archive URL or a custom browser data source. */
   dataSource: string | DataSource;
+  /** Viewer color scheme. @defaultValue 'system' */
   theme?: 'light' | 'dark' | 'system';
+  /** BCP 47 language tag. Built-in messages currently cover en, zh, and ja. */
   language?: string;
+  /** Show the episode sidebar. @defaultValue true */
   showSidebar?: boolean;
+  /** Show playback controls. @defaultValue true */
   showPlaybackBar?: boolean;
+  /** Additional class name applied to the scoped viewer root. */
   className?: string;
+  /** Optional host-owned navigation action. */
   onBack?: () => void;
-  /** 当提供时，在侧栏返回按钮下方显示导出按钮，点击后触发。 */
+  /** Optional host-owned export action; the npm viewer does not export data itself. */
   onExport?: () => void;
   /**
-   * 严重错误回调：当数据源解析失败或加载失败（如 CORS / 网络错误）时触发。
-   * 典型用法：宿主应用收到回调后清空 url query 并提示用户，而不是显示 lerobot 内置错误页。
+   * Receives fatal source or dataset loading failures. When provided, the host
+   * owns fatal-error rendering and the built-in fatal state is not rendered.
    */
-  onFatalError?: (errorMessage: string) => void;
+  onFatalError?: (error: LeRobotViewerError) => void;
   /**
-   * 是否启用键盘快捷键（空格播放/暂停，方向键跳转帧等）
-   * @default true
+   * Enable viewer keyboard shortcuts such as Space and arrow-key seeking.
+   * @defaultValue true
    */
   enableKeyboardShortcuts?: boolean;
 }
@@ -53,9 +86,21 @@ export function LeRobotViewerContent({
 
   const lastSourceRef = useRef<DataSource | null>(null);
   const [resolvedSource, setResolvedSource] = useState<DataSource | null>(null);
-  const [resolveError, setResolveError] = useState<string | null>(null);
+  const [resolveError, setResolveError] = useState<LeRobotViewerError | null>(null);
   const [isResolving, setIsResolving] = useState(false);
-  const lastFatalErrorRef = useRef<string | null>(error);
+  const lastFatalErrorRef = useRef<string | null>(null);
+  const fatalError = useMemo<LeRobotViewerError | null>(
+    () =>
+      resolveError ??
+      (error
+        ? {
+            code: 'DATASET_LOAD_FAILED',
+            message: error,
+            recoverable: true,
+          }
+        : null),
+    [error, resolveError],
+  );
 
   const normalizeUrl = (raw: string) => {
     try {
@@ -81,7 +126,11 @@ export function LeRobotViewerContent({
       const raw = dataSource.trim();
       if (!raw) {
         setResolvedSource(null);
-        setResolveError(t('common.error') + ': empty dataSource url');
+        setResolveError({
+          code: 'INVALID_DATA_SOURCE',
+          message: `${t('common.error')}: empty dataSource url`,
+          recoverable: false,
+        });
         return;
       }
 
@@ -91,11 +140,23 @@ export function LeRobotViewerContent({
       try {
         const pre = await preflightRemoteArchive(url);
         if (!pre.ok) {
-          throw new Error(translateRemotePreflightFailure(t, pre.failure));
+          setResolvedSource(null);
+          setResolveError({
+            code: 'REMOTE_SOURCE_UNAVAILABLE',
+            message: translateRemotePreflightFailure(t, pre.failure),
+            recoverable: true,
+          });
+          return;
         }
         const kind = getArchiveKindFromUrl(url) || pre.kind;
         if (!kind) {
-          throw new Error(t('validation.unsupportedFormat'));
+          setResolvedSource(null);
+          setResolveError({
+            code: 'UNSUPPORTED_ARCHIVE',
+            message: t('validation.unsupportedFormat'),
+            recoverable: false,
+          });
+          return;
         }
         if (cancelled) return;
         setResolvedSource(
@@ -107,7 +168,12 @@ export function LeRobotViewerContent({
         if (cancelled) return;
         const msg = e instanceof Error ? e.message : String(e);
         setResolvedSource(null);
-        setResolveError(msg);
+        setResolveError({
+          code: 'REMOTE_SOURCE_UNAVAILABLE',
+          message: msg,
+          recoverable: true,
+          cause: e,
+        });
       } finally {
         if (!cancelled) setIsResolving(false);
       }
@@ -127,19 +193,18 @@ export function LeRobotViewerContent({
   }, [resolvedSource, initialize]);
 
   useEffect(() => {
-    if (!error && !resolveError) {
+    if (!fatalError) {
       lastFatalErrorRef.current = null;
     }
-  }, [error, resolveError]);
+  }, [fatalError]);
 
   useEffect(() => {
-    if (!onFatalError) return;
-    const msg = resolveError || error;
-    if (!msg) return;
-    if (lastFatalErrorRef.current === msg) return;
-    lastFatalErrorRef.current = msg;
-    onFatalError(msg);
-  }, [resolveError, error, onFatalError]);
+    if (!onFatalError || !fatalError) return;
+    const key = `${fatalError.code}:${fatalError.message}`;
+    if (lastFatalErrorRef.current === key) return;
+    lastFatalErrorRef.current = key;
+    onFatalError(fatalError);
+  }, [fatalError, onFatalError]);
 
   const handleRetry = useCallback(() => {
     clearError();
@@ -157,7 +222,7 @@ export function LeRobotViewerContent({
     }
   }, [clearError, resolvedSource, initialize, dataSource]);
 
-  if (onFatalError && (resolveError || error)) {
+  if (onFatalError && fatalError) {
     // The embedding host owns fatal-error rendering via onFatalError. Keeping a
     // spinner mounted here made permanent failures indistinguishable from load.
     return null;
@@ -199,24 +264,30 @@ export function LeRobotViewerContent({
       </div>
     ) : null;
 
-  const emptyState =
-    resolveError || error ? (
-      <ErrorState
-        title={t('common.error')}
-        message={t('errors.loadFailed')}
-        errorDetail={resolveError || error || undefined}
-        onRetry={handleRetry}
-      />
-    ) : (
-      <div className="w-full h-full flex items-center justify-center text-muted-foreground">
-        <div className="flex items-center gap-3">
-          <div className="h-5 w-5 border-2 border-primary border-t-transparent rounded-full animate-spin" />
-          <span className="text-sm">
-            {isResolving || isLoading ? t('common.initializing') : t('common.loading')}
-          </span>
-        </div>
+  const emptyState = fatalError ? (
+    <ErrorState
+      title={t('common.error')}
+      message={t('errors.loadFailed')}
+      errorDetail={fatalError.message}
+      onRetry={handleRetry}
+    />
+  ) : (
+    <div
+      className="w-full h-full flex items-center justify-center text-muted-foreground"
+      role="status"
+      aria-live="polite"
+    >
+      <div className="flex items-center gap-3">
+        <div
+          className="h-5 w-5 border-2 border-primary border-t-transparent rounded-full animate-spin motion-reduce:animate-none"
+          aria-hidden
+        />
+        <span className="text-sm">
+          {isResolving || isLoading ? t('common.initializing') : t('common.loading')}
+        </span>
       </div>
-    );
+    </div>
+  );
 
   return (
     <ViewerLayout

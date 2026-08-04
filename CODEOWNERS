@@ -1,0 +1,13 @@
+# Replace this planned team if the public repository uses a different
+# write-enabled maintainer team. GitHub does not enforce this file until the
+# referenced team exists and branch protection requires CODEOWNERS review.
+* @ioai-tech/maintainers
+
+/SECURITY.md @ioai-tech/maintainers
+/GOVERNANCE.md @ioai-tech/maintainers
+/CODE_OF_CONDUCT.md @ioai-tech/maintainers
+/CODEOWNERS @ioai-tech/maintainers
+/NOTICE @ioai-tech/maintainers
+/docs/compatibility.md @ioai-tech/maintainers
+/docs/deprecation.md @ioai-tech/maintainers
+/docs/privacy.md @ioai-tech/maintainers

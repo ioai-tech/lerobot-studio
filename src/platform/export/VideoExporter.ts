@@ -5,6 +5,7 @@ import type { ExportAdapter } from '@/core';
 import type { ExportProgress, EpisodeVideoOffsets, TargetVersion } from '@/core';
 
 const CHUNK_SIZE_DEFAULT = 1000;
+const VIDEO_FILE_SIZE_MB_DEFAULT = 200;
 
 export type VideoExportOptions = { signal?: AbortSignal };
 
@@ -190,21 +191,19 @@ async function exportVideosTranscodeToV3(
   if (videoKeys.length === 0) return new Map();
 
   const chunksSize = info.chunks_size ?? CHUNK_SIZE_DEFAULT;
-
-  // Group by NEW 0-based position so the output layout is self-contained.
-  const chunkToIndices = new Map<number, number[]>();
-  for (let i = 0; i < episodes.length; i++) {
-    const c = Math.floor(i / chunksSize);
-    if (!chunkToIndices.has(c)) chunkToIndices.set(c, []);
-    chunkToIndices.get(c)!.push(i);
+  if (!Number.isSafeInteger(chunksSize) || chunksSize <= 0) {
+    throw new Error('chunks_size must be a positive integer');
+  }
+  const videoSizeLimit =
+    (info as { video_files_size_in_mb?: number }).video_files_size_in_mb ??
+    VIDEO_FILE_SIZE_MB_DEFAULT;
+  if (!Number.isFinite(videoSizeLimit) || videoSizeLimit <= 0) {
+    throw new Error('video_files_size_in_mb must be a positive number');
   }
 
   const offsets: EpisodeVideoOffsets = new Map();
   let done = 0;
-  const total = [...chunkToIndices.values()].reduce(
-    (sum, eps) => sum + eps.length * videoKeys.length,
-    0,
-  );
+  const total = episodes.length * videoKeys.length;
   onProgress?.({
     phase: 'videos',
     current: 0,
@@ -213,76 +212,85 @@ async function exportVideosTranscodeToV3(
     cancelable: false,
   });
 
-  for (const [chunkIdx, indices] of chunkToIndices.entries()) {
-    for (const key of videoKeys) {
-      await ensureParentDir(adapter, `videos/${key}/chunk-${String(chunkIdx).padStart(3, '0')}`);
-      for (let position = 0; position < indices.length; position++) {
-        assertNotAborted(signal);
-        const newIdx = indices[position];
-        const ep = episodes[newIdx];
-        const pathResult = dataLoader.getEpisodeVideoPath(ep.episode_index, key);
-        const outPath = `videos/${key}/chunk-${String(chunkIdx).padStart(3, '0')}/file-${String(position).padStart(3, '0')}.mp4`;
+  for (const key of videoKeys) {
+    // Official LeRobot concatenates episode MP4s while the current file stays
+    // below video_files_size_in_mb. Mediabunny cannot remux-concatenate
+    // independently encoded MP4s without a lossy transcode. Preserve every
+    // episode losslessly as its own file instead, and apply chunks_size to the
+    // number of files (not the number of episodes as a format concept).
+    let chunkIdx = 0;
+    let fileIdx = 0;
+    for (let newIdx = 0; newIdx < episodes.length; newIdx++) {
+      assertNotAborted(signal);
+      const ep = episodes[newIdx];
+      const pathResult = dataLoader.getEpisodeVideoPath(ep.episode_index, key);
+      const outPath = `videos/${key}/chunk-${String(chunkIdx).padStart(3, '0')}/file-${String(fileIdx).padStart(3, '0')}.mp4`;
 
-        if (!pathResult) {
-          throw new Error(`Missing source video for episode ${ep.episode_index}, feature "${key}"`);
-        }
+      if (!pathResult) {
+        throw new Error(`Missing source video for episode ${ep.episode_index}, feature "${key}"`);
+      }
 
-        try {
-          const bytes = await dataLoader.readFileBytes(pathResult.path);
-          const hasTrim = hasMeaningfulTrim(pathResult);
-          const trim = hasTrim
-            ? { fromSec: pathResult.fromSec, toSec: pathResult.toSec }
-            : undefined;
+      try {
+        const bytes = await dataLoader.readFileBytes(pathResult.path);
+        const hasTrim = hasMeaningfulTrim(pathResult);
+        const trim = hasTrim ? { fromSec: pathResult.fromSec, toSec: pathResult.toSec } : undefined;
 
-          // Fast path: source is already an MP4 AND we don't need to trim →
-          // byte copy.  Massively faster and avoids any transcoding failure
-          // mode for already-compatible sources (v2 MP4 → v3 MP4).
-          if (!hasTrim && looksLikeMp4(bytes)) {
-            await adapter.writeFile(outPath, bytes);
-            const duration =
-              Number(pathResult.toSec ?? 0) > 0
-                ? Number(pathResult.toSec)
-                : await tryComputeMp4Duration(bytes);
+        // Fast path: source is already an MP4 AND we don't need to trim →
+        // byte copy.  Massively faster and avoids any transcoding failure
+        // mode for already-compatible sources (v2 MP4 → v3 MP4).
+        if (!hasTrim && looksLikeMp4(bytes)) {
+          await ensureParentDir(adapter, outPath);
+          await adapter.writeFile(outPath, bytes);
+          const duration =
+            Number(pathResult.toSec ?? 0) > 0
+              ? Number(pathResult.toSec)
+              : await tryComputeMp4Duration(bytes);
+          if (!offsets.has(ep.episode_index)) offsets.set(ep.episode_index, {});
+          offsets.get(ep.episode_index)![key] = {
+            chunk_index: chunkIdx,
+            file_index: fileIdx,
+            from_timestamp: 0,
+            to_timestamp: duration,
+          };
+        } else {
+          const result = await convertSegmentWithMediabunny(bytes, trim, signal);
+          if (!result) {
+            throw new Error(`Video conversion produced no MP4 output: ${outPath}`);
+          } else {
+            await ensureParentDir(adapter, outPath);
+            await adapter.writeFile(outPath, new Uint8Array(result.buffer));
             if (!offsets.has(ep.episode_index)) offsets.set(ep.episode_index, {});
             offsets.get(ep.episode_index)![key] = {
               chunk_index: chunkIdx,
-              file_index: position,
+              file_index: fileIdx,
               from_timestamp: 0,
-              to_timestamp: duration,
+              to_timestamp: result.duration,
             };
-          } else {
-            const result = await convertSegmentWithMediabunny(bytes, trim, signal);
-            if (!result) {
-              throw new Error(`Video conversion produced no MP4 output: ${outPath}`);
-            } else {
-              await adapter.writeFile(outPath, new Uint8Array(result.buffer));
-              if (!offsets.has(ep.episode_index)) offsets.set(ep.episode_index, {});
-              offsets.get(ep.episode_index)![key] = {
-                chunk_index: chunkIdx,
-                file_index: position,
-                from_timestamp: 0,
-                to_timestamp: result.duration,
-              };
-            }
           }
-        } catch (e) {
-          if (e instanceof DOMException && e.name === 'AbortError') throw e;
-          throw new Error(
-            `Failed to export video "${outPath}": ${e instanceof Error ? e.message : String(e)}`,
-            {
-              cause: e,
-            },
-          );
         }
+      } catch (e) {
+        if (e instanceof DOMException && e.name === 'AbortError') throw e;
+        throw new Error(
+          `Failed to export video "${outPath}": ${e instanceof Error ? e.message : String(e)}`,
+          {
+            cause: e,
+          },
+        );
+      }
 
-        done++;
-        onProgress?.({
-          phase: 'videos',
-          current: done,
-          total,
-          message: outPath,
-          cancelable: false,
-        });
+      done++;
+      onProgress?.({
+        phase: 'videos',
+        current: done,
+        total,
+        message: outPath,
+        cancelable: false,
+      });
+      if (fileIdx + 1 >= chunksSize) {
+        chunkIdx++;
+        fileIdx = 0;
+      } else {
+        fileIdx++;
       }
     }
   }

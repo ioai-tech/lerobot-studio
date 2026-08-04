@@ -25,13 +25,28 @@ export interface SplitConfig {
 /** Map split name -> episode indices (0-based in export order). */
 export type SplitsIndices = Record<string, number[]>;
 
-/** Serialize splits to LeRobot v3 info.splits format: each value is comma-separated indices. */
+/**
+ * Serialize splits to the official LeRobot v3 half-open `start:end` format.
+ * A split must be one non-empty contiguous range in export order.
+ */
 export function splitsIndicesToInfoSplits(splits: SplitsIndices): Record<string, string> {
   const out: Record<string, string> = {};
   for (const [name, indices] of Object.entries(splits)) {
-    if (indices.length > 0) {
-      out[name] = indices.join(',');
+    if (indices.length === 0) continue;
+    for (let position = 0; position < indices.length; position++) {
+      const index = indices[position];
+      if (!Number.isSafeInteger(index) || index < 0) {
+        throw new Error(
+          `Cannot export split "${name}": episode index ${String(index)} is not a non-negative safe integer.`,
+        );
+      }
+      if (position > 0 && index !== indices[position - 1] + 1) {
+        throw new Error(
+          `Cannot export split "${name}" in LeRobot v3 start:end format: episode indices are not contiguous in export order. Reorder episodes by split or use range splits.`,
+        );
+      }
     }
+    out[name] = `${indices[0]}:${indices[indices.length - 1] + 1}`;
   }
   return out;
 }

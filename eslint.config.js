@@ -13,8 +13,6 @@ export default defineConfig([
     'node_modules/**',
     'tests/fixtures/datasets/**',
     '**/*.d.ts',
-    // Pre-monorepo leftover tree; packages/* + apps/* are authoritative.
-    'src/**',
   ]),
   {
     files: ['**/*.{ts,tsx}'],
@@ -44,8 +42,26 @@ export default defineConfig([
       '@typescript-eslint/no-explicit-any': 'off',
       // ESLint 10 新增：既有 Error 包装模式未统一 attach cause
       'preserve-caught-error': 'off',
-      // shadcn / Context 模式会同时导出组件与 hook/variants
-      'react-refresh/only-export-components': ['warn', { allowConstantExport: true }],
+      // Context hooks and shadcn variants intentionally share their component module.
+      'react-refresh/only-export-components': [
+        'warn',
+        {
+          allowConstantExport: true,
+          allowExportNames: [
+            'useDockviewApi',
+            'useLoading',
+            'useToast',
+            'useI18nController',
+            'useTranslationBridge',
+            'reportIntlError',
+            'badgeVariants',
+            'buttonVariants',
+            'tabsListVariants',
+            'usePortalContainer',
+            'metadata',
+          ],
+        },
+      ],
     },
   },
 ]);

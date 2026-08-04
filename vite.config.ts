@@ -99,22 +99,25 @@ export default defineConfig(() => {
       alias: [
         {
           find: 'react-i18next',
-          replacement: path.resolve(__dirname, './src/react/i18n/reactI18nextCompat.ts'),
+          replacement: path.resolve(import.meta.dirname, './src/react/i18n/reactI18nextCompat.ts'),
         },
         {
           find: /^@\/workers\/workerManager$/,
-          replacement: path.resolve(__dirname, './src/platform/workers/workerManager.ts'),
+          replacement: path.resolve(import.meta.dirname, './src/platform/workers/workerManager.ts'),
         },
         {
           find: /^@\/workers\/wasmUrl$/,
-          replacement: path.resolve(__dirname, './src/platform/workers/wasmUrl.ts'),
+          replacement: path.resolve(import.meta.dirname, './src/platform/workers/wasmUrl.ts'),
         },
-        { find: /^@\/core(?:\/|$)/, replacement: path.resolve(__dirname, './src/core') },
-        { find: /^@\/platform(?:\/|$)/, replacement: path.resolve(__dirname, './src/platform') },
-        { find: /^@\/ui(?:\/|$)/, replacement: path.resolve(__dirname, './src/ui') },
-        { find: /^@\/web(?:\/|$)/, replacement: path.resolve(__dirname, './src/web') },
-        { find: /^@$/, replacement: path.resolve(__dirname, './src/react/index.ts') },
-        { find: /^@\//, replacement: path.resolve(__dirname, './src/react') + '/' },
+        { find: /^@\/core(?:\/|$)/, replacement: path.resolve(import.meta.dirname, './src/core') },
+        {
+          find: /^@\/platform(?:\/|$)/,
+          replacement: path.resolve(import.meta.dirname, './src/platform'),
+        },
+        { find: /^@\/ui(?:\/|$)/, replacement: path.resolve(import.meta.dirname, './src/ui') },
+        { find: /^@\/web(?:\/|$)/, replacement: path.resolve(import.meta.dirname, './src/web') },
+        { find: /^@$/, replacement: path.resolve(import.meta.dirname, './src/react/internal.ts') },
+        { find: /^@\//, replacement: path.resolve(import.meta.dirname, './src/react') + '/' },
       ],
     },
     build: {

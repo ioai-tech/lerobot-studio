@@ -7,27 +7,38 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
-  packages: write
-  id-token: write
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
+  ci:
+    uses: ./.github/workflows/ci.yml
+    permissions:
+      contents: read
+
   release:
+    needs: ci
     runs-on: ubuntu-latest
     timeout-minutes: 60
+    permissions:
+      contents: write
+      packages: write
+      id-token: write
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version-file: '.nvmrc'
           cache: npm
           registry-url: https://registry.npmjs.org
       - run: npm ci
-      - run: npx playwright install --with-deps chromium
-      - run: npm run test:unit
-      - run: npm run test:browser
       - run: npm run build:lib
-      - run: npm run build
+      - run: npm run sbom
       - name: Verify tag matches npm package version
         env:
           TAG_VERSION: ${{ github.ref_name }}
@@ -38,14 +49,23 @@ jobs:
             echo "Tag $TAG_VERSION must match package version $expected_tag" >&2
             exit 1
           }
-      - name: Publish npm package
+      - name: Bootstrap first npm publish
+        if: github.ref_name == 'v1.0.0'
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_BOOTSTRAP_TOKEN }}
+        run: |
+          test -n "$NODE_AUTH_TOKEN" || {
+            echo "NPM_BOOTSTRAP_TOKEN is required only for the first package publication" >&2
+            exit 1
+          }
+          npm publish --access public --provenance
+      - name: Publish npm package with trusted publishing
+        if: github.ref_name != 'v1.0.0'
         run: npm publish --access public --provenance
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
       - name: Login to GHCR
-        uses: docker/login-action@v3
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -54,15 +74,18 @@ jobs:
         id: meta
         run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
       - name: Build and push Docker image
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
         with:
           context: .
           push: true
+          provenance: mode=max
+          sbom: true
           platforms: linux/amd64,linux/arm64
           tags: |
             ghcr.io/ioai-tech/lerobot-studio:latest
             ghcr.io/ioai-tech/lerobot-studio:${{ steps.meta.outputs.version }}
       - name: GitHub Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@3d0d9888cb7fd7b750713d6e236d1fcb99157228 # v3.0.2
         with:
           generate_release_notes: true
+          files: sbom.cdx.json

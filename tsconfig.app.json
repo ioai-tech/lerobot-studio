@@ -15,7 +15,7 @@
     "ignoreDeprecations": "6.0",
     "baseUrl": ".",
     "paths": {
-      "@": ["./src/react/index.ts"],
+      "@": ["./src/react/internal.ts"],
       "@/*": ["./src/react/*"],
       "@/core": ["./src/core/index.ts"],
       "@/core/*": ["./src/core/*"],

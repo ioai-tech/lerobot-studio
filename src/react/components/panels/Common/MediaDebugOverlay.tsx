@@ -83,10 +83,7 @@ export const MediaDebugOverlay: React.FC<MediaDebugOverlayProps> = ({
           >
             <dt className="shrink-0 text-white/60">{item.label}</dt>
             <dd
-              className={cn(
-                'font-mono tabular-nums',
-                item.breakAll && 'min-w-0 max-w-48 truncate',
-              )}
+              className={cn('font-mono tabular-nums', item.breakAll && 'min-w-0 max-w-48 truncate')}
             >
               {item.value}
             </dd>

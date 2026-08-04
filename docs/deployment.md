@@ -1,14 +1,27 @@
 # Deployment
 
-## Production site (Cloudflare Workers)
+> **Language / 语言：** [English](./deployment.md) | [简体中文](./deployment.zh-CN.md)
+
+## Production target (Cloudflare Workers)
 
 Production is served at **https://lerobot.studio**.
 
-The GitHub repository [`ioai-tech/lerobot-studio`](https://github.com/ioai-tech/lerobot-studio)
-is connected directly to a Cloudflare Worker. Merges to `main` trigger a Cloudflare
-build and deploy — no GitHub Actions secrets are required for this path.
+The planned post-migration setup connects `ioai-tech/lerobot-studio` directly to
+a Cloudflare Worker so merges to `main` trigger a Cloudflare build and deploy
+without GitHub Actions deployment secrets. The repository connection and first
+deployment must be verified during the
+[GitHub migration](./github-migration.md); this document does not assert that
+the public repository is already available.
 
-Worker configuration lives in [`wrangler.jsonc`](../wrangler.jsonc):
+The Cloudflare repository integration is a separate trust boundary from GitHub
+Actions. Grant it access only to this repository, restrict production deploys
+to the protected `main` branch, and review its build logs and dependency update
+behavior. Fork pull-request workflows must not receive Cloudflare credentials;
+the planned integration does not require storing a Cloudflare API token as a
+GitHub Actions secret.
+
+Worker configuration lives in
+[`wrangler.jsonc`](https://github.com/ioai-tech/lerobot-studio/blob/main/wrangler.jsonc):
 
 - Worker name: `lerobot-studio`
 - Assets directory: `dist`
@@ -35,7 +48,13 @@ npx wrangler deploy
 
 ```bash
 docker build -t lerobot-studio .
-docker run --rm -p 8080:80 lerobot-studio
+docker run --rm -p 8080:8080 lerobot-studio
+```
+
+Or use the root `docker-compose.yml` (maps host port 8080):
+
+```bash
+docker compose up --build
 ```
 
 Optional build args:
@@ -44,7 +63,7 @@ Optional build args:
 - `SITE_URL` — canonical site URL for SEO assets (production default: `https://lerobot.studio`)
 - `VITE_SAMPLES_BASE_URL` — remote sample manifest base URL
 
-Published images (after open release):
+Planned published images (after a successful public release):
 
 - `ghcr.io/ioai-tech/lerobot-studio:latest`
 - `ghcr.io/ioai-tech/lerobot-studio:<version>`
@@ -58,13 +77,59 @@ SITE_URL=https://lerobot.studio npm run build
 Serve `dist` with any static file server. Configure SPA fallback to
 `index.html`.
 
+## Documentation site (GitHub Pages)
+
+The documentation is a separate VitePress build:
+
+```bash
+npm run docs:build
+```
+
+`.github/workflows/docs-pages.yml` builds and deploys
+`docs/.vitepress/dist` after documentation changes reach `main`. Its default
+`DOCS_BASE` is `/<repository-name>/`, so it works at the GitHub project Pages
+URL without assuming that a custom documentation domain exists.
+
+Repository administrators must complete these steps after the public
+repository exists:
+
+1. Open **Settings → Pages** and set **Source** to **GitHub Actions**.
+2. Run the **Documentation Pages** workflow once and verify the generated
+   `https://ioai-tech.github.io/lerobot-studio/` URL.
+3. Add the workflow’s `build` and `deploy` jobs to the protected-branch policy
+   if documentation deployment is required for merges.
+4. Only after DNS ownership is ready, configure a custom domain in GitHub
+   Pages, add the documented DNS records, enable HTTPS, and verify the domain.
+5. For a root custom domain such as `docs.lerobot.studio`, change the workflow
+   `DOCS_BASE` to `/`. Do not add a `CNAME` file or advertise that hostname
+   until GitHub Pages and DNS both confirm it.
+
+The workflow requires `pages: write` and `id-token: write` only in the deploy
+job. Pull requests build the same site through the read-only CI job but do not
+deploy it.
+
 ## Sample datasets and CORS
 
-Remote archives require:
+Remote archives must allow cross-origin `GET`. Scalable access to large
+archives also requires byte ranges. A typical object response includes:
 
-- CORS allowing `GET` from your site origin
-- HTTP `Range` support for large archives
+- `Access-Control-Allow-Origin: https://your-viewer.example` (or `*` for a
+  genuinely public, credential-free object);
+- `Accept-Ranges: bytes`;
+- `Content-Length`;
+- a `206 Partial Content` response with a valid `Content-Range` when the client
+  sends `Range: bytes=...`; and
+- `Access-Control-Expose-Headers: Accept-Ranges, Content-Length, Content-Range`
+  when those headers must be read by browser code.
+
+If a preflight occurs, allow `GET`, `OPTIONS`, and the `Range` request header.
+Do not use wildcard origins with credentialed requests. A server that ignores
+Range may trigger a full download and is not a supported large-dataset setup.
+See [Compatibility](./compatibility.md) for the complete network boundary.
 
 ## Privacy
 
-The open-source web shell does **not** include Google Analytics or Microsoft Clarity.
+The npm library has a zero-telemetry contract. The open-source web shell does
+not include Google Analytics or Microsoft Clarity. Deployers are responsible
+for disclosing logs, analytics, proxies, sample endpoints, authentication, and
+retention that they add. See [Privacy](./privacy.md).

@@ -9,7 +9,7 @@ import {
   DialogFooter,
 } from '@/ui';
 import { Button } from '@/ui';
-import { useLeRobot } from '../../contexts/LeRobotContext';
+import { useLeRobotData, useLeRobotSelection } from '../../contexts/LeRobotContext';
 import { detectPlatformCapabilities } from '@/platform';
 import { ExportService } from '@/platform';
 import { WebExportAdapter } from '@/platform';
@@ -23,15 +23,16 @@ export interface ExportDialogProps {
 
 export const ExportDialog: React.FC<ExportDialogProps> = ({ open, onOpenChange }) => {
   const { t } = useTranslation();
-  const { dataLoader, info, episodesForExport, tasks, modifiedEpisodes, deletedEpisodes } =
-    useLeRobot();
+  const { dataLoader, info, tasks } = useLeRobotData();
+  const { episodesForExport, modifiedEpisodes, deletedEpisodes } = useLeRobotSelection();
 
   const capabilities = React.useMemo(() => detectPlatformCapabilities(), []);
+  const versionCapability = dataLoader?.getVersionCapability() ?? null;
 
   const defaultTargetVersion = useMemo((): 'v2.1' | 'v3.0' => {
-    if (info?.codebase_version?.startsWith('v3')) return 'v3.0';
+    if (versionCapability?.adapterVersion === 'v3.0') return 'v3.0';
     return 'v2.1';
-  }, [info?.codebase_version]);
+  }, [versionCapability?.adapterVersion]);
 
   const [format, setFormat] = useState<ExportFormat>('zip');
   const [targetVersion, setTargetVersion] = useState<'v2.1' | 'v3.0'>(defaultTargetVersion);
@@ -46,6 +47,15 @@ export const ExportDialog: React.FC<ExportDialogProps> = ({ open, onOpenChange }
   const handleExport = useCallback(async () => {
     if (!dataLoader || !info) {
       setExportError(t('export.noData', 'No dataset loaded.'));
+      return;
+    }
+    if (versionCapability?.status !== 'supported') {
+      setExportError(
+        t(
+          'export.versionReadOnly',
+          'This dataset version is not supported for export and can only be viewed.',
+        ),
+      );
       return;
     }
     setExportError(null);
@@ -89,25 +99,10 @@ export const ExportDialog: React.FC<ExportDialogProps> = ({ open, onOpenChange }
       }
     };
     try {
-      // Build tasks and reindex task_index from episodesForExport (subset when selection active)
-      const taskStrToIndex = new Map<string, number>();
-      const tasksToExport: Record<number, string> = {};
-      let nextTaskIndex = 0;
-      const episodesToExport = episodesForExport.map((ep) => {
-        const taskStr = ep.tasks?.[0] ?? tasks[ep.task_index ?? 0] ?? '';
-        let idx = taskStrToIndex.get(taskStr);
-        if (idx === undefined) {
-          idx = nextTaskIndex++;
-          taskStrToIndex.set(taskStr, idx);
-          tasksToExport[idx] = taskStr;
-        }
-        return { ...ep, task_index: idx, tasks: [taskStr] } as typeof ep;
-      });
-
       const adapter = new WebExportAdapter(directoryHandle ? { directoryHandle } : undefined);
       const service = new ExportService(dataLoader, adapter);
       try {
-        await service.exportWithData(info, episodesToExport, tasksToExport, {
+        await service.exportWithData(info, episodesForExport, tasks, {
           format,
           targetVersion,
           onProgress: safeSetProgress,
@@ -147,14 +142,25 @@ export const ExportDialog: React.FC<ExportDialogProps> = ({ open, onOpenChange }
         setProgress(null);
       }
     }
-  }, [dataLoader, info, episodesForExport, tasks, format, targetVersion, onOpenChange, t]);
+  }, [
+    dataLoader,
+    info,
+    versionCapability?.status,
+    episodesForExport,
+    tasks,
+    format,
+    targetVersion,
+    onOpenChange,
+    t,
+  ]);
 
   const handleClose = useCallback(() => {
     if (!progress) onOpenChange(false);
   }, [progress, onOpenChange]);
 
   const isExporting = progress !== null;
-  const canExport = info && dataLoader && episodesForExport.length > 0;
+  const canExport =
+    info && dataLoader && versionCapability?.status === 'supported' && episodesForExport.length > 0;
 
   const progressPercent = useMemo(() => {
     return (
@@ -244,6 +250,14 @@ export const ExportDialog: React.FC<ExportDialogProps> = ({ open, onOpenChange }
               </ul>
             </div>
             {exportError && <p className="text-sm text-destructive">{exportError}</p>}
+            {versionCapability && versionCapability.status !== 'supported' && !exportError && (
+              <p className="text-sm text-muted-foreground">
+                {t(
+                  'export.versionReadOnly',
+                  'This dataset version is not supported for export and can only be viewed.',
+                )}
+              </p>
+            )}
           </div>
         ) : (
           <div className="space-y-3 py-2 min-w-0 overflow-hidden">

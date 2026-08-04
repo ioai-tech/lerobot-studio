@@ -60,6 +60,8 @@ describe.skipIf(!python)('official LeRobot dataset compatibility', () => {
       const info = {
         ...sourceInfo,
         total_videos: 0,
+        chunks_size: 1,
+        data_files_size_in_mb: 0.000001,
         features: Object.fromEntries(
           Object.entries(sourceInfo.features).filter(([, feature]) => feature.dtype !== 'video'),
         ),
@@ -85,12 +87,47 @@ describe.skipIf(!python)('official LeRobot dataset compatibility', () => {
 
       const script = [
         'import json, sys',
+        'from pathlib import Path',
+        'import pyarrow as pa',
+        'import pyarrow.parquet as pq',
         'from lerobot.datasets.lerobot_dataset import LeRobotDataset',
         'dataset = LeRobotDataset("local/roundtrip", root=sys.argv[1], download_videos=False)',
-        'print(json.dumps({"frames": len(dataset), "episodes": dataset.meta.total_episodes}))',
-      ].join('; ');
-      const { stdout } = await execFileAsync(python!, ['-c', script, root]);
-      expect(JSON.parse(stdout.trim())).toEqual({ frames: 6, episodes: 2 });
+        'stats = json.load(open(sys.argv[1] + "/meta/stats.json"))',
+        'files = sorted(Path(sys.argv[1]).glob("data/chunk-*/file-*.parquet"))',
+        'table = pa.concat_tables([pq.read_table(file) for file in files])',
+        'columns = {}',
+        'for key in ("index", "episode_index", "task_index"):',
+        '    values = [float(v) for v in table[key].to_pylist()]',
+        '    columns[key] = {"min": min(values), "max": max(values), "mean": sum(values) / len(values), "count": len(values)}',
+        'refs = [(int(ep["data/chunk_index"]), int(ep["data/file_index"])) for ep in dataset.meta.episodes]',
+        'print(json.dumps({"frames": len(dataset), "episodes": dataset.meta.total_episodes, "files": len(files), "refs": refs, "stats": {key: {name: stats[key][name] for name in ("min", "max", "mean", "count")} for key in columns}, "columns": columns}))',
+      ].join('\n');
+      const { stdout } = await execFileAsync(python!, ['-c', script, root], {
+        env: { ...process.env, HF_HUB_OFFLINE: '1' },
+      });
+      const parsed = JSON.parse(stdout.trim()) as {
+        frames: number;
+        episodes: number;
+        files: number;
+        refs: number[][];
+        stats: Record<string, Record<string, number[]>>;
+        columns: Record<string, Record<string, number>>;
+      };
+      expect(parsed).toMatchObject({
+        frames: 6,
+        episodes: 2,
+        files: 2,
+        refs: [
+          [0, 0],
+          [1, 0],
+        ],
+      });
+      for (const key of ['index', 'episode_index', 'task_index']) {
+        expect(parsed.stats[key].min[0]).toBe(parsed.columns[key].min);
+        expect(parsed.stats[key].max[0]).toBe(parsed.columns[key].max);
+        expect(parsed.stats[key].mean[0]).toBeCloseTo(parsed.columns[key].mean, 10);
+        expect(parsed.stats[key].count[0]).toBe(parsed.columns[key].count);
+      }
     },
     OFFICIAL_READER_TIMEOUT_MS,
   );
@@ -128,8 +165,65 @@ describe.skipIf(!python)('official LeRobot dataset compatibility', () => {
         'path = dataset.meta.get_video_file_path(0, "observation.images.cam")',
         'print(json.dumps({"frames": len(dataset), "video_exists": (dataset.root / path).is_file()}))',
       ].join('; ');
-      const { stdout } = await execFileAsync(python!, ['-c', script, root]);
+      const { stdout } = await execFileAsync(python!, ['-c', script, root], {
+        env: { ...process.env, HF_HUB_OFFLINE: '1' },
+      });
       expect(JSON.parse(stdout.trim())).toEqual({ frames: 6, video_exists: true });
+    },
+    OFFICIAL_READER_TIMEOUT_MS,
+  );
+
+  it(
+    'keeps frame tasks aligned when one of two same-task episodes is edited',
+    async () => {
+      const root = await mkdtemp(path.join(os.tmpdir(), 'lerobot-studio-task-edit-'));
+      tempDirs.push(root);
+      const loader = new LeRobotDataLoader(new LocalFsDataSource(fixturesRoot));
+      const sourceInfo = await loader.initialize();
+      const info = {
+        ...sourceInfo,
+        total_videos: 0,
+        features: Object.fromEntries(
+          Object.entries(sourceInfo.features).filter(([, feature]) => feature.dtype !== 'video'),
+        ),
+      };
+      const episodes = loader
+        .getEpisodes()
+        .map((episode, index) =>
+          index === 1
+            ? { ...episode, tasks: ['place'], task_index: undefined }
+            : { ...episode, task_index: 0 },
+        );
+      const adapter = new DirectoryExportAdapter(root);
+
+      try {
+        await new ExportService(loader, adapter).exportWithData(info, episodes, loader.getTasks(), {
+          format: 'directory',
+          targetVersion: 'v3.0',
+          includeData: true,
+          includeVideos: false,
+          onProgress: () => undefined,
+        });
+      } finally {
+        await loader.dispose();
+      }
+
+      const script = [
+        'import json, sys',
+        'from lerobot.datasets.lerobot_dataset import LeRobotDataset',
+        'dataset = LeRobotDataset("local/roundtrip", root=sys.argv[1], download_videos=False)',
+        'rows = [dataset[i] for i in range(len(dataset))]',
+        'tasks = [str(row["task"]) for row in rows]',
+        'indices = [int(row["task_index"].item() if hasattr(row["task_index"], "item") else row["task_index"]) for row in rows]',
+        'print(json.dumps({"tasks": tasks, "indices": indices}))',
+      ].join('; ');
+      const { stdout } = await execFileAsync(python!, ['-c', script, root], {
+        env: { ...process.env, HF_HUB_OFFLINE: '1' },
+      });
+      expect(JSON.parse(stdout.trim())).toEqual({
+        tasks: ['pick cube', 'pick cube', 'pick cube', 'place', 'place', 'place'],
+        indices: [0, 0, 0, 1, 1, 1],
+      });
     },
     OFFICIAL_READER_TIMEOUT_MS,
   );

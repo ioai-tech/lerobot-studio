@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { scopeCssForTests } from '../vite/cssScopePlugin';
+import { scopeCssForTests } from '../scripts/vite/cssScopePlugin';
 
 describe('cssScopePlugin portal token handling', () => {
   it('keeps :root and .dark global while scoping each viewer by root class', () => {

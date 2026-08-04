@@ -4,7 +4,7 @@ import uPlot from 'uplot';
 import 'uplot/dist/uPlot.min.css';
 import '../uplot-theme.css';
 
-import { useLeRobot } from '../../../../contexts/LeRobotContext';
+import { useLeRobotData, useLeRobotPlayback } from '../../../../contexts/LeRobotContext';
 import { useTheme } from '../../../../contexts/ThemeContext';
 import { getAxisColors, getCssVarHsl, getLerobotRoot } from '../../../../lib/chartTheme';
 import { computeTooltipPlacement, type TooltipPlacementState } from '@/core';
@@ -45,7 +45,8 @@ export const SplitJointMiniPlot = React.memo(function SplitJointMiniPlot({
   stateLabel,
 }: SplitJointMiniPlotProps) {
   const { t } = useTranslation();
-  const { setFrameIndex, subscribeFrameIndex } = useLeRobot();
+  const { subscribeFrameIndex } = useLeRobotData();
+  const { setFrameIndex } = useLeRobotPlayback();
   const { resolvedTheme } = useTheme();
   const wrapRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<HTMLDivElement>(null);

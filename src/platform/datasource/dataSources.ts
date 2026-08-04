@@ -1,5 +1,13 @@
 import { ZipReader, BlobReader, HttpReader, TextWriter, Uint8ArrayWriter } from '@zip.js/zip.js';
-import { gunzipSync } from 'fflate';
+import { Gunzip } from 'fflate';
+import {
+  assertMaterializable,
+  DataSourceSafetyError,
+  type DataSourceSafetyLimits,
+  resolveSafetyLimits,
+  validateEntrySizes,
+  validateUntrustedPath,
+} from './inputSafety';
 
 /**
  * 简易 LRU cache for blob URLs.
@@ -118,9 +126,11 @@ abstract class BaseZipDataSource implements DataSource {
   protected objectUrlCache: BlobUrlLruCache = new BlobUrlLruCache();
   protected objectUrlLoading: Map<string, Promise<string>> = new Map();
   protected initPromise: Promise<void> | null = null;
+  protected readonly limits: Readonly<DataSourceSafetyLimits>;
 
-  constructor(zipReader: ZipReader<any>) {
+  constructor(zipReader: ZipReader<any>, limitOverrides?: Partial<DataSourceSafetyLimits>) {
     this.zipReader = zipReader;
+    this.limits = resolveSafetyLimits(limitOverrides);
   }
 
   protected resolvePath(path: string): string {
@@ -136,13 +146,43 @@ abstract class BaseZipDataSource implements DataSource {
     }
 
     this.initPromise = (async () => {
-      const entries = await this.zipReader.getEntries();
-      const paths = entries.map((e: any) => normalizePath(e.filename || e.name));
-      this.datasetRootPrefix = getDatasetRootPrefix(paths);
-      entries.forEach((entry: any) => {
-        const key = normalizePath(entry.filename || entry.name);
+      let totalBytes = 0;
+      let count = 0;
+      let datasetRootPrefix: string | null = null;
+      for await (const entry of this.zipReader.getEntriesGenerator({ strictness: 'strict' })) {
+        count += 1;
+        if (count > this.limits.maxArchiveEntries) {
+          throw new DataSourceSafetyError('ENTRY_COUNT_LIMIT', 'ZIP contains too many entries', {
+            count,
+            limit: this.limits.maxArchiveEntries,
+          });
+        }
+        const rawPath = entry.filename;
+        const key = validateUntrustedPath(rawPath, this.limits);
+        if (this.entryMap.has(key)) {
+          throw new DataSourceSafetyError('DUPLICATE_PATH', 'ZIP contains a duplicate path', {
+            path: key,
+          });
+        }
+        totalBytes = validateEntrySizes(
+          key,
+          Number(entry.uncompressedSize ?? 0),
+          entry.compressedSize == null ? undefined : Number(entry.compressedSize),
+          totalBytes,
+          this.limits,
+        );
+        if (datasetRootPrefix === null) {
+          if (key === 'meta/info.json') datasetRootPrefix = '';
+          else if (key.endsWith('/meta/info.json')) {
+            datasetRootPrefix = key.slice(0, key.length - 'meta/info.json'.length);
+          }
+        }
         this.entryMap.set(key, entry);
-      });
+      }
+      if (datasetRootPrefix === null) {
+        throw new Error('Not a valid LeRobot dataset: meta/info.json not found in archive');
+      }
+      this.datasetRootPrefix = datasetRootPrefix;
     })();
 
     try {
@@ -169,6 +209,7 @@ abstract class BaseZipDataSource implements DataSource {
     await this.ensureInitialized();
     const entry = this.entryMap.get(this.resolvePath(path));
     if (!entry) throw new Error(`File not found in archive: ${path}`);
+    assertMaterializable(path, Number(entry.uncompressedSize ?? 0), this.limits);
     const writer = new TextWriter();
     return entry.getData(writer);
   }
@@ -177,6 +218,7 @@ abstract class BaseZipDataSource implements DataSource {
     await this.ensureInitialized();
     const entry = this.entryMap.get(this.resolvePath(path));
     if (!entry) throw new Error(`File not found in archive: ${path}`);
+    assertMaterializable(path, Number(entry.uncompressedSize ?? 0), this.limits);
     const writer = new Uint8ArrayWriter();
     return entry.getData(writer);
   }
@@ -230,22 +272,22 @@ abstract class BaseZipDataSource implements DataSource {
 }
 
 export class ZipDataSourceLocal extends BaseZipDataSource {
-  constructor(file: File) {
+  constructor(file: File, limitOverrides?: Partial<DataSourceSafetyLimits>) {
     const reader = new BlobReader(file);
-    const zipReader = new ZipReader(reader, { useWebWorkers: false });
-    super(zipReader);
+    const zipReader = new ZipReader(reader, { useWebWorkers: false, strictness: 'strict' });
+    super(zipReader, limitOverrides);
   }
 }
 
 export class ZipDataSourceHttp extends BaseZipDataSource {
-  constructor(url: string) {
+  constructor(url: string, limitOverrides?: Partial<DataSourceSafetyLimits>) {
     const reader = new HttpReader(url, {
       preventHeadRequest: true,
       useRangeHeader: true,
       forceRangeRequests: true,
     });
-    const zipReader = new ZipReader(reader, { useWebWorkers: false });
-    super(zipReader);
+    const zipReader = new ZipReader(reader, { useWebWorkers: false, strictness: 'strict' });
+    super(zipReader, limitOverrides);
   }
 }
 
@@ -271,6 +313,14 @@ async function collectSmallResponse(
   signal?: AbortSignal,
 ): Promise<File> {
   const total = Number(response.headers.get('content-length') || 0);
+  if (Number.isFinite(total) && total > maxBytes) {
+    await response.body?.cancel().catch(() => undefined);
+    throw new DataSourceSafetyError(
+      'MATERIALIZED_SIZE_LIMIT',
+      `Complete archive download exceeds the ${maxBytes} byte safety limit`,
+      { declaredSize: total, limit: maxBytes },
+    );
+  }
   const reader = response.body?.getReader();
   if (!reader) throw new Error('The server did not provide a readable response body');
   const chunks: Uint8Array[] = [];
@@ -282,8 +332,11 @@ async function collectSmallResponse(
       if (done) break;
       loaded += value.byteLength;
       if (loaded > maxBytes) {
-        throw new Error(
-          `This browser cannot store a ${loaded} byte archive safely. Enable Range requests or use a browser with OPFS support.`,
+        await reader.cancel().catch(() => undefined);
+        throw new DataSourceSafetyError(
+          'MATERIALIZED_SIZE_LIMIT',
+          `Complete archive download exceeds the ${maxBytes} byte safety limit`,
+          { loaded, limit: maxBytes },
         );
       }
       chunks.push(value);
@@ -309,18 +362,22 @@ async function downloadResponseToOpfs(
   const storage = navigator.storage as OpfsStorage;
   const directory = await storage.getDirectory?.();
   if (!directory) {
+    const inMemoryLimit = Math.min(maxBytes, MAX_IN_MEMORY_FULL_ARCHIVE_BYTES);
     return {
-      file: await collectSmallResponse(
-        response,
-        MAX_IN_MEMORY_FULL_ARCHIVE_BYTES,
-        onProgress,
-        signal,
-      ),
+      file: await collectSmallResponse(response, inMemoryLimit, onProgress, signal),
       cleanup: async () => undefined,
     };
   }
 
   const expected = Number(response.headers.get('content-length') || 0);
+  if (Number.isFinite(expected) && expected > maxBytes) {
+    await response.body?.cancel().catch(() => undefined);
+    throw new DataSourceSafetyError(
+      'MATERIALIZED_SIZE_LIMIT',
+      `Complete archive download exceeds the ${maxBytes} byte safety limit`,
+      { declaredSize: expected, limit: maxBytes },
+    );
+  }
   const estimate = await navigator.storage.estimate?.();
   if (
     expected > 0 &&
@@ -348,7 +405,12 @@ async function downloadResponseToOpfs(
       if (done) break;
       loaded += value.byteLength;
       if (loaded > maxBytes) {
-        throw new Error(`Complete archive download exceeds the ${maxBytes} byte safety limit`);
+        await reader.cancel().catch(() => undefined);
+        throw new DataSourceSafetyError(
+          'MATERIALIZED_SIZE_LIMIT',
+          `Complete archive download exceeds the ${maxBytes} byte safety limit`,
+          { loaded, limit: maxBytes },
+        );
       }
       await writable.write(value);
       onProgress?.({
@@ -668,10 +730,15 @@ interface TarEntryMeta {
 function parseOctal(str: string): number {
   const trimmed = str.replace(/\0.*$/, '').trim();
   if (!trimmed) return 0;
-  return parseInt(trimmed, 8);
+  if (!/^[0-7]+$/.test(trimmed)) return Number.NaN;
+  return Number.parseInt(trimmed, 8);
 }
 
-function parseTarHeader(block: Uint8Array, globalOffset: number): TarEntryMeta | null {
+function parseTarHeader(
+  block: Uint8Array,
+  globalOffset: number,
+  limits: Readonly<DataSourceSafetyLimits>,
+): TarEntryMeta | null {
   // 检查是否为空块
   if (block.every((b) => b === 0)) return null;
 
@@ -702,7 +769,12 @@ function parseTarHeader(block: Uint8Array, globalOffset: number): TarEntryMeta |
   // 'g', 'x' - PAX 扩展头（跳过）
   const type: 'file' | 'dir' = typeflag === 53 /* '5' */ ? 'dir' : 'file';
 
-  return { path: normalizePath(name), offset: globalOffset + 512, size, type };
+  return {
+    path: validateUntrustedPath(name, limits),
+    offset: globalOffset + 512,
+    size,
+    type,
+  };
 }
 
 function pad512(n: number) {
@@ -715,21 +787,72 @@ function toSafeBuffer(bytes: Uint8Array): ArrayBuffer {
   return safe.buffer;
 }
 
-function concatUint8(a: Uint8Array, b: Uint8Array): Uint8Array {
-  const out = new Uint8Array(a.length + b.length);
-  out.set(a, 0);
-  out.set(b, a.length);
-  return out;
-}
+async function gunzipBounded(
+  stream: ReadableStream<Uint8Array>,
+  compressedSize: number | undefined,
+  limits: Readonly<DataSourceSafetyLimits>,
+): Promise<Uint8Array> {
+  const chunks: Uint8Array[] = [];
+  let outputBytes = 0;
+  const maxOutputBytes = Math.min(limits.maxTarGzOutputBytes, limits.maxMaterializedBytes);
+  const append = (chunk: Uint8Array) => {
+    outputBytes += chunk.byteLength;
+    if (
+      compressedSize !== undefined &&
+      outputBytes >= limits.compressionRatioFloorBytes &&
+      (compressedSize <= 0 || outputBytes / compressedSize > limits.maxCompressionRatio)
+    ) {
+      throw new DataSourceSafetyError(
+        'COMPRESSION_RATIO_LIMIT',
+        'TAR.GZ has a suspicious compression ratio',
+        { compressedSize, outputBytes, limit: limits.maxCompressionRatio },
+      );
+    }
+    if (outputBytes > maxOutputBytes) {
+      throw new DataSourceSafetyError(
+        'TOTAL_SIZE_LIMIT',
+        'TAR.GZ decompressed output exceeds the in-memory safety limit',
+        { outputBytes, limit: maxOutputBytes },
+      );
+    }
+    chunks.push(chunk);
+  };
 
-async function gunzipNative(data: ArrayBuffer): Promise<Uint8Array> {
   if (typeof DecompressionStream !== 'undefined') {
     const ds = new DecompressionStream('gzip');
-    const stream = new Response(new Blob([data]).stream().pipeThrough(ds));
-    const buf = await stream.arrayBuffer();
-    return new Uint8Array(buf);
+    const reader = stream
+      .pipeThrough(ds as unknown as TransformStream<Uint8Array, Uint8Array>)
+      .getReader();
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      append(value);
+    }
+  } else {
+    const inputReader = stream.getReader();
+    let inflateError: Error | null = null;
+    const gunzip = new Gunzip((chunk) => {
+      try {
+        append(chunk);
+      } catch (error) {
+        inflateError = error as Error;
+      }
+    });
+    while (true) {
+      const { done, value } = await inputReader.read();
+      gunzip.push(value ?? new Uint8Array(0), done);
+      if (inflateError) throw inflateError;
+      if (done) break;
+    }
   }
-  return gunzipSync(new Uint8Array(data));
+
+  const output = new Uint8Array(outputBytes);
+  let offset = 0;
+  for (const chunk of chunks) {
+    output.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return output;
 }
 
 abstract class BaseTarDataSource implements DataSource {
@@ -738,6 +861,34 @@ abstract class BaseTarDataSource implements DataSource {
   protected objectUrlLoading: Map<string, Promise<string>> = new Map();
   protected indexed = false;
   protected datasetRootPrefix = '';
+  protected totalEntryBytes = 0;
+  protected readonly limits: Readonly<DataSourceSafetyLimits>;
+
+  constructor(limitOverrides?: Partial<DataSourceSafetyLimits>) {
+    this.limits = resolveSafetyLimits(limitOverrides);
+  }
+
+  protected addEntry(entry: TarEntryMeta): void {
+    if (this.entries.size >= this.limits.maxArchiveEntries) {
+      throw new DataSourceSafetyError('ENTRY_COUNT_LIMIT', 'TAR contains too many entries', {
+        count: this.entries.size + 1,
+        limit: this.limits.maxArchiveEntries,
+      });
+    }
+    if (this.entries.has(entry.path)) {
+      throw new DataSourceSafetyError('DUPLICATE_PATH', 'TAR contains a duplicate path', {
+        path: entry.path,
+      });
+    }
+    this.totalEntryBytes = validateEntrySizes(
+      entry.path,
+      entry.size,
+      undefined,
+      this.totalEntryBytes,
+      this.limits,
+    );
+    this.entries.set(entry.path, entry);
+  }
 
   protected resolvePath(path: string): string {
     return `${this.datasetRootPrefix}${normalizePath(path)}`;
@@ -811,6 +962,7 @@ abstract class BaseTarDataSource implements DataSource {
     this.objectUrlCache.clear();
     this.objectUrlLoading.clear();
     this.entries.clear();
+    this.totalEntryBytes = 0;
     this.datasetRootPrefix = '';
     this.indexed = false;
   }
@@ -819,7 +971,7 @@ abstract class BaseTarDataSource implements DataSource {
 export class TarDataSourceLocal implements DataSource {
   private base: BaseTarDataSource;
 
-  constructor(file: File) {
+  constructor(file: File, limitOverrides?: Partial<DataSourceSafetyLimits>) {
     // delegate to shared base impl (composition avoids touching public type surface)
     this.base = new (class extends BaseTarDataSource {
       private outer = file;
@@ -846,43 +998,27 @@ export class TarDataSourceLocal implements DataSource {
 
         this.indexPromise = (async () => {
           const total = this.outer.size;
-          // `pos` 表示已经从文件头读取到的“末端”绝对偏移（end offset）
-          // buffer 保存的是 [pos - buffer.length, pos) 这一段数据
           let pos = 0;
-          let buffer: Uint8Array = new Uint8Array(0);
-          const chunkSize = 4 * 1024 * 1024;
-
-          while (pos < total) {
-            const remain = total - pos;
-            const chunk = await this.readChunk(pos, Math.min(chunkSize, remain));
-            buffer = concatUint8(buffer, chunk) as Uint8Array;
-            // 读入 chunk 后，pos 前进到新的 end offset
-            pos += chunk.length;
-            let cursor = 0;
-            while (buffer.length - cursor >= 512) {
-              const headerView = buffer.subarray(cursor, cursor + 512);
-              if (headerView.every((b) => b === 0)) {
-                pos = total; // reached end-of-archive
-                cursor = buffer.length;
-                break;
-              }
-              // 注意：buffer 可能包含上一次循环的残留数据，因此 header 的全局偏移
-              // 不能用 `pos + cursor`，而应该用 `(pos - buffer.length) + cursor`
-              const entry = parseTarHeader(headerView, pos - buffer.length + cursor);
-              if (!entry) {
-                pos = total;
-                cursor = buffer.length;
-                break;
-              }
-              this.entries.set(entry.path, entry);
-              const dataSize = pad512(entry.size);
-              const need = 512 + dataSize;
-              if (buffer.length - cursor < need) {
-                break; // need more data
-              }
-              cursor += need;
+          while (pos + 512 <= total) {
+            const header = await this.readChunk(pos, 512);
+            if (header.every((b) => b === 0)) break;
+            const entry = parseTarHeader(header, pos, this.limits);
+            if (!entry) break;
+            this.addEntry(entry);
+            const next = pos + 512 + pad512(entry.size);
+            if (!Number.isSafeInteger(next) || next > total) {
+              throw new DataSourceSafetyError(
+                'ARCHIVE_TRUNCATED',
+                'TAR entry exceeds archive bounds',
+                {
+                  path: entry.path,
+                  offset: entry.offset,
+                  size: entry.size,
+                  archiveSize: total,
+                },
+              );
             }
-            buffer = buffer.slice(cursor);
+            pos = next;
             this.emit(onProgress, { phase: 'index', loaded: pos, total, message: 'Indexing tar' });
           }
           this.finalizeDatasetRootPrefix();
@@ -900,11 +1036,12 @@ export class TarDataSourceLocal implements DataSource {
         await this.ensureIndex(onProgress);
         const entry = this.entries.get(this.resolvePath(path));
         if (!entry) throw new Error(`File not found in tar: ${path}`);
+        assertMaterializable(path, entry.size, this.limits);
         const slice = this.outer.slice(entry.offset, entry.offset + entry.size);
         onProgress?.({ phase: 'read', loaded: 0, total: entry.size });
         return new Uint8Array(await slice.arrayBuffer());
       }
-    })();
+    })(limitOverrides);
   }
 
   async exists(path: string): Promise<boolean> {
@@ -941,12 +1078,18 @@ class TarBufferDataSource implements DataSource {
   private bufferReady: Promise<void>;
   private base: BaseTarDataSource;
 
-  constructor(buffer: Uint8Array | Promise<Uint8Array>) {
+  constructor(
+    buffer: Uint8Array | Promise<Uint8Array>,
+    limitOverrides?: Partial<DataSourceSafetyLimits>,
+  ) {
+    const limits = resolveSafetyLimits(limitOverrides);
     if (buffer instanceof Promise) {
       this.bufferReady = buffer.then((buf) => {
+        assertMaterializable('archive', buf.byteLength, limits);
         this.buffer = buf;
       });
     } else {
+      assertMaterializable('archive', buffer.byteLength, limits);
       this.buffer = buffer;
       this.bufferReady = Promise.resolve();
     }
@@ -955,8 +1098,11 @@ class TarBufferDataSource implements DataSource {
       private outer: TarBufferDataSource;
       private indexPromise: Promise<void> | null = null;
 
-      constructor(outer: TarBufferDataSource) {
-        super();
+      constructor(
+        limitOverrides: Partial<DataSourceSafetyLimits> | undefined,
+        outer: TarBufferDataSource,
+      ) {
+        super(limitOverrides);
         this.outer = outer;
       }
 
@@ -974,10 +1120,22 @@ class TarBufferDataSource implements DataSource {
           while (cursor + 512 <= total) {
             const block = this.outer.buffer.subarray(cursor, cursor + 512);
             if (block.every((b) => b === 0)) break;
-            const entry = parseTarHeader(block, cursor);
+            const entry = parseTarHeader(block, cursor, this.limits);
             if (!entry) break;
-            this.entries.set(entry.path, entry);
+            this.addEntry(entry);
             const step = 512 + pad512(entry.size);
+            if (!Number.isSafeInteger(cursor + step) || cursor + step > total) {
+              throw new DataSourceSafetyError(
+                'ARCHIVE_TRUNCATED',
+                'TAR entry exceeds archive bounds',
+                {
+                  path: entry.path,
+                  offset: entry.offset,
+                  size: entry.size,
+                  archiveSize: total,
+                },
+              );
+            }
             cursor += step;
             onProgress?.({ phase: 'index', loaded: cursor, total });
           }
@@ -996,13 +1154,14 @@ class TarBufferDataSource implements DataSource {
         await this.ensureIndex(onProgress);
         const entry = this.entries.get(this.resolvePath(path));
         if (!entry) throw new Error(`File not found in tar: ${path}`);
+        assertMaterializable(path, entry.size, this.limits);
         const data = this.outer.buffer.subarray(entry.offset, entry.offset + entry.size);
         onProgress?.({ phase: 'read', loaded: entry.size, total: entry.size });
         const copy = new Uint8Array(data.length);
         copy.set(data);
         return copy;
       }
-    })(this);
+    })(limitOverrides, this);
   }
 
   async exists(path: string): Promise<boolean> {
@@ -1035,41 +1194,50 @@ class TarBufferDataSource implements DataSource {
 }
 
 export class TarGzDataSourceLocal extends TarBufferDataSource {
-  constructor(file: File, onProgress?: ProgressHandler) {
+  constructor(
+    file: File,
+    onProgress?: ProgressHandler,
+    limitOverrides?: Partial<DataSourceSafetyLimits>,
+  ) {
+    const limits = resolveSafetyLimits(limitOverrides);
     const bufferPromise = (async () => {
       onProgress?.({ phase: 'download', loaded: 0, total: file.size, message: 'Reading tar.gz' });
-      const data = new Uint8Array(await file.arrayBuffer());
-      onProgress?.({ phase: 'gunzip', loaded: 0, total: data.length, message: 'Decompressing' });
-      const unzipped = await gunzipNative(data.buffer);
+      onProgress?.({ phase: 'gunzip', loaded: 0, total: file.size, message: 'Decompressing' });
+      const unzipped = await gunzipBounded(file.stream(), file.size, limits);
       return unzipped;
     })();
-    super(bufferPromise);
+    super(bufferPromise, limitOverrides);
   }
 }
 
 export class TarGzDataSourceHttp extends TarBufferDataSource {
-  constructor(url: string, onProgress?: ProgressHandler) {
+  constructor(
+    url: string,
+    onProgress?: ProgressHandler,
+    limitOverrides?: Partial<DataSourceSafetyLimits>,
+  ) {
+    const limits = resolveSafetyLimits(limitOverrides);
     const bufferPromise = (async () => {
       const res = await fetch(url);
       if (!res.ok) throw new Error(`Failed to fetch ${url}: ${res.status}`);
       const total = Number(res.headers.get('content-length') || 0);
-      const arrayBuf = await res.arrayBuffer();
+      if (!res.body) throw new Error(`Failed to fetch ${url}: response body is not readable`);
       onProgress?.({
         phase: 'download',
-        loaded: total || arrayBuf.byteLength,
+        loaded: 0,
         total,
-        message: 'Downloaded tar.gz',
+        message: 'Downloading tar.gz',
       });
       onProgress?.({
         phase: 'gunzip',
         loaded: 0,
-        total: arrayBuf.byteLength,
+        total,
         message: 'Decompressing',
       });
-      const unzipped = await gunzipNative(arrayBuf);
+      const unzipped = await gunzipBounded(res.body, total || undefined, limits);
       return unzipped;
     })();
-    super(bufferPromise);
+    super(bufferPromise, limitOverrides);
   }
 }
 
@@ -1083,46 +1251,44 @@ export class TarGzDataSourceHttp extends TarBufferDataSource {
  * tar 格式适合小型数据集（< 100MB）。
  */
 export class TarDataSourceHttp extends TarBufferDataSource {
-  constructor(url: string, onProgress?: ProgressHandler) {
+  constructor(
+    url: string,
+    onProgress?: ProgressHandler,
+    limitOverrides?: Partial<DataSourceSafetyLimits>,
+  ) {
+    const limits = resolveSafetyLimits(limitOverrides);
     const bufferPromise = (async () => {
       const res = await fetch(url);
       if (!res.ok) throw new Error(`Failed to fetch ${url}: ${res.status}`);
       const total = Number(res.headers.get('content-length') || 0);
-
-      // 使用流式读取以便报告进度
-      if (res.body && total > 0) {
-        const reader = res.body.getReader();
-        const chunks: Uint8Array[] = [];
-        let loaded = 0;
-
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          chunks.push(value);
-          loaded += value.length;
-          onProgress?.({ phase: 'download', loaded, total, message: 'Downloading tar...' });
+      assertMaterializable('remote tar', total || undefined, limits);
+      if (!res.body) throw new Error(`Failed to fetch ${url}: response body is not readable`);
+      const reader = res.body.getReader();
+      const chunks: Uint8Array[] = [];
+      let loaded = 0;
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        loaded += value.byteLength;
+        if (loaded > limits.maxMaterializedBytes) {
+          await reader.cancel();
+          throw new DataSourceSafetyError(
+            'MATERIALIZED_SIZE_LIMIT',
+            'Remote TAR exceeded the in-memory size limit while downloading',
+            { loaded, limit: limits.maxMaterializedBytes },
+          );
         }
-
-        // 合并所有 chunks
-        const result = new Uint8Array(loaded);
-        let offset = 0;
-        for (const chunk of chunks) {
-          result.set(chunk, offset);
-          offset += chunk.length;
-        }
-        return result;
-      } else {
-        // 降级：一次性读取
-        const arrayBuf = await res.arrayBuffer();
-        onProgress?.({
-          phase: 'download',
-          loaded: arrayBuf.byteLength,
-          total: arrayBuf.byteLength,
-          message: 'Downloaded tar',
-        });
-        return new Uint8Array(arrayBuf);
+        chunks.push(value);
+        onProgress?.({ phase: 'download', loaded, total, message: 'Downloading tar...' });
       }
+      const result = new Uint8Array(loaded);
+      let offset = 0;
+      for (const chunk of chunks) {
+        result.set(chunk, offset);
+        offset += chunk.length;
+      }
+      return result;
     })();
-    super(bufferPromise);
+    super(bufferPromise, limitOverrides);
   }
 }

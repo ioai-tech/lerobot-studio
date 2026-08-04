@@ -9,6 +9,7 @@ export interface LeRobotFeature {
   info?: {
     [key: string]: string | number | boolean | null;
   };
+  [key: string]: unknown;
 }
 
 /**
@@ -16,6 +17,7 @@ export interface LeRobotFeature {
  */
 export interface BaseLeRobotInfo {
   codebase_version: string;
+  /** Some official metadata writes null; validators accept it at runtime. */
   robot_type: string;
   total_episodes: number;
   total_frames: number;
@@ -24,15 +26,17 @@ export interface BaseLeRobotInfo {
   total_videos?: number;
   fps: number;
   data_path: string;
-  video_path: string;
+  video_path: string | null;
+  tools?: unknown[] | null;
   features: Record<string, LeRobotFeature>;
+  [key: string]: unknown;
 }
 
 /**
  * Specialized Info for v2.x
  */
 export interface LeRobotInfoV2 extends BaseLeRobotInfo {
-  codebase_version: 'v2.0' | 'v2.1';
+  codebase_version: 'v2.1';
   chunks_size: number;
 }
 
@@ -55,6 +59,7 @@ export type LeRobotInfo = LeRobotInfoV2 | LeRobotInfoV3;
 export interface BaseEpisodeMetadata {
   episode_index: number;
   length: number;
+  [key: string]: unknown;
 }
 
 /**
@@ -76,7 +81,7 @@ export interface EpisodeMetadataV3 extends BaseEpisodeMetadata {
   chunk_index?: number;
   file_index?: number;
   // Specific video keys like observation.images.up
-  [key: string]: string | number | string[] | undefined;
+  [key: string]: unknown;
 }
 
 export type EpisodeMetadata = EpisodeMetadataV2 | EpisodeMetadataV3;
@@ -102,11 +107,11 @@ export type PlaybackMode = 'loop' | 'sequential' | 'shuffle';
  * Type Guards
  */
 export function isV3Info(info: LeRobotInfo): info is LeRobotInfoV3 {
-  return info.codebase_version.startsWith('v3');
+  return info.codebase_version.trim().toLowerCase() === 'v3.0';
 }
 
 export function isV2Info(info: LeRobotInfo): info is LeRobotInfoV2 {
-  return info.codebase_version.startsWith('v2');
+  return info.codebase_version.trim().toLowerCase() === 'v2.1';
 }
 
 export function isV3Metadata(meta: EpisodeMetadata): meta is EpisodeMetadataV3 {
