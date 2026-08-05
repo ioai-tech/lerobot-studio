@@ -278,11 +278,7 @@ export const ImagePanel: React.FC<ImagePanelProps> = ({ params }) => {
 
   return (
     <div className="group relative flex h-full w-full items-center justify-center overflow-hidden bg-black">
-      <MediaDebugOverlay
-        featureKey={featureKey}
-        metadata={debugMetadata}
-        translationPrefix="panels.image.debug"
-      />
+      <MediaDebugOverlay metadata={debugMetadata} translationPrefix="panels.image.debug" />
 
       {/* canvas 始终保留，帧更新直接 drawImage，无 React 渲染 */}
       <canvas

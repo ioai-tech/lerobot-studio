@@ -465,10 +465,6 @@
       "title": "视频面板",
       "placeholder": "等待加载视频文件...",
       "debug": {
-        "title": "媒体调试信息",
-        "feature": "Feature",
-        "dtype": "类型",
-        "shape": "Shape",
         "fps": "FPS",
         "resolution": "分辨率",
         "codec": "编码",
@@ -484,10 +480,6 @@
       "title": "图像面板",
       "placeholder": "等待加载图像文件...",
       "debug": {
-        "title": "媒体调试信息",
-        "feature": "Feature",
-        "dtype": "类型",
-        "shape": "Shape",
         "fps": "FPS",
         "resolution": "分辨率",
         "codec": "编码",

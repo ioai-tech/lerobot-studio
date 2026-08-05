@@ -10,13 +10,12 @@ vi.mock('react-i18next', () => ({
 }));
 
 describe('MediaDebugOverlay', () => {
-  it('renders hover-only overlay classes and metadata rows', () => {
+  it('renders vertical hover-only overlay with media metadata rows', () => {
     const markup = renderToStaticMarkup(
       React.createElement(
         'div',
         { className: 'group' },
         React.createElement(MediaDebugOverlay, {
-          featureKey: 'observation.images.cam',
           translationPrefix: 'panels.video.debug',
           metadata: {
             dtype: 'video',
@@ -38,9 +37,13 @@ describe('MediaDebugOverlay', () => {
     );
 
     expect(markup).toContain('group-hover:opacity-100');
-    expect(markup).toContain('observation.images.cam');
+    expect(markup).toContain('flex-col');
     expect(markup).toContain('1280 x 720');
     expect(markup).toContain('h264');
     expect(markup).toContain('0.00s - 1.50s');
+    expect(markup).not.toContain('observation.images.cam');
+    expect(markup).not.toContain('panels.video.debug.feature');
+    expect(markup).not.toContain('panels.video.debug.dtype');
+    expect(markup).not.toContain('panels.video.debug.title');
   });
 });

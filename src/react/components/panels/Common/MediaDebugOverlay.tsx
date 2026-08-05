@@ -4,7 +4,6 @@ import { cn } from '@/ui';
 import type { MediaDebugMetadata } from '@/core';
 
 interface MediaDebugOverlayProps {
-  featureKey: string;
   metadata: MediaDebugMetadata | null;
   translationPrefix: 'panels.video.debug' | 'panels.image.debug';
   className?: string;
@@ -27,7 +26,6 @@ function formatTimeline(metadata: MediaDebugMetadata): string | null {
 }
 
 export const MediaDebugOverlay: React.FC<MediaDebugOverlayProps> = ({
-  featureKey,
   metadata,
   translationPrefix,
   className,
@@ -39,8 +37,6 @@ export const MediaDebugOverlay: React.FC<MediaDebugOverlayProps> = ({
   }
 
   const items = [
-    { label: t(`${translationPrefix}.feature`), value: featureKey, breakAll: true },
-    { label: t(`${translationPrefix}.dtype`), value: metadata.dtype },
     {
       label: t(`${translationPrefix}.fps`),
       value: metadata.fps != null ? String(metadata.fps) : null,
@@ -64,27 +60,25 @@ export const MediaDebugOverlay: React.FC<MediaDebugOverlayProps> = ({
     { label: t(`${translationPrefix}.clipRange`), value: formatTimeline(metadata) },
   ].filter((item) => item.value);
 
+  if (items.length === 0) {
+    return null;
+  }
+
   return (
     <div
-      aria-hidden="true"
       className={cn(
-        'pointer-events-none absolute left-2 top-2 z-10 flex max-w-[calc(100%-1rem)] items-center gap-2 overflow-hidden whitespace-nowrap rounded-md border border-white/10 bg-black/70 px-2 py-1 text-[10px] text-white opacity-0 shadow-lg backdrop-blur-sm transition-opacity duration-150 group-hover:opacity-100 group-focus-within:opacity-100',
+        'absolute left-2 top-2 z-10 max-h-[50%] max-w-[min(16rem,calc(100%-1rem))] overflow-y-auto rounded-md border border-white/10 bg-black/70 px-2.5 py-2 text-[11px] text-white opacity-0 shadow-lg backdrop-blur-sm transition-opacity duration-150 group-hover:opacity-100 group-focus-within:opacity-100',
         className,
       )}
     >
-      <p className="shrink-0 font-semibold uppercase tracking-[0.12em] text-white/70">
-        {t(`${translationPrefix}.title`)}
-      </p>
-      <dl className="flex min-w-0 items-center gap-2 overflow-hidden border-l border-white/15 pl-2">
+      <dl className="flex flex-col gap-1">
         {items.map((item) => (
           <div
             key={item.label}
-            className={cn('flex shrink-0 items-baseline gap-1', item.breakAll && 'min-w-0 shrink')}
+            className="grid grid-cols-[auto_1fr] items-baseline gap-x-3 gap-y-0"
           >
-            <dt className="shrink-0 text-white/60">{item.label}</dt>
-            <dd
-              className={cn('font-mono tabular-nums', item.breakAll && 'min-w-0 max-w-48 truncate')}
-            >
+            <dt className="shrink-0 text-white/55">{item.label}</dt>
+            <dd className="min-w-0 break-all text-right font-mono tabular-nums text-white/95">
               {item.value}
             </dd>
           </div>
