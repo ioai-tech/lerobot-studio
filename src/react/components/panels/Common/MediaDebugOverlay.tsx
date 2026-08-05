@@ -73,7 +73,10 @@ export const MediaDebugOverlay: React.FC<MediaDebugOverlayProps> = ({
     >
       <dl className="flex flex-col gap-1">
         {items.map((item) => (
-          <div key={item.label} className="grid grid-cols-[auto_1fr] items-baseline gap-x-3 gap-y-0">
+          <div
+            key={item.label}
+            className="grid grid-cols-[auto_1fr] items-baseline gap-x-3 gap-y-0"
+          >
             <dt className="shrink-0 text-white/55">{item.label}</dt>
             <dd className="min-w-0 break-all text-right font-mono tabular-nums text-white/95">
               {item.value}

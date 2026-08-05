@@ -313,10 +313,7 @@ const VideoPanelContent: React.FC<VideoPanelProps> = ({ params }) => {
 
   return (
     <div className="group relative flex h-full w-full items-center justify-center overflow-hidden bg-black">
-      <MediaDebugOverlay
-        metadata={debugMetadata}
-        translationPrefix="panels.video.debug"
-      />
+      <MediaDebugOverlay metadata={debugMetadata} translationPrefix="panels.video.debug" />
 
       {/* Video - 始终可见，无过渡效果 */}
       <video
