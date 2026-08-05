@@ -1387,17 +1387,6 @@ const ChartPanelContent: React.FC<ChartPanelProps> = ({ params }) => {
               )}
             </>
           )}
-          {preparedData?.meta?.simplified && (
-            <div className="flex items-center ml-2">
-              <span className="text-[9px] font-mono text-muted-foreground/60 bg-muted/40 px-1.5 py-0.5 rounded border border-border/50">
-                {t('chart.sampling.enabled', {
-                  originalPoints: preparedData.meta.originalPoints,
-                  displayedPoints: preparedData.meta.displayedPoints,
-                  stride: preparedData.meta.stride,
-                })}
-              </span>
-            </div>
-          )}
         </div>
       </div>
 
