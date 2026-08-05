@@ -269,7 +269,7 @@ export const Navbar: React.FC<NavbarProps> = ({
 
         {/* Center: Title & Logo */}
         <div
-          className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 flex items-center gap-2 pointer-events-none"
+          className="absolute left-1/2 top-1/2 flex max-w-[40vw] -translate-x-1/2 -translate-y-1/2 items-center gap-2 pointer-events-none"
           role={isLoading ? 'status' : undefined}
           aria-live={isLoading ? 'polite' : undefined}
         >
@@ -282,7 +282,8 @@ export const Navbar: React.FC<NavbarProps> = ({
             <img src="logo.svg" alt="LeRobot Studio Logo" className="h-5 w-5 opacity-90" />
           ) : null}
           <span
-            className={`text-sm font-semibold tracking-tight ${isLoading ? 'text-muted-foreground animate-pulse' : ''}`}
+            className={`block min-w-0 truncate text-sm font-semibold tracking-tight ${isLoading ? 'text-muted-foreground animate-pulse' : ''}`}
+            title={displayName}
           >
             {displayName}
           </span>
