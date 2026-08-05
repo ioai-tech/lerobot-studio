@@ -1,0 +1,14 @@
+services:
+  lerobot-studio:
+    build:
+      context: .
+      args:
+        # 用于生成 canonical / OG / robots / sitemap
+        SITE_URL: ${SITE_URL-https://lerobot.studio}
+        # 构建时注入 Vite base（方案三）
+        # - BASE_PATH=/        -> http://localhost:8080/
+        # - BASE_PATH=/lerobot/ -> http://localhost:8080/lerobot/
+        BASE_PATH: ${BASE_PATH-/}
+    ports:
+      - '8080:8080'
+    restart: unless-stopped

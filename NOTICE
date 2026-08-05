@@ -1,0 +1,42 @@
+LeRobot Studio Third-Party Notice
+=================================
+
+This repository depends on third-party packages. The exact dependency graph,
+versions, package registry locations, integrity hashes, and SPDX license
+identifiers are recorded in `package-lock.json`.
+
+## Notable production dependencies
+
+- `mediabunny` — MPL-2.0 (Mozilla Public License 2.0). Used for browser-side
+  video muxing, demuxing, and conversion during dataset export. MPL-2.0 is an
+  OSI-approved weak copyleft license (file-level). Unmodified use as a
+  dependency is permitted; if you modify MPL-covered files from mediabunny,
+  those modified files must remain under MPL-2.0 and source must be available
+  as required by that license.
+- `@fontsource-variable/geist` — OFL-1.1. Font software redistributed under the
+  SIL Open Font License. Retain the OFL text when redistributing the font files.
+
+Examples of additional non-MIT license identifiers present in the current
+lockfile include:
+
+- `argparse` 2.0.1 — Python-2.0
+- `caniuse-lite` 1.0.30001799 — CC-BY-4.0
+- `isexe` 3.1.5 — BlueOak-1.0.0
+- `lightningcss` 1.32.0 and 1.33.0 — MPL-2.0 (primarily a build tool)
+- `spawndamnit` 3.0.1 — `SEE LICENSE IN LICENSE`
+- `tslib` 2.8.1 — 0BSD
+
+This list is representative, not exhaustive; development tools, optional
+platform packages, and transitive dependencies may use additional licenses.
+This notice is an index, not a replacement for the applicable third-party
+license texts. Before distributing a built artifact, generate and review a
+complete production-artifact dependency and asset inventory from the exact
+lockfile and build output used for that release.
+
+## Trademarks
+
+LeRobot, Hugging Face, GitHub, Geist, and other product or company names are
+trademarks or registered trademarks of their respective owners. LeRobot Studio
+is an independent project by IO-AI.TECH and is not affiliated with, endorsed by,
+or sponsored by Hugging Face, GitHub, Vercel, or the trademark owners of those
+names, except where such a relationship is explicitly stated in writing.

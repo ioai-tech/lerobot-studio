@@ -1,0 +1,9 @@
+node_modules
+dist
+dist-lib
+coverage
+package-lock.json
+*.wasm
+apps/web/dist
+packages/react/dist
+tests/fixtures/datasets

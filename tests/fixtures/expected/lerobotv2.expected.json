@@ -1,0 +1,34 @@
+{
+  "version": "v2.1",
+  "validator": {
+    "warningCodes": [],
+    "infoCodes": []
+  },
+  "infoTotals": {
+    "totalEpisodes": 2,
+    "totalFrames": 6,
+    "totalTasks": 1
+  },
+  "episodeCount": 2,
+  "episodeIndexRange": {
+    "min": 0,
+    "max": 1
+  },
+  "totalEpisodeLength": 6,
+  "taskCount": 1,
+  "taskValues": ["pick cube"],
+  "firstEpisode": {
+    "episode_index": 0,
+    "length": 3,
+    "tasks": ["pick cube"]
+  },
+  "lastEpisode": {
+    "episode_index": 1,
+    "length": 3,
+    "tasks": ["pick cube"]
+  },
+  "firstDataPath": "data/chunk-000/episode_000000.parquet",
+  "lastDataPath": "data/chunk-000/episode_000001.parquet",
+  "firstVideoPath": "videos/chunk-000/observation.images.cam/episode_000000.mp4",
+  "lastVideoPath": "videos/chunk-000/observation.images.cam/episode_000001.mp4"
+}

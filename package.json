@@ -1,0 +1,142 @@
+{
+  "name": "@ioai/lerobot-studio",
+  "private": false,
+  "version": "1.0.0",
+  "type": "module",
+  "packageManager": "npm@11.7.0",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -p tsconfig.app.json --noEmit && vite build",
+    "build:lib": "tsc -p tsconfig.lib.json --emitDeclarationOnly --outDir temp/types && vite build --config vite.lib.config.ts && api-extractor run",
+    "docs:dev": "vitepress dev docs",
+    "docs:build": "vitepress build docs",
+    "check:docs-i18n": "node scripts/check-docs-i18n.mjs",
+    "api:report": "api-extractor run --local",
+    "api:report:check": "api-extractor run",
+    "check:package": "npm run api:report:check && publint && attw --pack . --profile esm-only --exclude-entrypoints ./style.css ./index.css && npm run verify:npm-consumer",
+    "check:bundle-size": "node scripts/check-bundle-size.mjs",
+    "sbom": "npm sbom --sbom-format cyclonedx > sbom.cdx.json",
+    "changeset": "changeset",
+    "version-packages": "changeset version",
+    "verify:npm-consumer": "node scripts/verify-npm-consumer.mjs",
+    "test:npm-consumer:docker": "node tests/npm-consumer/run-docker-test.mjs",
+    "lint": "eslint . --max-warnings 0",
+    "format": "prettier --write .",
+    "format:check": "prettier --check \"*.{md,json}\" \"docs/**/*.md\" \"*.zh-CN.md\" \".github/**/*.{yml,yaml,md}\" \"src/**/*.{ts,tsx,js,mjs,css,json,md}\" \"scripts/**/*.{ts,tsx,js,mjs,json}\" \"tests/**/*.{ts,tsx,js,mjs,json}\"",
+    "fixtures:generate": "node scripts/generate-test-fixtures.mjs",
+    "typecheck": "tsc -p tsconfig.app.json --noEmit && tsc -p tsconfig.lib.json --noEmit",
+    "test": "vitest run",
+    "test:unit": "vitest run",
+    "test:browser": "vitest run --config vitest.browser.config.ts",
+    "test:browser:smoke": "vitest run --config vitest.browser.smoke.config.ts",
+    "test:compat": "vitest run tests/compat",
+    "test:coverage": "vitest run --coverage",
+    "preview": "vite preview"
+  },
+  "devDependencies": {
+    "@arethetypeswrong/cli": "^0.18.5",
+    "@changesets/cli": "^2.31.1",
+    "@eslint/js": "^10.0.1",
+    "@microsoft/api-extractor": "^7.58.12",
+    "@playwright/test": "^1.62.1",
+    "@tailwindcss/vite": "^4.3.3",
+    "@types/node": "^26.1.2",
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.4",
+    "@vitejs/plugin-react": "^6.0.4",
+    "@vitest/browser": "^4.1.10",
+    "@vitest/browser-playwright": "^4.1.10",
+    "@vitest/coverage-v8": "^4.1.10",
+    "axe-core": "^4.12.1",
+    "eslint": "^10.8.0",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "eslint-plugin-react-refresh": "^0.5.3",
+    "globals": "^17.9.0",
+    "lightningcss": "^1.33.0",
+    "playwright": "^1.62.1",
+    "prettier": "^3.6.2",
+    "publint": "^0.3.23",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
+    "shadcn": "^4.16.0",
+    "tailwindcss": "^4.3.3",
+    "typescript": "6.0.3",
+    "typescript-eslint": "^8.66.0",
+    "vite": "^8.1.5",
+    "vitepress": "2.0.0-alpha.19",
+    "vitest": "^4.1.10"
+  },
+  "description": "Browser-based LeRobot dataset visualizer and React embeddable studio",
+  "author": "IO-AI.TECH <io@io-ai.tech>",
+  "keywords": [
+    "lerobot",
+    "robotics",
+    "dataset",
+    "visualization",
+    "react",
+    "browser",
+    "imitation-learning"
+  ],
+  "license": "MIT",
+  "main": "./dist-lib/lerobot.es.js",
+  "module": "./dist-lib/lerobot.es.js",
+  "types": "./dist-lib/lerobot.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist-lib/lerobot.d.ts",
+      "import": "./dist-lib/lerobot.es.js",
+      "default": "./dist-lib/lerobot.es.js"
+    },
+    "./style.css": "./dist-lib/lerobot-studio.css",
+    "./index.css": "./dist-lib/lerobot-studio.css"
+  },
+  "files": [
+    "dist-lib",
+    "CHANGELOG.md",
+    "LICENSE",
+    "NOTICE",
+    "README.md"
+  ],
+  "sideEffects": [
+    "**/*.css"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ioai-tech/lerobot-studio.git"
+  },
+  "bugs": {
+    "url": "https://github.com/ioai-tech/lerobot-studio/issues"
+  },
+  "homepage": "https://lerobot.studio",
+  "peerDependencies": {
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "dependencies": {
+    "@base-ui/react": "^1.7.0",
+    "@fontsource-variable/geist": "^5.3.0",
+    "@zip.js/zip.js": "^2.8.34",
+    "apache-arrow": "^21.2.0",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "comlink": "^4.4.2",
+    "dockview-react": "^7.0.4",
+    "fflate": "^0.8.3",
+    "framer-motion": "^12.43.0",
+    "lucide-react": "^1.28.0",
+    "mediabunny": "^1.52.3",
+    "next-themes": "^0.4.6",
+    "parquet-wasm": "^0.7.2",
+    "radix-ui": "^1.6.7",
+    "react-intl": "^10.1.20",
+    "react-window": "^2.3.0",
+    "sonner": "^2.0.7",
+    "tailwind-merge": "^3.6.0",
+    "tw-animate-css": "^1.4.0",
+    "uplot": "^1.6.32",
+    "use-sync-external-store": "^1.6.0"
+  }
+}

@@ -1,0 +1,737 @@
+{
+  "common": {
+    "appName": "LeRobot Studio",
+    "companyWebsite": "https://io-ai.tech/",
+    "companyName": "IO-AI.TECH",
+    "githubUrl": "https://github.com/ioai-tech/lerobot-studio",
+    "browseLeRobot": "浏览LeRobot",
+    "open": "浏览",
+    "of": "共",
+    "copy": "复制",
+    "copied": "已复制",
+    "close": "关闭",
+    "clearSearch": "清空搜索",
+    "loading": "加载中...",
+    "addPanel": "添加面板",
+    "deletePanel": "删除面板",
+    "addToRight": "在右侧增加",
+    "addBelow": "在下方增加",
+    "video": "视频",
+    "image": "图像",
+    "chart": "折线图",
+    "language": "语言",
+    "theme": "主题",
+    "light": "浅色",
+    "dark": "深色",
+    "system": "跟随系统",
+    "cancel": "取消",
+    "retry": "重试",
+    "back": "返回",
+    "error": "发生错误",
+    "hint": "提示",
+    "hintArchiveUrl": "请提供可直接访问的 .zip/.tar/.tar.gz/.tgz 文件 URL（或让接口通过 Content-Disposition 暴露文件名）",
+    "initializing": "正在初始化...",
+    "loadingLayout": "正在加载布局组件...",
+    "firstLoadNote": "首次加载可能需要几秒钟时间。",
+    "languages": {
+      "zh": "中文",
+      "en": "English",
+      "ja": "日本語"
+    }
+  },
+  "loading": {
+    "phase": {
+      "idle": "准备就绪",
+      "preflight": "正在进行预检...",
+      "download": "正在下载数据...",
+      "index": "正在解析索引...",
+      "gunzip": "正在解压数据...",
+      "read": "正在读取数据...",
+      "render": "正在渲染面板...",
+      "ready": "加载完成",
+      "error": "加载失败"
+    }
+  },
+  "errors": {
+    "generic": "加载数据时出现问题。",
+    "loadFailed": "数据集加载失败。",
+    "details": "错误详情"
+  },
+  "errorBoundary": {
+    "title": "应用出现错误",
+    "description": "应用发生意外错误，请重新加载后再试。",
+    "errorLabel": "错误",
+    "unknownError": "未知错误",
+    "stackTrace": "堆栈信息",
+    "reload": "重新加载应用"
+  },
+  "panelErrorBoundary": {
+    "title": "面板加载失败",
+    "namedTitle": "{{panelName}} 加载失败",
+    "description": "发生了意外错误，其他面板不受影响。"
+  },
+  "units": {
+    "frame": "帧",
+    "second": {
+      "short": "秒"
+    },
+    "minute": {
+      "short": "分钟"
+    }
+  },
+  "playback": {
+    "noData": "请选择一个动作任务开始播放",
+    "progress": "播放进度",
+    "a11y": {
+      "valuetext": "{{time}} / {{totalTime}}, 帧 {{frame}}/{{totalFrames}}"
+    },
+    "mode": {
+      "toggle": "切换播放模式",
+      "loop": "单个 Episode 循环",
+      "shuffle": "列表随机播放",
+      "sequential": "列表顺序播放"
+    },
+    "meta": {
+      "fps": "FPS",
+      "version": "版本"
+    },
+    "speed": "播放速度"
+  },
+  "health": {
+    "noData": "加载数据集后可查看健康检查",
+    "statusErrors": "校验发现错误",
+    "statusWarnings": "校验发现警告",
+    "statusOk": "格式检查通过",
+    "checks": "检查项",
+    "noIssues": "未发现问题",
+    "fpsInvalid": "info.fps 缺失或 ≤ 0，播放可能不正确",
+    "zeroLengthEpisodes": "{{count}} 个 Episode 长度为 0",
+    "episodeCountMismatch": "当前有效 Episode 数（{{effective}}）与 info.total_episodes（{{total}}）不一致；已应用编辑/删除。",
+    "footnote": "格式校验在加载时执行。数据质量（NaN/离群值）检查将在后续版本提供。",
+    "healthCheckButton": "数据集健康检查",
+    "check": "检查",
+    "validation": {
+      "columns": {
+        "field": "检查项",
+        "current": "当前格式",
+        "expected": "预期格式",
+        "suggestion": "修复建议"
+      },
+      "dialog": {
+        "title": "数据集质量报告",
+        "summaryErrors": "校验发现错误",
+        "summaryWarnings": "校验发现警告",
+        "summaryOk": "全部检查通过",
+        "errorsCount": "{{count}} 个错误",
+        "warningsCount": "{{count}} 个警告",
+        "passedCount": "{{count}} 项通过",
+        "close": "关闭",
+        "retry": "重试",
+        "export": "导出",
+        "exportCsv": "导出为 CSV",
+        "exportPdf": "导出为 PDF"
+      },
+      "categories": {
+        "file_structure": "文件结构",
+        "meta_info": "元数据",
+        "features": "特征",
+        "episodes": "剧集"
+      },
+      "terms": {
+        "exists": "存在",
+        "missing": "缺失",
+        "notExists": "不存在",
+        "invalidJson": "无效 JSON",
+        "validJson": "合法 JSON 文件",
+        "positiveInteger": "正整数",
+        "nonNegativeInteger": "非负整数",
+        "positiveNumber": "正数",
+        "nonEmptyString": "非空字符串",
+        "present": "存在",
+        "unknown": "未知",
+        "validDtype": "有效 dtype",
+        "object": "对象",
+        "arrayOrNull": "数组或 null",
+        "nFeatures": "{{count}} 个特征",
+        "pathOrFileExists": "路径或文件存在",
+        "fieldExists": "字段存在",
+        "positiveIntArray": "[正整数, ...]",
+        "stringArrayMatchShape": "string[]（长度=shape 末维）",
+        "objectWithFeatures": "含至少一个 feature 的对象",
+        "positiveIntMatchTotalEpisodes": "正整数，与 total_episodes 一致",
+        "episodeLengthPositive": "每个 episode 的 length > 0",
+        "nonNegativeIntCount": "非负整数（条数）",
+        "requiredParquetColumns": "包含 frame_index, episode_index, index, timestamp 等必要列",
+        "objectWithTrainKey": "含 \"train\" 键的对象",
+        "containsTrain": "包含 \"train\"",
+        "requiredEpisodesColumns": "episode_index, length, dataset_from_index, dataset_to_index",
+        "tasksPresent": "tasks.jsonl 或 tasks.parquet 存在"
+      },
+      "codes": {
+        "INFO_MISSING": {
+          "message": "meta/info.json 不存在或无法读取",
+          "suggestion": "确认当前目录为 LeRobot 数据集根目录，且存在 meta/info.json"
+        },
+        "INFO_PARSE_ERROR": {
+          "message": "meta/info.json JSON 解析失败",
+          "suggestion": "检查 JSON 语法，可使用 https://jsonlint.com 验证"
+        },
+        "VERSION_MISMATCH": {
+          "message": "codebase_version 不是 v2.x",
+          "suggestion": "若为 v3.0 数据集请选用对应加载方式；否则将 codebase_version 改为 v2.0 或 v2.1"
+        },
+        "VERSION_MISMATCH_V3": {
+          "message": "codebase_version 不是 v3.x",
+          "suggestion": "将 codebase_version 设为 v3.0"
+        },
+        "ROBOT_TYPE_MISSING": {
+          "message": "robot_type 缺失或为空",
+          "suggestion": "填写机器人类型，如 \"so100\" 或 \"lekiwi\""
+        },
+        "TOTAL_EPISODES_INVALID": {
+          "message": "total_episodes 必须为正整数",
+          "suggestion": "设置正确的 episode 总数"
+        },
+        "TOTAL_FRAMES_INVALID": {
+          "message": "total_frames 必须为正整数",
+          "suggestion": "设置正确的帧总数"
+        },
+        "TOTAL_TASKS_INVALID": {
+          "message": "total_tasks 必须为非负整数",
+          "suggestion": "设置正确的任务总数（可为 0）"
+        },
+        "FPS_INVALID": { "message": "fps 必须为正数", "suggestion": "设置正确的帧率，例如 30" },
+        "CHUNKS_SIZE_MISSING": {
+          "message": "chunks_size 缺失，将使用默认值 1000",
+          "suggestion": "添加 chunks_size 字段，推荐 1000"
+        },
+        "FEATURES_EMPTY": {
+          "message": "features 字段缺失或为空对象",
+          "suggestion": "在 info.json 中添加 features 字段，定义数据集的所有列"
+        },
+        "EPISODES_MISSING": {
+          "message": "meta/episodes.jsonl 不存在或无法读取",
+          "suggestion": "生成并放置 meta/episodes.jsonl，每行一个 JSON 对象描述一个 episode"
+        },
+        "EPISODES_INVALID_JSONL": {
+          "message": "episodes.jsonl 某行 JSON 解析失败",
+          "suggestion": "检查每行是否为独立合法 JSON 对象"
+        },
+        "EPISODES_EMPTY": {
+          "message": "episodes.jsonl 解析后为空",
+          "suggestion": "检查 episodes.jsonl 是否有效填充"
+        },
+        "EPISODES_COUNT_MISMATCH": {
+          "message": "实际解析数量（{{parsed}}）与 total_episodes（{{expected}}）不一致",
+          "suggestion": "重新生成 episodes.jsonl 或修正 info.json 中的 total_episodes"
+        },
+        "ZERO_LENGTH_EPISODES": {
+          "message": "{{count}} 个 episode 的 length 为 0",
+          "suggestion": "检查并重新生成 episodes.jsonl，确保每个 episode 有正确帧数"
+        },
+        "EPISODES_NO_LENGTH": {
+          "message": "{{count}} 个 episode 缺少 length/num_frames 字段",
+          "suggestion": "在 episodes.jsonl 的每行中添加 \"length\" 字段"
+        },
+        "TASKS_MISSING": {
+          "message": "meta/tasks.jsonl 不存在或为空",
+          "suggestion": "创建 tasks.jsonl，每行一个 JSON 对象，格式: {\"task_index\": 0, \"task\": \"任务描述\"}"
+        },
+        "DATA_FILE_MISSING": {
+          "message": "数据文件不存在",
+          "suggestion": "按 v2 格式在 data/ 目录下生成分片 parquet 文件"
+        },
+        "DATA_FILE_CHECK_FAILED": {
+          "message": "无法检查数据文件是否存在",
+          "suggestion": "确认 data/chunk-xxx/episode_xxxxxx.parquet 文件已生成"
+        },
+        "VIDEO_FILE_MISSING": {
+          "message": "视频文件不存在",
+          "suggestion": "确认视频文件已生成：videos/chunk-xxx/<key>/episode_xxxxxx.mp4"
+        },
+        "VIDEO_FILE_CHECK_FAILED": {
+          "message": "无法检查视频文件是否存在",
+          "suggestion": "确认 videos/chunk-xxx/<key>/episode_xxxxxx.mp4 文件已生成"
+        },
+        "PARQUET_MISSING_COLS": {
+          "message": "数据 parquet 缺少必要列：{{cols}}",
+          "suggestion": "重新生成数据 parquet，确保包含系统必要列"
+        },
+        "DEFAULT_FEATURE_MISSING": {
+          "message": "缺少系统保留字段 {{key}}",
+          "suggestion": "在 meta/info.json 的 features 中添加 \"{{key}}\" 字段"
+        },
+        "FEATURE_INVALID": {
+          "message": "features.{{key}} 不是有效对象",
+          "suggestion": "确保 feature 是包含 dtype/shape 的对象"
+        },
+        "DTYPE_MISSING": {
+          "message": "features.{{key}}.dtype 缺失",
+          "suggestion": "添加 dtype 字段（如 float32 / int64 / video / image / string）"
+        },
+        "DTYPE_INVALID": {
+          "message": "features.{{key}}.dtype 不合法：{{dtype}}",
+          "suggestion": "更改为标准 dtype"
+        },
+        "SHAPE_INVALID": {
+          "message": "features.{{key}}.shape 必须是非空整数数组",
+          "suggestion": "设置正确的 shape，如 [7] 或 [3, 480, 640]"
+        },
+        "NAMES_INVALID": {
+          "message": "features.{{key}}.names 不是数组",
+          "suggestion": "将 names 改为字符串数组或 null"
+        },
+        "NAMES_LENGTH_MISMATCH": {
+          "message": "features.{{key}}.names 长度（{{actual}}）与 shape 末维（{{expected}}）不匹配",
+          "suggestion": "names 数组长度应等于 shape 末维度 {{expected}}"
+        },
+        "VIDEO_FPS_MISSING": {
+          "message": "视频 feature {{key}} 的 fps 缺失或 ≤ 0，将回退到全局 info.fps",
+          "suggestion": "可选：在该 feature 显式设置 fps；不设置时会使用 info.fps"
+        },
+        "VIDEO_SHAPE_CHANNELS": {
+          "message": "视频 shape 的通道数不常见",
+          "suggestion": "通常通道为 3 (RGB)，支持 [C,H,W] 与 [H,W,C]"
+        },
+        "VIDEO_SHAPE_NDIM": {
+          "message": "视频 shape 维度应为 3 (C, H, W)，当前为 {{n}} 维",
+          "suggestion": "将 shape 改为 [C, H, W] 格式"
+        },
+        "IMAGE_SHAPE_NDIM": {
+          "message": "图像 shape 维度应为 3 (C, H, W)，当前为 {{n}} 维",
+          "suggestion": "将 shape 改为 [C, H, W] 格式"
+        },
+        "EPISODES_PARQUET_MISSING": {
+          "message": "meta/episodes 首文件不存在",
+          "suggestion": "按 v3 格式生成 meta/episodes/chunk-xxx/file-xxx.parquet"
+        },
+        "EPISODES_PARQUET_INVALID": {
+          "message": "meta/episodes 首文件无法解析为 Parquet 表",
+          "suggestion": "确保 episodes Parquet 文件有效"
+        },
+        "DATA_PATH_TEMPLATE": {
+          "message": "info.data_path 与默认模板不一致",
+          "suggestion": "使用默认 data 路径模板或保持自定义路径一致"
+        },
+        "VIDEO_PATH_TEMPLATE": {
+          "message": "info.video_path 与默认模板不一致",
+          "suggestion": "使用默认 video 路径模板"
+        },
+        "TASKS_PRESENT": { "message": "已检测到任务元数据", "suggestion": "" },
+        "EPISODE_COUNT": { "message": "解析到 {{count}} 个剧集", "suggestion": "" },
+        "TASK_COUNT": { "message": "解析到 {{count}} 条任务", "suggestion": "" },
+        "SPLITS_MISSING_TRAIN": {
+          "message": "splits 必须包含 \"train\"",
+          "suggestion": "在 splits 中至少包含 \"train\" 键"
+        }
+      }
+    }
+  },
+  "summary": {
+    "noData": "加载数据集后可查看总览",
+    "overview": "总览",
+    "episodes": "Episode 数",
+    "totalFrames": "总帧数",
+    "fps": "FPS",
+    "version": "格式版本",
+    "robotType": "机器人类型",
+    "episodeLength": "Episode 长度",
+    "min": "最小",
+    "avg": "平均",
+    "max": "最大",
+    "taskDistribution": "任务分布",
+    "features": "特征",
+    "videoChannels": "视频",
+    "imageChannels": "图像",
+    "numericFeatures": "数值",
+    "more": "更多"
+  },
+  "analysis": {
+    "noData": "加载数据集后可查看分析",
+    "overview": "总览",
+    "episodeCount": "集数",
+    "totalFrames": "总帧数",
+    "fps": "FPS",
+    "version": "格式版本",
+    "robotType": "机器人类型",
+    "duration": "时长",
+    "totalDuration": "总时长",
+    "avgDuration": "平均/集",
+    "minDuration": "最小",
+    "maxDuration": "最大",
+    "min": "最小",
+    "avg": "平均",
+    "max": "最大",
+    "taskDistribution": "任务分布",
+    "durationPerEpisode": "每集时长",
+    "episodeIndex": "集"
+  },
+  "sidebar": {
+    "tabs": {
+      "episodes": "任务",
+      "analysis": "分析"
+    },
+    "episodesTitle": "Episodes",
+    "searchPlaceholder": "搜索...",
+    "noDescription": "暂无描述",
+    "errorLoading": "加载数据失败",
+    "emptyNoDataset": "请先加载一个 LeRobot 数据集",
+    "emptyNoMatch": "没有匹配的 Episode",
+    "episodeAbbr": "EP",
+    "selectEpisode": "选择 Episode {{index}}",
+    "expand": "展开侧边栏",
+    "collapse": "收缩侧边栏",
+    "editTask": "编辑任务",
+    "deleteEpisode": "删除 Episode",
+    "restoreEpisode": "恢复 Episode",
+    "readOnlyVersion": "LeRobot {{version}} 以只读模式打开，已禁用 Episode 编辑和删除。",
+    "edit": "编辑",
+    "done": "完成",
+    "enterEditMode": "编辑 Episodes",
+    "exitEditMode": "完成编辑",
+    "multiSelect": "多选",
+    "selectAll": "全选（当前筛选）",
+    "clearSelection": "清除选择",
+    "filterByTask": "任务",
+    "filterByDuration": "时长（秒）",
+    "filterTaskAll": "全部任务",
+    "bulkEdit": "批量编辑任务",
+    "bulkDelete": "批量删除",
+    "bulkRestore": "批量恢复",
+    "selectedCount": "已选 {{count}} 条",
+    "currentEpisode": "当前项",
+    "selectEpisodeForBulk": "勾选 Episode",
+    "deselectEpisode": "取消勾选 Episode",
+    "exportSubset": "有选择时导出将仅包含所选子集",
+    "advanced": "高级"
+  },
+  "editTask": {
+    "title": "编辑 Episode 任务",
+    "episodeIndex": "Episode 索引",
+    "taskDescription": "任务描述",
+    "taskPlaceholder": "输入任务描述...",
+    "save": "保存"
+  },
+  "chart": {
+    "tooltip": {
+      "time": "秒",
+      "moreSeries": "+ {{count}} 条曲线（已折叠）"
+    },
+    "joints": {
+      "all": "全部曲线",
+      "none": "未选择",
+      "selectedCount": "已选 {{count}}",
+      "label": "关节",
+      "selectAll": "全选",
+      "clear": "清空",
+      "searchPlaceholder": "搜索 Feature / 关节（action、left、observation.state…）",
+      "noResults": "未找到匹配的 Feature 或关节",
+      "groupToggleTitle": "{{group}}：一键全选/取消全选",
+      "selectedOverTotal": "已选/总数"
+    },
+    "series": {
+      "state": "状态",
+      "action": "指令"
+    },
+    "legend": {
+      "actionAbbr": "指令",
+      "stateAbbr": "状态",
+      "toggleAction": "切换显示指令数据",
+      "toggleState": "切换显示状态数据"
+    },
+    "sampling": {
+      "enabled": "采样：{{originalPoints}}→{{displayedPoints}} (stride≈{{stride}})",
+      "disabled": "未采样",
+      "mode": {
+        "performance": "性能优先",
+        "precision": "精度优先"
+      }
+    },
+    "split": {
+      "open": "拆分视图",
+      "openTitle": "在侧栏拆分查看各关节曲线（将暂停播放）",
+      "emptySelection": "请选择要查看的关节",
+      "noSeriesForJoint": "在当前筛选下该关节没有可绘制的序列。",
+      "headerSelectAll": "全选",
+      "headerClear": "清空",
+      "comboboxSearchPlaceholder": "搜索关节…",
+      "comboboxAll": "全部关节",
+      "comboboxNone": "未选择",
+      "comboboxPartial": "已选 {{count}} / {{total}} 个关节"
+    }
+  },
+  "panels": {
+    "video": {
+      "title": "视频面板",
+      "placeholder": "等待加载视频文件...",
+      "debug": {
+        "title": "媒体调试信息",
+        "feature": "Feature",
+        "dtype": "类型",
+        "shape": "Shape",
+        "fps": "FPS",
+        "resolution": "分辨率",
+        "codec": "编码",
+        "pixelFormat": "像素格式",
+        "channels": "通道数",
+        "hasAudio": "音频",
+        "clipRange": "片段范围",
+        "yes": "有",
+        "no": "无"
+      }
+    },
+    "image": {
+      "title": "图像面板",
+      "placeholder": "等待加载图像文件...",
+      "debug": {
+        "title": "媒体调试信息",
+        "feature": "Feature",
+        "dtype": "类型",
+        "shape": "Shape",
+        "fps": "FPS",
+        "resolution": "分辨率",
+        "codec": "编码",
+        "pixelFormat": "像素格式",
+        "channels": "通道数",
+        "hasAudio": "音频",
+        "clipRange": "片段范围",
+        "yes": "有",
+        "no": "无"
+      }
+    },
+    "chart": {
+      "title": "折线图",
+      "dataLabel": "数据",
+      "xAxisLabel": "X 轴",
+      "yAxisLabel": "Y 轴"
+    },
+    "summary": {
+      "title": "数据集总览"
+    },
+    "health": {
+      "title": "数据集健康"
+    },
+    "raw": {
+      "title": "原始消息",
+      "select_feature": "选择 Feature",
+      "loading": "正在加载数据...",
+      "no_feature": "请选择一个 Feature 以查看原始数据",
+      "downloadBinary": "点击下载二进制数据",
+      "copyImage": "复制图像",
+      "copyingImage": "复制中",
+      "copiedImage": "COPIED",
+      "downloadedImage": "已下载 PNG",
+      "imageDtype": "IMAGE",
+      "videoDtype": "VIDEO",
+      "allFeatures": "全部 Features",
+      "none": "未选择",
+      "featuresCount": "{{count}} 项",
+      "features": "Features",
+      "selectAll": "全选",
+      "reset": "常用预设",
+      "clear": "清空",
+      "searchFeature": "搜索 Features",
+      "noSearchResult": "未找到匹配 Features",
+      "undefined": "未记录",
+      "itemsCount": "{{count}} 项",
+      "keysCount": "{{count}} 个键",
+      "pause": "暂停自动刷新",
+      "resume": "继续自动刷新",
+      "refresh": "刷新到当前帧",
+      "showLess": "收起",
+      "showMore": "显示更多"
+    },
+    "keyboardShortcuts": {
+      "title": "键盘快捷键",
+      "description": "提升操作效率，可用键盘播放/跳帧/切换 Episode。",
+      "playPause": {
+        "action": "播放/暂停",
+        "key": "Space"
+      },
+      "prevFrame": {
+        "action": "后退一帧",
+        "key": "←"
+      },
+      "nextFrame": {
+        "action": "前进一帧",
+        "key": "→"
+      },
+      "fastBackward": {
+        "action": "后退 10 帧",
+        "key": "Shift + ←"
+      },
+      "fastForward": {
+        "action": "前进 10 帧",
+        "key": "Shift + →"
+      },
+      "prevEpisode": {
+        "action": "上一集",
+        "key": "Alt + ↑"
+      },
+      "nextEpisode": {
+        "action": "下一集",
+        "key": "Alt + ↓"
+      },
+      "firstFrame": {
+        "action": "跳到开头",
+        "key": "Home"
+      },
+      "lastFrame": {
+        "action": "跳到结尾",
+        "key": "End"
+      }
+    },
+    "welcome": {
+      "title": "浏览数据",
+      "subtitle": "选择本地文件、文件夹或输入远程 URL",
+      "quickStart": "快速开始",
+      "loading": "加载中",
+      "suggest": "建议",
+      "urlIntent": "需要授权访问本地目录",
+      "urlIntentFile": "需要授权访问本地文件",
+      "urlIntentHint": "请手动打开目录来授权网页读取本地文件。点击下方按钮选择项目即可。",
+      "restoreHint": "检测到上次打开的项目，点击下方按钮重新授权即可恢复访问。",
+      "restoreButton": "重新授权并打开",
+      "sources": {
+        "dir": "浏览本地目录（包含 meta/data/videos）",
+        "localArchive": "浏览本地压缩包（.zip/.tar/.tar.gz/.tgz）",
+        "remoteArchive": "远程压缩包 URL（.zip/.tar/.tar.gz/.tgz）",
+        "browseSamples": "浏览样例数据"
+      },
+      "samples": {
+        "title": "样例数据",
+        "description": "点击卡片浏览数据集",
+        "requirements": "CORS + Range",
+        "requirementsTooltip": "远程样例需要服务器支持 CORS 和 Range 请求",
+        "viewMore": "查看更多样例"
+      },
+      "dragDropHint": "或直接拖放{{type}}到此处",
+      "dragDropFolder": "文件夹",
+      "dragDropArchive": "压缩包",
+      "step1": {
+        "title": "选择数据源（本地目录 / 压缩包 / 远程 URL / 样例）",
+        "description": "推荐优先使用支持 CORS + Range 的远程压缩包，或直接浏览本地目录/压缩包。"
+      },
+      "step2": {
+        "title": "播放与联动",
+        "description": "无需上传，直接在浏览器中查看 LeRobot 数据集"
+      },
+      "getData": "获取数据",
+      "getDataDescription": "前往 LeRobot 仓库或文档了解数据格式与下载方式。",
+      "lerobotRepo": "LeRobot 仓库",
+      "documentation": "使用文档",
+      "features": "功能亮点",
+      "feature1": {
+        "title": "折线图联动",
+        "description": "高性能曲线绘制，点击即可跳帧，支持降采样与精度切换。"
+      },
+      "feature2": {
+        "title": "多视角视频",
+        "description": "多相机同步播放，支持进度联动与帧信息叠加。"
+      },
+      "feature3": {
+        "title": "原始消息浏览",
+        "description": "按帧查看 action/observation，支持复制与二进制下载。"
+      },
+      "feature4": {
+        "title": "数据源多样",
+        "description": "本地目录、压缩包、远程 URL、样例数据，一键浏览。"
+      },
+      "dropToOpen": "释放以浏览 LeRobot 数据集",
+      "dropHint": "支持拖放本地文件夹或压缩包 (.zip, .tar, .tar.gz)",
+      "dropDirectoryUnsupported": "此浏览器无法将“{{name}}”读取为文件夹。请使用“浏览本地目录”，或先压缩为 .zip/.tar 后再拖入。",
+      "attribution": "由 {{company}} 开发并开源"
+    }
+  },
+  "app": {
+    "title": "LeRobot Studio - 数据可视化",
+    "enterRemoteArchiveUrl": "请输入远程压缩包 URL"
+  },
+  "seo": {
+    "title": "LeRobot Visualizer - LeRobot Studio",
+    "description": "LeRobot Visualizer 是由 IO-AI.TECH 打造的 LeRobot 数据可视化工具，支持在浏览器中同步查看视频、图表与原始特征。",
+    "keywords": "lerobot visualizer, lerobot 数据可视化, lerobot 数据集可视化, 机器人数据集查看器, lerobot studio",
+    "ogTitle": "LeRobot Visualizer - LeRobot Studio",
+    "ogDescription": "在浏览器中高效浏览 LeRobot 数据集：视频、图表与原始特征同步联动。"
+  },
+  "navbar": {
+    "github": "查看开源项目",
+    "hideSidebar": "隐藏侧边栏",
+    "showSidebar": "显示侧边栏",
+    "hidePlaybackBar": "隐藏进度条",
+    "showPlaybackBar": "显示进度条",
+    "openLocalDir": "本地目录",
+    "openLocalArchive": "本地压缩包",
+    "openRemoteArchive": "远程压缩包",
+    "history": "历史记录",
+    "goHome": "返回首页",
+    "export": "导出",
+    "analysis": "分析"
+  },
+  "export": {
+    "title": "导出数据集",
+    "format": "导出格式",
+    "directory": "本地文件夹",
+    "targetVersion": "目标版本",
+    "keepOriginal": "保持",
+    "changesSummary": "修改摘要",
+    "modifiedCount": "已修改",
+    "deletedCount": "已删除",
+    "totalEpisodes": "Episode 总数",
+    "metadataOnlyHint": "当前仅导出元数据（info、episodes、tasks）。",
+    "export": "导出",
+    "exporting": "导出中...",
+    "noData": "未加载数据集。",
+    "preparing": "准备中...",
+    "includeData": "包含数据文件（Parquet）",
+    "includeVideos": "包含视频（直接复制）",
+    "videoFps": "视频导出帧率",
+    "videoFpsHint": "降低帧率可加快导出，但会损失时间精度。",
+    "percentDone": "{{percent}}%",
+    "errorUnknown": "导出失败",
+    "cancelled": "导出已取消。",
+    "cancelExport": "取消导出"
+  },
+  "dialogs": {
+    "remoteArchive": {
+      "description": "从远程 HTTP 服务器加载 LeRobot 压缩包。需支持 CORS 和 Range 请求。",
+      "preflight": "预检中",
+      "error": {
+        "range_http": "Range 预检未通过：预期 HTTP 206（Partial Content），实际为 {{actualStatus}}。",
+        "range_headers": "未声明可用的分段下载：预期 Accept-Ranges: bytes 或有效的 bytes Content-Range；实际 {{headerSummary}}。",
+        "cors": "CORS 拦截了跨域请求。浏览器信息：{{detail}}。",
+        "network": "网络或鉴权失败：{{detail}}。",
+        "unknown": "预检失败：{{detail}}。"
+      }
+    },
+    "samples": {
+      "description": "快速体验预先处理好的 LeRobot 样例数据集。",
+      "empty": "暂无样例数据，请稍后再试。",
+      "emptyHint": "您可以尝试浏览本地目录或输入远程 URL。",
+      "requirements": "需支持 CORS + Range；签名链接需在有效期内",
+      "preview": "预览",
+      "download": "下载",
+      "openDirect": "浏览官方样例数据集"
+    }
+  },
+  "validation": {
+    "urlRequired": "请输入 URL",
+    "invalidUrl": "请输入有效的 HTTP/HTTPS URL",
+    "unsupportedFormat": "不支持的格式（需 .zip/.tar/.tar.gz/.tgz）",
+    "browserNotSupported": "您的浏览器不支持直接访问本地目录，请使用 Chrome/Edge 或上传压缩包。"
+  },
+  "source": {
+    "restoreHandleMissing": "已保存的文件访问已失效，请重新选择文件或目录。",
+    "restorePermissionDenied": "权限被拒绝，请重新选择文件或目录。",
+    "restoreHandleMismatch": "已保存的访问无效，请重新选择文件或目录。",
+    "restoreHandleNotFound": "文件或目录已被移动或删除，请重新选择。"
+  },
+  "pagination": {
+    "previous": "上一页",
+    "next": "下一页",
+    "rowsPerPage": "每页行数",
+    "range": "{{from}}-{{to}} 共 {{count}}",
+    "prevAriaLabel": "上一页",
+    "nextAriaLabel": "下一页"
+  }
+}
