@@ -98,7 +98,7 @@ export const DatasetHealthDialog: React.FC<DatasetHealthDialogProps> = ({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-5xl h-[85vh] max-h-[85vh] flex flex-col p-0 gap-0 overflow-hidden">
+      <DialogContent className="w-[80vw] max-w-[80vw] h-[85vh] max-h-[85vh] flex flex-col p-0 gap-0 overflow-hidden">
         <DialogHeader className="space-y-0 flex flex-row items-center justify-start gap-4 w-full px-6 py-4 border-b border-border shrink-0">
           <DialogTitle className="text-lg font-semibold">
             {t('health.validation.dialog.title')}
