@@ -279,7 +279,6 @@ export const ImagePanel: React.FC<ImagePanelProps> = ({ params }) => {
   return (
     <div className="group relative flex h-full w-full items-center justify-center overflow-hidden bg-black">
       <MediaDebugOverlay
-        featureKey={featureKey}
         metadata={debugMetadata}
         translationPrefix="panels.image.debug"
       />
