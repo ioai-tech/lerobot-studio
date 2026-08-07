@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.0.1
+
+### Patch Changes
+
+- Improve dataset quality report filtering and update published package documentation.
+
 > **Language / 语言：** [English](./CHANGELOG.md) | [简体中文](./CHANGELOG.zh-CN.md)
 
 All notable changes to this project will be documented in this file.

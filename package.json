@@ -1,7 +1,7 @@
 {
   "name": "@ioai/lerobot-studio",
   "private": false,
-  "version": "1.0.0",
+  "version": "1.0.1",
   "type": "module",
   "packageManager": "npm@11.7.0",
   "scripts": {

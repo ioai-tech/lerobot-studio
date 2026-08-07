@@ -3,12 +3,13 @@
 [English — README.md](README.md)
 
 [![CI](https://github.com/ioai-tech/lerobot-studio/actions/workflows/ci.yml/badge.svg)](https://github.com/ioai-tech/lerobot-studio/actions/workflows/ci.yml)
+[![npm version](https://img.shields.io/npm/v/@ioai/lerobot-studio.svg)](https://www.npmjs.com/package/@ioai/lerobot-studio)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Docs](https://img.shields.io/badge/docs-VitePress-blue.svg)](https://ioai-tech.github.io/lerobot-studio/)
 
 > 在浏览器中打开 [LeRobot](https://github.com/huggingface/lerobot) 数据集，同时查看视频、图表和原始数据；也可以将同一套查看器加入 React 应用。
 
-你可以直接使用 [lerobot.studio](https://lerobot.studio)。React 包尚未发布到 npm；发布前请使用独立应用或从本仓库构建。本地文件夹和压缩包会在浏览器中处理，不会上传到云端。只有打开远程链接时，浏览器才会向该链接所在的服务器请求数据。
+你可以直接使用 [lerobot.studio](https://lerobot.studio)，也可以通过 npm 安装 [`@ioai/lerobot-studio`](https://www.npmjs.com/package/@ioai/lerobot-studio) 并嵌入 React 应用。本地文件夹和压缩包会在浏览器中处理，不会上传到云端。只有打开远程链接时，浏览器才会向该链接所在的服务器请求数据。
 
 <p align="center">
   <img src=".github/assets/lerobot-studio-demo.webp" alt="LeRobot Studio 演示 — 同步视频、图表与 Episode 浏览" width="800" />
@@ -77,7 +78,7 @@ docker run --rm -p 8080:8080 lerobot-studio
 
 ## 嵌入 React
 
-React 包尚未发布到 npm。其包名为 `@ioai/lerobot-studio`；在首次发布前，请使用独立应用或从本仓库构建。
+React 包已以 [`@ioai/lerobot-studio`](https://www.npmjs.com/package/@ioai/lerobot-studio) 发布到 npm，安装方式：
 
 ```bash
 npm install @ioai/lerobot-studio

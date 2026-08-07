@@ -6,6 +6,12 @@
       "zhEntry": "docs/api.zh-CN.md",
       "noteEn": "Machine-generated API Extractor report. Do not translate by hand; regenerate with `npm run api:report`. Chinese documentation wraps this report in docs/api.zh-CN.md.",
       "noteZh": "由 API Extractor 自动生成的 API 报告，请勿手工翻译；使用 `npm run api:report` 重新生成。中文说明见 docs/api.zh-CN.md，正文仍引用本文件的英文报告。"
+    },
+    {
+      "path": ".changeset/README.md",
+      "reason": "changesets-reserved-directory",
+      "noteEn": "Changesets parses every Markdown file in this directory as a release note. The Chinese guidance uses a .txt file so it is not treated as a pending changeset.",
+      "noteZh": "Changesets 会将该目录中的每个 Markdown 文件解析为发布说明。中文指引使用 .txt 文件，避免被识别为待发布的 changeset。"
     }
   ],
   "skipScanDirs": [

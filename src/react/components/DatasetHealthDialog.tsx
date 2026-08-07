@@ -1,4 +1,4 @@
-import React, { useMemo, useCallback } from 'react';
+import React, { useMemo, useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/ui';
 import { Button } from '@/ui';
@@ -55,12 +55,15 @@ interface DatasetHealthDialogProps {
   report: ValidationReport | null;
 }
 
+type ValidationLevelFilter = 'all' | 'error' | 'warning' | 'info';
+
 export const DatasetHealthDialog: React.FC<DatasetHealthDialogProps> = ({
   open,
   onOpenChange,
   report,
 }) => {
   const { t } = useTranslation();
+  const [levelFilter, setLevelFilter] = useState<ValidationLevelFilter>('all');
 
   const { hasError, hasWarning, errorCount, warningCount, passedCount } = useMemo(() => {
     if (!report)
@@ -84,6 +87,19 @@ export const DatasetHealthDialog: React.FC<DatasetHealthDialogProps> = ({
       ? t('health.validation.dialog.summaryWarnings')
       : t('health.validation.dialog.summaryOk');
 
+  const filteredItems = useMemo(() => {
+    if (levelFilter === 'all') return report?.items ?? [];
+    return report?.items.filter((item) => item.level === levelFilter) ?? [];
+  }, [levelFilter, report]);
+
+  useEffect(() => {
+    if (!open) setLevelFilter('all');
+  }, [open]);
+
+  const toggleLevelFilter = useCallback((level: Exclude<ValidationLevelFilter, 'all'>) => {
+    setLevelFilter((current) => (current === level ? 'all' : level));
+  }, []);
+
   const handleExportCsv = useCallback(() => {
     if (!report?.items?.length) return;
     const headers = {
@@ -96,9 +112,17 @@ export const DatasetHealthDialog: React.FC<DatasetHealthDialogProps> = ({
     downloadCsv(csv, 'dataset-health-report.csv');
   }, [report, t]);
 
+  const handleOpenChange = useCallback(
+    (nextOpen: boolean) => {
+      if (!nextOpen) setLevelFilter('all');
+      onOpenChange(nextOpen);
+    },
+    [onOpenChange],
+  );
+
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="w-[80vw] max-w-[80vw] h-[85vh] max-h-[85vh] flex flex-col p-0 gap-0 overflow-hidden">
+    <Dialog open={open} onOpenChange={handleOpenChange}>
+      <DialogContent className="w-[80vw] max-w-[80vw] sm:max-w-[80vw] h-[85vh] max-h-[85vh] flex flex-col p-0 gap-0 overflow-hidden">
         <DialogHeader className="space-y-0 flex flex-row items-center justify-start gap-4 w-full px-6 py-4 border-b border-border shrink-0">
           <DialogTitle className="text-lg font-semibold">
             {t('health.validation.dialog.title')}
@@ -151,12 +175,52 @@ export const DatasetHealthDialog: React.FC<DatasetHealthDialogProps> = ({
           <span className="font-medium">{summaryMessage}</span>
           {report && (
             <span className="text-muted-foreground text-sm">
-              {errorCount > 0 && t('health.validation.dialog.errorsCount', { count: errorCount })}
+              {errorCount > 0 && (
+                <button
+                  type="button"
+                  className={cn(
+                    'rounded-sm cursor-pointer underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
+                    levelFilter === 'error' && 'font-semibold text-destructive underline',
+                  )}
+                  aria-pressed={levelFilter === 'error'}
+                  aria-label={t('health.validation.dialog.filterErrors', { count: errorCount })}
+                  onClick={() => toggleLevelFilter('error')}
+                >
+                  {t('health.validation.dialog.errorsCount', { count: errorCount })}
+                </button>
+              )}
               {errorCount > 0 && warningCount > 0 && ' · '}
-              {warningCount > 0 &&
-                t('health.validation.dialog.warningsCount', { count: warningCount })}
+              {warningCount > 0 && (
+                <button
+                  type="button"
+                  className={cn(
+                    'rounded-sm cursor-pointer underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
+                    levelFilter === 'warning' &&
+                      'font-semibold text-amber-700 underline dark:text-amber-400',
+                  )}
+                  aria-pressed={levelFilter === 'warning'}
+                  aria-label={t('health.validation.dialog.filterWarnings', { count: warningCount })}
+                  onClick={() => toggleLevelFilter('warning')}
+                >
+                  {t('health.validation.dialog.warningsCount', { count: warningCount })}
+                </button>
+              )}
               {(errorCount > 0 || warningCount > 0) && passedCount > 0 && ' · '}
-              {passedCount > 0 && t('health.validation.dialog.passedCount', { count: passedCount })}
+              {passedCount > 0 && (
+                <button
+                  type="button"
+                  className={cn(
+                    'rounded-sm cursor-pointer underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
+                    levelFilter === 'info' &&
+                      'font-semibold text-green-700 underline dark:text-green-400',
+                  )}
+                  aria-pressed={levelFilter === 'info'}
+                  aria-label={t('health.validation.dialog.filterPassed', { count: passedCount })}
+                  onClick={() => toggleLevelFilter('info')}
+                >
+                  {t('health.validation.dialog.passedCount', { count: passedCount })}
+                </button>
+              )}
             </span>
           )}
         </div>
@@ -164,7 +228,7 @@ export const DatasetHealthDialog: React.FC<DatasetHealthDialogProps> = ({
         <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
           <ScrollArea className="flex-1 h-full">
             <div className="px-6 py-4">
-              <DatasetHealthTable items={report?.items ?? []} />
+              <DatasetHealthTable items={filteredItems} />
             </div>
           </ScrollArea>
         </div>
