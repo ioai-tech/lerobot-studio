@@ -17,11 +17,14 @@ export function PortalContainerProvider({
 /**
  * Resolve the portal mount node for overlays.
  * Prefer the nearest Studio root provided via context so multi-instance embeds
- * keep Dialog/Menu/Tooltip inside CSS-scoped `#lerobot-root` trees.
+ * keep Dialog/Menu/Tooltip inside the themed `.lerobot-root` tree (where `.dark` lives).
  */
 export function usePortalContainer(): HTMLElement | null {
   const fromContext = React.useContext(PortalContainerContext);
   if (fromContext) return fromContext;
   if (typeof document === 'undefined') return null;
-  return document.getElementById('lerobot-root');
+  return (
+    (document.querySelector('.lerobot-root') as HTMLElement | null) ??
+    document.getElementById('lerobot-root')
+  );
 }

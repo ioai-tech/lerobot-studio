@@ -27,13 +27,13 @@ export function PanelErrorFallback({ error, panelName, onRetry }: PanelErrorFall
 
   return (
     <div
-      className="flex flex-col items-center justify-center h-full w-full bg-background p-4 text-center"
+      className="flex flex-col items-center justify-center h-full w-full bg-background text-foreground p-4 text-center"
       role="alert"
     >
       <div className="bg-destructive/10 p-3 rounded-full mb-4">
         <AlertTriangle className="h-6 w-6 text-destructive" aria-hidden />
       </div>
-      <h3 className="text-sm font-semibold mb-1">
+      <h3 className="text-sm font-semibold mb-1 text-foreground">
         {panelName
           ? t('panelErrorBoundary.namedTitle', { panelName })
           : t('panelErrorBoundary.title')}

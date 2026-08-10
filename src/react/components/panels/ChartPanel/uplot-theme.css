@@ -20,10 +20,10 @@
   border-radius: 0;
 }
 
-/* 选区框使用 design token */
+/* 选区框使用 design token（tokens 已是完整 oklch/hsl，不能再包 hsl()） */
 .chart-uplot .u-select {
-  background: hsl(var(--primary) / 0.08);
-  border: 1px solid hsl(var(--primary) / 0.25);
+  background: color-mix(in oklch, var(--primary) 8%, transparent);
+  border: 1px solid color-mix(in oklch, var(--primary) 25%, transparent);
 }
 
 /* 避免 uPlot 容器带来的奇怪间距 */
@@ -33,7 +33,7 @@
 
 .chart-tooltip {
   scrollbar-width: thin;
-  scrollbar-color: hsl(var(--muted-foreground) / 0.55) transparent;
+  scrollbar-color: color-mix(in oklch, var(--muted-foreground) 55%, transparent) transparent;
 }
 
 .chart-tooltip::-webkit-scrollbar {
@@ -46,9 +46,9 @@
 
 .chart-tooltip::-webkit-scrollbar-thumb {
   border-radius: 9999px;
-  background: hsl(var(--muted-foreground) / 0.45);
+  background: color-mix(in oklch, var(--muted-foreground) 45%, transparent);
 }
 
 .chart-tooltip::-webkit-scrollbar-thumb:hover {
-  background: hsl(var(--muted-foreground) / 0.7);
+  background: color-mix(in oklch, var(--muted-foreground) 70%, transparent);
 }

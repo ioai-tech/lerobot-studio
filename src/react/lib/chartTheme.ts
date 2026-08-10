@@ -3,9 +3,12 @@
  * shadcn Base UI tokens are full CSS colors (oklch/hsl/rgb).
  */
 
+/** Prefer the themed studio root (`.lerobot-root[.dark]`); `#lerobot-root` is only the mount host. */
 const LEROOT =
   typeof document !== 'undefined'
-    ? () => document.querySelector('#lerobot-root') as HTMLElement | null
+    ? () =>
+        (document.querySelector('.lerobot-root') as HTMLElement | null) ??
+        (document.getElementById('lerobot-root') as HTMLElement | null)
     : () => null;
 
 export function getCssVarColor(

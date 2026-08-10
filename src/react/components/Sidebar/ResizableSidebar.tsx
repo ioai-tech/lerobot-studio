@@ -166,7 +166,7 @@ export const ResizableSidebar: React.FC<ResizableSidebarProps> = ({
     <>
       <div
         ref={sidebarRef}
-        className={`flex h-full min-w-0 shrink-0 flex-col overflow-x-hidden border-r ${className}`}
+        className={`flex h-full min-w-0 shrink-0 flex-col overflow-x-hidden border-r bg-background ${className}`}
         style={{
           width: `${width}px`,
           minWidth: `${minWidth}px`,

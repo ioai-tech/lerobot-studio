@@ -67,13 +67,22 @@ export const LeRobotStudioProvider: React.FC<LeRobotStudioProviderProps> = ({
   return (
     <I18nProvider forcedLanguage={language}>
       {wrapRoot ? (
-        <div ref={setRootEl} className={cn('lerobot-root h-full w-full relative', className)}>
+        <div
+          ref={setRootEl}
+          className={cn(
+            'lerobot-root h-full w-full relative bg-background text-foreground',
+            className,
+          )}
+        >
           <StudioTree theme={theme} showToaster={showToaster} portalContainer={rootEl}>
             {children}
           </StudioTree>
         </div>
       ) : (
-        <div ref={setRootEl} className={cn('lerobot-root h-full w-full', className)}>
+        <div
+          ref={setRootEl}
+          className={cn('lerobot-root h-full w-full bg-background text-foreground', className)}
+        >
           <StudioTree theme={theme} showToaster={showToaster} portalContainer={rootEl}>
             {children}
           </StudioTree>

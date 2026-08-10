@@ -27,15 +27,24 @@ export function ErrorFallback({ error, onReset }: ErrorFallbackProps) {
   const { t } = useTranslation();
   const errorDetails = formatErrorForDisplay(error, import.meta.env.DEV);
 
+  const preferDark =
+    typeof window !== 'undefined' &&
+    (() => {
+      const saved = window.localStorage?.getItem('theme');
+      if (saved === 'dark') return true;
+      if (saved === 'light') return false;
+      return window.matchMedia('(prefers-color-scheme: dark)').matches;
+    })();
+
   return (
     <div
-      className="flex flex-col items-center justify-center min-h-screen bg-background p-6 text-center"
+      className={`flex flex-col items-center justify-center min-h-screen bg-background text-foreground p-6 text-center${preferDark ? ' dark' : ''}`}
       role="alert"
     >
       <div className="bg-destructive/10 p-4 rounded-full mb-6">
         <AlertCircle className="h-12 w-12 text-destructive" aria-hidden />
       </div>
-      <h1 className="text-2xl font-bold mb-2">{t('errorBoundary.title')}</h1>
+      <h1 className="text-2xl font-bold mb-2 text-foreground">{t('errorBoundary.title')}</h1>
       <p className="text-muted-foreground mb-8 max-w-md mx-auto">
         {t('errorBoundary.description')}
       </p>
