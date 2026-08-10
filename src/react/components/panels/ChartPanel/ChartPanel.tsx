@@ -1280,7 +1280,10 @@ const ChartPanelContent: React.FC<ChartPanelProps> = ({ params }) => {
   );
 
   return (
-    <div ref={containerRef} className="w-full h-full flex flex-col bg-background overflow-hidden">
+    <div
+      ref={containerRef}
+      className="w-full h-full flex flex-col bg-background text-foreground overflow-hidden"
+    >
       <div className="flex items-center justify-between px-3 py-1.5 border-b bg-muted/20">
         <div className="flex items-center gap-2 overflow-hidden mr-2">
           <ChartJointFilterDropdown {...jointFilterDropdownProps} />
@@ -1396,7 +1399,7 @@ const ChartPanelContent: React.FC<ChartPanelProps> = ({ params }) => {
           <div ref={chartRef} className="chart-uplot w-full h-full" />
           <div
             ref={tooltipRef}
-            className="chart-tooltip pointer-events-auto select-text cursor-text absolute left-3 top-3 z-20 hidden max-w-[420px] rounded-md border bg-background/95 backdrop-blur text-[11px] shadow-lg transition-opacity duration-150"
+            className="chart-tooltip pointer-events-auto select-text cursor-text absolute left-3 top-3 z-20 hidden max-w-[420px] rounded-md border bg-background/95 text-foreground backdrop-blur text-[11px] shadow-lg transition-opacity duration-150"
             style={{ opacity: 1 }}
           />
         </div>

@@ -107,7 +107,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   const displayName = datasetName || t('common.companyName');
 
   return (
-    <nav className="sticky top-0 z-50 w-full border-b bg-background">
+    <nav className="sticky top-0 z-50 w-full border-b bg-background text-foreground">
       <div className="flex h-12 items-center px-4 gap-4 relative">
         {/* Left: Open & History */}
         <div className="flex items-center gap-2 mr-auto">

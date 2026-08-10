@@ -11,7 +11,8 @@ export function AppProviders({ children }: { children: React.ReactNode }) {
   return (
     <ErrorBoundary>
       <LeRobotStudioProvider showToaster={false} wrapRoot={false} className="h-full w-full">
-        {children}
+        {/* Inner boundary keeps crash UI inside the themed `.lerobot-root`. */}
+        <ErrorBoundary>{children}</ErrorBoundary>
       </LeRobotStudioProvider>
     </ErrorBoundary>
   );

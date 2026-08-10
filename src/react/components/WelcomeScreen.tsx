@@ -120,7 +120,7 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
   );
 
   return (
-    <div className="w-full h-[calc(100vh-3rem)] overflow-y-auto bg-background">
+    <div className="w-full h-[calc(100vh-3rem)] overflow-y-auto bg-background text-foreground">
       <div className="relative overflow-hidden">
         <motion.div
           className={cn('mx-auto px-6 py-12 lg:py-20', showSamples ? 'max-w-6xl' : 'max-w-xl')}

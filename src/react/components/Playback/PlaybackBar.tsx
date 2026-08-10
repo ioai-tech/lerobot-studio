@@ -130,7 +130,7 @@ export const PlaybackBar: React.FC = () => {
   if (isLoading || activeTask) {
     return (
       <div
-        className="h-16 border-t bg-background px-4 flex items-center gap-4 animate-pulse motion-reduce:animate-none pointer-events-none opacity-60"
+        className="h-16 border-t bg-background text-foreground px-4 flex items-center gap-4 animate-pulse motion-reduce:animate-none pointer-events-none opacity-60"
         role="status"
         aria-live="polite"
         aria-label={activeTask?.message || t('common.loading')}
@@ -160,7 +160,7 @@ export const PlaybackBar: React.FC = () => {
   }
 
   return (
-    <div className="h-16 border-t bg-background px-4 flex items-center gap-4">
+    <div className="h-16 border-t bg-background text-foreground px-4 flex items-center gap-4">
       {/* Left: Navigation Controls */}
       <div className="flex items-center gap-1">
         <Tooltip>

@@ -1083,7 +1083,7 @@ const RawPanelContent: React.FC<RawPanelProps> = ({ params }) => {
   const handleFeatureSearchChange = useCallback((v: string) => setFeatureSearch(v), []);
 
   return (
-    <div className="flex flex-col h-full bg-background overflow-hidden">
+    <div className="flex flex-col h-full bg-background text-foreground overflow-hidden">
       <RawPanelHeader
         isPaused={isPaused}
         copied={copied}

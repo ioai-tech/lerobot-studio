@@ -290,7 +290,7 @@ export function AppShell() {
   const shouldShowSidebar = hasData && sidebarVisible;
 
   return (
-    <div className="flex flex-col h-screen overflow-hidden">
+    <div className="flex flex-col h-screen overflow-hidden bg-background text-foreground">
       <Navbar
         onOpenDirectory={() => controller.openDirectory()}
         onOpenLocalArchive={() => controller.openLocalArchive()}
