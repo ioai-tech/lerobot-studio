@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.0.2
+
+### Patch Changes
+
+- 373f5a6: Fix dark theme adaptation for sidebar chrome, dialogs, charts, and scoped studio root tokens.
+
 ## 1.0.1
 
 ### Patch Changes
