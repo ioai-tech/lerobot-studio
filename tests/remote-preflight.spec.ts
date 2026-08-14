@@ -3,6 +3,7 @@ import {
   MAX_FULL_ARCHIVE_DOWNLOAD_BYTES,
   preflightRemoteArchive,
   REMOTE_ARCHIVE_PROBE_BYTES,
+  REMOTE_PREFLIGHT_TIMEOUT_MS,
   translateRemotePreflightFailure,
 } from '../src/platform/datasource/remotePreflight';
 
@@ -321,5 +322,47 @@ describe('preflightRemoteArchive', () => {
         detail: 'ignored detail',
       },
     );
+  });
+
+  it('rejects mixed-content HTTP URLs on a secure page without fetching', async () => {
+    vi.stubGlobal('window', { isSecureContext: true });
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(preflightRemoteArchive('http://127.0.0.1:8765/example.zip')).resolves.toEqual({
+      ok: false,
+      kind: 'network',
+      failure: {
+        code: 'network',
+        detail: 'Blocked mixed content: HTTPS page cannot fetch an HTTP archive',
+      },
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('times out when fetch never resolves', async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((_url: string, init?: RequestInit) => {
+        return new Promise<Response>((_resolve, reject) => {
+          init?.signal?.addEventListener('abort', () => {
+            reject(new DOMException('The operation was aborted.', 'AbortError'));
+          });
+        });
+      }),
+    );
+
+    const pending = preflightRemoteArchive('https://example.test/archive');
+    await vi.advanceTimersByTimeAsync(REMOTE_PREFLIGHT_TIMEOUT_MS);
+    await expect(pending).resolves.toMatchObject({
+      ok: false,
+      kind: 'network',
+      failure: {
+        code: 'network',
+        detail: `Preflight timed out after ${REMOTE_PREFLIGHT_TIMEOUT_MS / 1000}s`,
+      },
+    });
+    vi.useRealTimers();
   });
 });

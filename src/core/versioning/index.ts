@@ -10,7 +10,17 @@ export type {
   ValidationReport,
   ValidationCategory,
 } from './validation';
-export { createReport, BaseLeRobotValidator } from './validation';
+export {
+  createReport,
+  BaseLeRobotValidator,
+  NON_BLOCKING_VALIDATION_CODES,
+  hasBlockingValidationError,
+} from './validation';
+export {
+  resolveV2EpisodeDataPath,
+  findExistingV2Episodes,
+  clampV2EpisodesToExisting,
+} from './episodeDataPresence';
 export {
   getAdapterForVersion,
   getValidatorForVersion,

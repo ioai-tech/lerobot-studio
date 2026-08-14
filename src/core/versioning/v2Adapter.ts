@@ -7,9 +7,13 @@ import type {
 } from './types';
 import { LeRobotVersionAdapter } from './LeRobotVersionAdapter';
 import { formatLeRobotPath } from './pathTemplate';
+import {
+  clampV2EpisodesToExisting,
+  findExistingV2Episodes,
+  resolveV2EpisodeDataPath,
+} from './episodeDataPresence';
 
 const CHUNK_SIZE_DEFAULT = 1000;
-const DEFAULT_DATA_PATH = 'data/chunk-{episode_chunk:03d}/episode_{episode_index:06d}.parquet';
 const DEFAULT_VIDEO_PATH =
   'videos/chunk-{episode_chunk:03d}/{video_key}/episode_{episode_index:06d}.mp4';
 
@@ -56,14 +60,8 @@ export class V2Adapter extends LeRobotVersionAdapter {
     _episodes: EpisodeMetadata[],
     episodeIndex: number,
   ): EpisodeDataPathResult | null {
-    const chunksSize = (info as { chunks_size?: number }).chunks_size ?? CHUNK_SIZE_DEFAULT;
-    const chunkIdx = Math.floor(episodeIndex / chunksSize);
-    const path = formatLeRobotPath(info.data_path || DEFAULT_DATA_PATH, {
-      episode_chunk: chunkIdx,
-      episode_index: episodeIndex,
-    });
     return {
-      path,
+      path: resolveV2EpisodeDataPath(info, episodeIndex),
       startRow: 0,
       endRow: 0, // 0 means "full table" — loader will use table.numRows
     };
@@ -88,10 +86,9 @@ export class V2Adapter extends LeRobotVersionAdapter {
   async loadEpisodes(
     dataSource: DataSource,
     _helpers: MetadataLoadingHelpers,
-    _info?: LeRobotInfo,
+    info?: LeRobotInfo,
   ): Promise<EpisodeMetadata[]> {
     void _helpers;
-    void _info;
     try {
       const text = await dataSource.readText('meta/episodes.jsonl');
       const episodes = text
@@ -132,7 +129,8 @@ export class V2Adapter extends LeRobotVersionAdapter {
         // v2.1 permits datasets without legacy per-episode stats. Training
         // export will reject missing visual stats explicitly when required.
       }
-      return episodes;
+      if (!info) return episodes;
+      return clampV2EpisodesToExisting(await findExistingV2Episodes(dataSource, info, episodes));
     } catch (e) {
       console.warn('Failed to load episodes.jsonl', e);
       return [];

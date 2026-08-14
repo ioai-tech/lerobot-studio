@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { classifyVisualFeatureKey, getAutoLayoutVisualRows } from '@/core';
+import { classifyVisualFeatureKey, getAutoLayoutVisualRows, getVisualMaxPerRow } from '@/core';
 
 describe('visual auto layout', () => {
   it('with >=4 keys, groups by semantic bucket (head vs wrist) then packs rows', () => {
@@ -129,5 +129,11 @@ describe('visual auto layout', () => {
       'observation.images.main_any_name',
       'observation.images.cam_right_eye',
     ]);
+  });
+
+  it('uses 2 cameras per row on a narrow pane and 4 on a wide pane', () => {
+    expect(getVisualMaxPerRow(800)).toBe(2);
+    expect(getVisualMaxPerRow(900)).toBe(4);
+    expect(getVisualMaxPerRow(1280)).toBe(4);
   });
 });

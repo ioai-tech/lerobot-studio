@@ -11,7 +11,13 @@ import type {
   ValidationReport,
   LeRobotVersionCapability,
 } from '@/core';
-import { classifyLeRobotVersion, getAdapterForVersion, getValidatorForVersion } from '@/core';
+import {
+  classifyLeRobotVersion,
+  getAdapterForVersion,
+  getValidatorForVersion,
+  hasBlockingValidationError,
+  NON_BLOCKING_VALIDATION_CODES,
+} from '@/core';
 import { tableFromIPC, Table } from 'apache-arrow';
 import { LRUCache } from '../utils/MediaCache';
 import type { DataSource } from '../datasource/dataSources';
@@ -122,8 +128,10 @@ export class LeRobotDataLoader {
       const validator = getValidatorForVersion(this.info.codebase_version);
       const report = await validator.validate(this._dataSource, this.info, helpers);
       this.validationReport = report;
-      if (report.hasError) {
-        const messages = report.items.filter((i) => i.level === 'error').map((i) => i.message);
+      if (hasBlockingValidationError(report)) {
+        const messages = report.items
+          .filter((i) => i.level === 'error' && !NON_BLOCKING_VALIDATION_CODES.has(i.code ?? ''))
+          .map((i) => i.message);
         throw new Error(`数据集格式校验未通过: ${messages.join('; ')}`);
       }
 

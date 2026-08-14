@@ -135,49 +135,60 @@ export const EpisodeList: React.FC<EpisodeListProps> = ({
     ],
   );
 
-  if (error) {
-    return (
-      <div className="flex h-full flex-col items-center justify-center space-y-2 p-4 text-center">
-        <AlertCircle className="h-8 w-8 text-destructive/70" />
-        <p className="text-sm font-medium text-destructive">{t('sidebar.errorLoading')}</p>
-        <p className="max-w-full break-words text-xs text-muted-foreground">{error}</p>
+  const errorBanner = error ? (
+    <div className="shrink-0 border-b border-destructive/20 bg-destructive/5 px-3 py-2">
+      <div className="flex items-start gap-2">
+        <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-destructive/70" />
+        <div className="min-w-0 space-y-0.5">
+          <p className="text-sm font-medium text-destructive">{t('sidebar.errorLoading')}</p>
+          <p className="max-w-full break-words text-xs text-muted-foreground">{error}</p>
+        </div>
       </div>
-    );
-  }
+    </div>
+  ) : null;
 
   if (filteredEpisodes.length === 0) {
     return (
-      <div className="flex h-full items-center justify-center p-4 text-center text-muted-foreground">
-        {episodes && episodes.length === 0
-          ? t('sidebar.emptyNoDataset')
-          : t('sidebar.emptyNoMatch')}
+      <div className="flex h-full min-h-0 flex-col">
+        {errorBanner}
+        <div className="flex flex-1 items-center justify-center p-4 text-center text-muted-foreground">
+          {episodes && episodes.length === 0
+            ? t('sidebar.emptyNoDataset')
+            : t('sidebar.emptyNoMatch')}
+        </div>
       </div>
     );
   }
 
   if (filteredEpisodes.length >= EPISODE_VIRTUALIZATION_THRESHOLD) {
     return (
-      <List
-        rowCount={filteredEpisodes.length}
-        rowHeight={editMode && !multiSelectMode ? 102 : 61}
-        rowComponent={VirtualEpisodeRow}
-        rowProps={virtualRowProps}
-        rowKey={episodeRowKey}
-        overscanCount={4}
-        className="flex-1 min-h-0 w-full min-w-0 overflow-x-hidden"
-        style={{ height: '100%', width: '100%' }}
-        aria-label={t('sidebar.episodesTitle')}
-      />
+      <div className="flex h-full min-h-0 flex-col">
+        {errorBanner}
+        <List
+          rowCount={filteredEpisodes.length}
+          rowHeight={editMode && !multiSelectMode ? 102 : 61}
+          rowComponent={VirtualEpisodeRow}
+          rowProps={virtualRowProps}
+          rowKey={episodeRowKey}
+          overscanCount={4}
+          className="flex-1 min-h-0 w-full min-w-0 overflow-x-hidden"
+          style={{ height: '100%', width: '100%' }}
+          aria-label={t('sidebar.episodesTitle')}
+        />
+      </div>
     );
   }
 
   return (
-    <ScrollArea className="flex-1 min-h-0 w-full min-w-0">
-      <div className="w-full min-w-0 overflow-x-hidden">
-        {filteredEpisodes.map((item) => (
-          <EpisodeListRow key={item.episode.episode_index} item={item} {...virtualRowProps} />
-        ))}
-      </div>
-    </ScrollArea>
+    <div className="flex h-full min-h-0 flex-col">
+      {errorBanner}
+      <ScrollArea className="flex-1 min-h-0 w-full min-w-0">
+        <div className="w-full min-w-0 overflow-x-hidden">
+          {filteredEpisodes.map((item) => (
+            <EpisodeListRow key={item.episode.episode_index} item={item} {...virtualRowProps} />
+          ))}
+        </div>
+      </ScrollArea>
+    </div>
   );
 };

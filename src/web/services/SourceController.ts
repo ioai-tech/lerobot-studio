@@ -490,6 +490,8 @@ export class SourceController {
       const sample = parsed.sampleId ? await getSampleByIdAsync(parsed.sampleId) : undefined;
       if (!sample) {
         this.beginOpen();
+        const id = parsed.sampleId || parsed.raw;
+        this.deps.showToast?.(this.deps.t('dialogs.samples.unknown', { id }), 'error');
         await this.resetToWelcome(parsed);
         if (parsed.raw) this.syncUrl(parsed.raw, historyMode);
         return;

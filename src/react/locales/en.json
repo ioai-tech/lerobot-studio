@@ -247,6 +247,10 @@
           "message": "Data file does not exist",
           "suggestion": "Generate Parquet data files under data/ per v2 format"
         },
+        "EPISODE_DATA_MISSING": {
+          "message": "{{missing}} of {{total}} episode parquet files are missing",
+          "suggestion": "Download the missing episode parquet files or open a complete dataset"
+        },
         "DATA_FILE_CHECK_FAILED": {
           "message": "Could not check if data file exists",
           "suggestion": "Ensure data/chunk-xxx/episode_xxxxxx.parquet files exist"
@@ -709,7 +713,8 @@
       "requirements": "Requires CORS + Range; signed URLs must be valid",
       "openDirect": "Open/Download Official Samples",
       "preview": "Preview",
-      "download": "Download"
+      "download": "Download",
+      "unknown": "Unknown sample \"{{id}}\". Check the sample id or open a dataset from the list."
     }
   },
   "validation": {

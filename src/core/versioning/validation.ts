@@ -35,6 +35,15 @@ export function createReport(items: ValidationItem[]): ValidationReport {
   return { items, hasError, hasWarning };
 }
 
+/** Health-report errors that still allow opening a playable subset. */
+export const NON_BLOCKING_VALIDATION_CODES = new Set(['EPISODE_DATA_MISSING']);
+
+export function hasBlockingValidationError(report: ValidationReport): boolean {
+  return report.items.some(
+    (item) => item.level === 'error' && !NON_BLOCKING_VALIDATION_CODES.has(item.code ?? ''),
+  );
+}
+
 import type { DataSource } from '../datasource/types';
 import type { LeRobotInfo } from '../types/lerobot';
 import type { MetadataLoadingHelpers } from './types';

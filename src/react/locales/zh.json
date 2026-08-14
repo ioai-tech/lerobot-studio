@@ -244,6 +244,10 @@
           "message": "数据文件不存在",
           "suggestion": "按 v2 格式在 data/ 目录下生成分片 parquet 文件"
         },
+        "EPISODE_DATA_MISSING": {
+          "message": "{{total}} 个 episode 中有 {{missing}} 个 parquet 文件缺失",
+          "suggestion": "补全缺失的 episode parquet，或打开完整数据集"
+        },
         "DATA_FILE_CHECK_FAILED": {
           "message": "无法检查数据文件是否存在",
           "suggestion": "确认 data/chunk-xxx/episode_xxxxxx.parquet 文件已生成"
@@ -706,7 +710,8 @@
       "requirements": "需支持 CORS + Range；签名链接需在有效期内",
       "preview": "预览",
       "download": "下载",
-      "openDirect": "浏览官方样例数据集"
+      "openDirect": "浏览官方样例数据集",
+      "unknown": "未知样例 \"{{id}}\"。请检查样例 id，或从列表中打开数据集。"
     }
   },
   "validation": {

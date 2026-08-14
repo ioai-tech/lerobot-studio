@@ -37,6 +37,8 @@ type TranslateFn = (
 
 const DETAIL_MAX = 220;
 export const REMOTE_ARCHIVE_PROBE_BYTES = 512;
+/** Abort hanging preflight fetches (unreachable host, dropped TCP, etc.). */
+export const REMOTE_PREFLIGHT_TIMEOUT_MS = 20_000;
 /** Disk-backed full downloads are bounded to protect quota and hostile endpoints. */
 export const MAX_FULL_ARCHIVE_DOWNLOAD_BYTES = 2 * 1024 * 1024 * 1024;
 
@@ -139,15 +141,64 @@ function unsupportedArchiveResult(): RemotePreflightResult {
   };
 }
 
+function isInsecureHttpUrl(url: string): boolean {
+  try {
+    return new URL(url).protocol === 'http:';
+  } catch {
+    return false;
+  }
+}
+
+function isSecurePage(): boolean {
+  return typeof window !== 'undefined' && window.isSecureContext === true;
+}
+
+function isTimeoutOrAbort(error: unknown): boolean {
+  if (
+    error instanceof DOMException &&
+    (error.name === 'TimeoutError' || error.name === 'AbortError')
+  ) {
+    return true;
+  }
+  const message = String((error as Error)?.message || error).toLowerCase();
+  return (
+    message.includes('timeout') || message.includes('timed out') || message.includes('aborted')
+  );
+}
+
+function createPreflightSignal(timeoutMs: number): { signal: AbortSignal; cancel: () => void } {
+  const controller = new AbortController();
+  const timer = setTimeout(() => {
+    controller.abort();
+  }, timeoutMs);
+  return {
+    signal: controller.signal,
+    cancel: () => clearTimeout(timer),
+  };
+}
+
 /**
  * 远程压缩包轻量预检：
  * - 统一用 GET + Range（兼容只允许 GET 的签名 URL）
  * - 只读取前几个字节，用响应头和文件魔数推断归档类型，避免整包下载
  */
 export async function preflightRemoteArchive(url: string): Promise<RemotePreflightResult> {
+  if (isSecurePage() && isInsecureHttpUrl(url)) {
+    return {
+      ok: false,
+      kind: 'network',
+      failure: {
+        code: 'network',
+        detail: 'Blocked mixed content: HTTPS page cannot fetch an HTTP archive',
+      },
+    };
+  }
+
+  const { signal, cancel } = createPreflightSignal(REMOTE_PREFLIGHT_TIMEOUT_MS);
   try {
     const rangeRes = await fetch(url, {
       headers: { Range: `bytes=0-${REMOTE_ARCHIVE_PROBE_BYTES - 1}` },
+      signal,
     });
     const contentLength = parseContentLength(rangeRes.headers);
     if (rangeRes.status === 200) {
@@ -193,6 +244,16 @@ export async function preflightRemoteArchive(url: string): Promise<RemotePreflig
     if (!kind) return unsupportedArchiveResult();
     return { ok: true, kind, accessMode: 'range', contentLength };
   } catch (e) {
+    if (isTimeoutOrAbort(e)) {
+      return {
+        ok: false,
+        kind: 'network',
+        failure: {
+          code: 'network',
+          detail: `Preflight timed out after ${REMOTE_PREFLIGHT_TIMEOUT_MS / 1000}s`,
+        },
+      };
+    }
     const msg = clampDetail((e as Error).message || String(e));
     const lower = msg.toLowerCase();
     if (lower.includes('cors')) {
@@ -214,5 +275,7 @@ export async function preflightRemoteArchive(url: string): Promise<RemotePreflig
       kind: 'unknown',
       failure: { code: 'unknown', detail: msg || 'Unknown error' },
     };
+  } finally {
+    cancel();
   }
 }
