@@ -3,6 +3,7 @@ import type { DataSource } from '../datasource/types';
 import type { MetadataLoadingHelpers } from './types';
 import { BaseLeRobotValidator, createReport } from './validation';
 import { classifyLeRobotVersion } from './versionCapability';
+import { findExistingV2Episodes, resolveV2EpisodeDataPath } from './episodeDataPresence';
 
 const INFO_JSON = 'meta/info.json';
 const EPISODES_JSONL = 'meta/episodes.jsonl';
@@ -325,20 +326,44 @@ export class V2FormatValidator extends BaseLeRobotValidator {
       this.pass('episodes', 'task count', `${taskCount} task(s)`, 'Non-negative integer (count)');
     }
 
-    // ── 8. Data file existence (first episode) ──────────────────────────────
-    const chunksVal = typeof chunksSize === 'number' && chunksSize > 0 ? chunksSize : 1000;
-    const firstEpisodeIdx = 0;
-    const chunkIdx = Math.floor(firstEpisodeIdx / chunksVal);
-    const firstDataPath = `data/chunk-${String(chunkIdx).padStart(3, '0')}/episode_${String(firstEpisodeIdx).padStart(6, '0')}.parquet`;
+    // ── 8. Data file existence (all listed episodes) ─────────────────────────
+    const firstEpisodeIdx = episodes[0]?.episode_index ?? 0;
+    const firstDataPath = resolveV2EpisodeDataPath(resolvedInfo, firstEpisodeIdx);
+    const chunkIdx = Math.floor(
+      firstEpisodeIdx / (typeof chunksSize === 'number' && chunksSize > 0 ? chunksSize : 1000),
+    );
     try {
-      const exists = await dataSource.exists(firstDataPath);
-      this.reportExists(
-        exists,
-        firstDataPath,
-        'warning',
-        'DATA_FILE_MISSING',
-        'Generate Parquet data files under data/ per v2 format',
+      const indexedEpisodes = episodes.filter(
+        (ep): ep is typeof ep & { episode_index: number } => typeof ep.episode_index === 'number',
       );
+      const presence = await findExistingV2Episodes(dataSource, resolvedInfo, indexedEpisodes);
+      if (presence.present.length > 0 && presence.missing.length > 0) {
+        this.fail(
+          'file_structure',
+          'episode data files',
+          'EPISODE_DATA_MISSING',
+          '{{missing}} of {{total}} episode parquet files are missing',
+          `${presence.missing.length} missing`,
+          `${episodes.length} present`,
+          'Download the missing episode parquet files or open a complete dataset',
+          { missing: presence.missing.length, total: episodes.length },
+        );
+      } else if (episodes.length > 0 && presence.present.length === 0) {
+        this.reportExists(
+          false,
+          firstDataPath,
+          'warning',
+          'DATA_FILE_MISSING',
+          'Generate Parquet data files under data/ per v2 format',
+        );
+      } else if (presence.present.length > 0) {
+        this.pass(
+          'file_structure',
+          'episode data files',
+          `${presence.present.length} present`,
+          'Every listed episode has a parquet file',
+        );
+      }
     } catch {
       this.warn(
         'file_structure',

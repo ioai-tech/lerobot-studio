@@ -36,7 +36,9 @@ describe('MediaDebugOverlay', () => {
       ),
     );
 
-    expect(markup).toContain('group-hover:opacity-100');
+    expect(markup).toContain('pointer-events-none');
+    expect(markup).toContain('opacity-0');
+    expect(markup).not.toContain('group-hover:opacity-100');
     expect(markup).toContain('flex-col');
     expect(markup).toContain('1280 x 720');
     expect(markup).toContain('h264');

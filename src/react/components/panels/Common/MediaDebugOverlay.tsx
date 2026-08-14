@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/ui';
 import type { MediaDebugMetadata } from '@/core';
@@ -31,6 +31,13 @@ export const MediaDebugOverlay: React.FC<MediaDebugOverlayProps> = ({
   className,
 }) => {
   const { t } = useTranslation();
+  const [hoverArmed, setHoverArmed] = useState(false);
+
+  useEffect(() => {
+    const arm = () => setHoverArmed(true);
+    window.addEventListener('mousemove', arm, { once: true });
+    return () => window.removeEventListener('mousemove', arm);
+  }, []);
 
   if (!metadata) {
     return null;
@@ -67,7 +74,8 @@ export const MediaDebugOverlay: React.FC<MediaDebugOverlayProps> = ({
   return (
     <div
       className={cn(
-        'absolute left-2 top-2 z-10 max-h-[50%] max-w-[min(16rem,calc(100%-1rem))] overflow-y-auto rounded-md border border-white/10 bg-black/70 px-2.5 py-2 text-[11px] text-white opacity-0 shadow-lg backdrop-blur-sm transition-opacity duration-150 group-hover:opacity-100 group-focus-within:opacity-100',
+        'pointer-events-none absolute left-2 top-2 z-10 max-h-[50%] max-w-[min(16rem,calc(100%-1rem))] overflow-y-auto rounded-md border border-white/10 bg-black/70 px-2.5 py-2 text-[11px] text-white opacity-0 shadow-lg backdrop-blur-sm transition-opacity duration-150',
+        hoverArmed && 'group-hover:opacity-100 group-focus-within:opacity-100',
         className,
       )}
     >

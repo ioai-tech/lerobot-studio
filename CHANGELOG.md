@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.0.3
+
+### Patch Changes
+
+- Fix unknown sample URLs, remote archive preflight hangs, camera clipping, stuck media debug overlay, and v2.1 playback into missing episode files.
+
 ## 1.0.2
 
 ### Patch Changes

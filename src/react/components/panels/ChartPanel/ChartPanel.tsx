@@ -152,7 +152,7 @@ const ChartPanelContent: React.FC<ChartPanelProps> = ({ params }) => {
   const { t, i18n } = useTranslation();
   // 使用分离的 context，避免订阅图像/帧状态触发不必要的重渲染
   const { chartData, currentFrames, setFrameIndex, setPlaying } = useLeRobotPlayback();
-  const { subscribeFrameIndex, info, isLoading } = useLeRobotData();
+  const { subscribeFrameIndex, info, isLoading, error } = useLeRobotData();
   const { selectedEpisodeIndex } = useLeRobotSelection();
   const { resolvedTheme } = useTheme();
   const containerRef = useRef<HTMLDivElement>(null);
@@ -1405,7 +1405,9 @@ const ChartPanelContent: React.FC<ChartPanelProps> = ({ params }) => {
         </div>
         {!preparedData && (
           <div className="absolute inset-0">
-            {selectedEpisodeIndex === null && !isLoading ? (
+            {error && !isLoading ? (
+              <PanelEmptyState message={error} />
+            ) : selectedEpisodeIndex === null && !isLoading ? (
               <PanelEmptyState message={t('playback.noData')} />
             ) : (
               <PanelLoadingState message={t('common.loading')} />

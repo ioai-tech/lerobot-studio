@@ -8,7 +8,7 @@ import type { LeRobotFeature } from '@/core';
 import 'dockview-react/dist/styles/dockview.css';
 import { VideoPanel, ImagePanel, ChartPanel, RawPanel, PanelErrorBoundary } from './panels';
 import { PanelTitle } from './PanelTitle';
-import { getAutoLayoutVisualRows } from '@/core';
+import { getAutoLayoutVisualRows, getVisualMaxPerRow } from '@/core';
 import { safeAddPanel } from '../utils/dockviewPanelId';
 
 type DockviewSerializedGrid = {
@@ -75,6 +75,21 @@ export const DockviewLayout: React.FC = () => {
   const { resolvedTheme } = useTheme();
   const { info } = useLeRobotData();
   const dockviewRef = useRef<HTMLDivElement>(null);
+  const [maxPerRow, setMaxPerRow] = useState(4);
+
+  useEffect(() => {
+    const el = dockviewRef.current;
+    if (!el) return;
+    const update = (width: number) => {
+      setMaxPerRow(getVisualMaxPerRow(width));
+    };
+    update(el.clientWidth);
+    const observer = new ResizeObserver((entries) => {
+      update(entries[0]?.contentRect.width ?? el.clientWidth);
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
 
   /**
    * 将当前布局 split size 重新均分，保证三层布局稳定：
@@ -254,7 +269,7 @@ export const DockviewLayout: React.FC = () => {
     const { row1: row1Keys, row2: row2Keys } = getAutoLayoutVisualRows(
       Array.from(visualFeaturesByKey.keys()),
       6,
-      4,
+      maxPerRow,
     );
     const row1Visual = row1Keys
       .map((key) => visualFeaturesByKey.get(key))
@@ -362,7 +377,7 @@ export const DockviewLayout: React.FC = () => {
       row1Visual.map((v) => v.id),
       row2Visual.map((v) => v.id),
     );
-  }, [info, t]);
+  }, [info, t, maxPerRow]);
 
   const onReady = (event: DockviewReadyEvent) => {
     const { api } = event;

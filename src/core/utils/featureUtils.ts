@@ -368,6 +368,13 @@ function getLegacyLayoutVisualRows(
  * - 路数 ≥ 4：按名称语义分桶分行（场景/头部 vs 末端等），桶内仍为非深度优先、left→center→right
  * - 路数少于 4：优先 non-depth 上行、depth 下行（旧行为）
  */
+/** Narrow main panes cannot fit 4 Dockview tiles (100px min each) without clipping. */
+export const NARROW_VISUAL_ROW_WIDTH = 900;
+
+export function getVisualMaxPerRow(containerWidth: number): number {
+  return containerWidth > 0 && containerWidth < NARROW_VISUAL_ROW_WIDTH ? 2 : 4;
+}
+
 export function getAutoLayoutVisualRows(
   keys: string[],
   maxVisual = 6,

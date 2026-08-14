@@ -247,6 +247,10 @@
           "message": "データファイルが存在しません",
           "suggestion": "v2 形式で data/ に Parquet ファイルを生成してください"
         },
+        "EPISODE_DATA_MISSING": {
+          "message": "{{total}} 件中 {{missing}} 件の episode parquet がありません",
+          "suggestion": "欠けている episode parquet を入手するか、完全なデータセットを開いてください"
+        },
         "DATA_FILE_CHECK_FAILED": {
           "message": "データファイルの存在を確認できませんでした",
           "suggestion": "data/chunk-xxx/episode_xxxxxx.parquet が存在することを確認してください"
@@ -711,7 +715,8 @@
       "requirements": "CORS + Range 対応が必要。署名付き URL は有効期限内であること",
       "openDirect": "公式サンプルを開く/ダウンロード",
       "preview": "プレビュー",
-      "download": "ダウンロード"
+      "download": "ダウンロード",
+      "unknown": "不明なサンプル \"{{id}}\" です。サンプル id を確認するか、一覧からデータセットを開いてください。"
     }
   },
   "validation": {

@@ -1,6 +1,7 @@
 import React, { useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { motion } from 'framer-motion';
+import { AlertCircle } from 'lucide-react';
 import { DatasetSourceSelector } from './DatasetSourceSelector';
 import type { SampleDataset } from '@/platform';
 import { isSampleDatasetsConfigured } from '@/platform';
@@ -35,6 +36,12 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
     enabled: samplesConfigured,
   });
   const showSamples = samplesConfigured && (samplesLoading || samples.length > 0);
+  const unknownSampleId =
+    requested?.kind === 'sample' && requested.sampleId && !samplesLoading
+      ? samples.some((s) => s.id === requested.sampleId)
+        ? null
+        : requested.sampleId
+      : null;
   const openedSampleIntentRef = useRef<string | null>(null);
   const onSelectSampleRef = useRef(onSelectSample);
   onSelectSampleRef.current = onSelectSample;
@@ -92,6 +99,13 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
           </p>
         </div>
       </div>
+
+      {unknownSampleId ? (
+        <div className="text-xs text-destructive border border-destructive/30 rounded-md p-3 bg-destructive/5 flex gap-3">
+          <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
+          <p className="font-medium">{t('dialogs.samples.unknown', { id: unknownSampleId })}</p>
+        </div>
+      ) : null}
 
       <DatasetSourceSelector
         onOpenDirectory={onOpenDirectory}

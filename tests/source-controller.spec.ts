@@ -7,6 +7,15 @@ import * as fsPermissions from '../src/platform/utils/fsPermissions.ts';
 import * as archiveFactory from '../src/platform/datasource/ArchiveDataSourceFactory.ts';
 import * as remotePreflight from '../src/platform/datasource/remotePreflight.ts';
 import { parseSourceUrl } from '../src/web/utils/sourceUrl';
+import { getSampleByIdAsync } from '../src/platform/datasource/sampleDatasets';
+
+vi.mock('../src/platform/datasource/sampleDatasets.ts', () => ({
+  getSampleByIdAsync: vi.fn(),
+  getArchiveUrl: (sample: { archiveUrl?: string; url?: string }) =>
+    sample.archiveUrl || sample.url || '',
+  loadSampleDatasets: vi.fn().mockResolvedValue([]),
+  isSampleDatasetsConfigured: vi.fn(() => false),
+}));
 
 vi.mock('../src/platform/utils/handleStore.ts', () => ({
   putHandle: vi.fn().mockResolvedValue(true),
@@ -191,6 +200,21 @@ describe('SourceController initialization', () => {
       { accessMode: 'full' },
     );
     expect(initialize).toHaveBeenCalledOnce();
+  });
+
+  it('toasts and returns to welcome for an unknown sample slug', async () => {
+    vi.mocked(getSampleByIdAsync).mockResolvedValueOnce(undefined);
+    const { deps } = createDeps();
+    const controller = new SourceController(deps);
+
+    await controller.openFromUrl('sample://dualairbot_folding');
+
+    expect(deps.showToast).toHaveBeenCalledWith('dialogs.samples.unknown', 'error');
+    expect(deps.reset).toHaveBeenCalled();
+    expect(deps.setWelcomeRequest).toHaveBeenCalledWith(
+      expect.objectContaining({ kind: 'sample', sampleId: 'dualairbot_folding' }),
+    );
+    expect(archiveFactory.createArchiveDataSourceFromUrl).not.toHaveBeenCalled();
   });
 });
 
