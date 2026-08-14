@@ -141,14 +141,6 @@ function unsupportedArchiveResult(): RemotePreflightResult {
   };
 }
 
-function isInsecureHttpUrl(url: string): boolean {
-  try {
-    return new URL(url).protocol === 'http:';
-  } catch {
-    return false;
-  }
-}
-
 function isTimeoutOrAbort(error: unknown): boolean {
   if (
     error instanceof DOMException &&
@@ -179,20 +171,31 @@ function createPreflightSignal(timeoutMs: number): { signal: AbortSignal; cancel
  * - 只读取前几个字节，用响应头和文件魔数推断归档类型，避免整包下载
  */
 export async function preflightRemoteArchive(url: string): Promise<RemotePreflightResult> {
-  if (isInsecureHttpUrl(url)) {
+  let httpsUrl: string;
+  try {
+    const parsed = new URL(url);
+    if (parsed.protocol !== 'https:') {
+      return {
+        ok: false,
+        kind: 'network',
+        failure: {
+          code: 'network',
+          detail: 'Blocked insecure HTTP archive URL; use HTTPS',
+        },
+      };
+    }
+    httpsUrl = parsed.toString();
+  } catch {
     return {
       ok: false,
-      kind: 'network',
-      failure: {
-        code: 'network',
-        detail: 'Blocked insecure HTTP archive URL; use HTTPS',
-      },
+      kind: 'unknown',
+      failure: { code: 'unknown', detail: 'Invalid archive URL' },
     };
   }
 
   const { signal, cancel } = createPreflightSignal(REMOTE_PREFLIGHT_TIMEOUT_MS);
   try {
-    const rangeRes = await fetch(url, {
+    const rangeRes = await fetch(httpsUrl, {
       headers: { Range: `bytes=0-${REMOTE_ARCHIVE_PROBE_BYTES - 1}` },
       signal,
     });

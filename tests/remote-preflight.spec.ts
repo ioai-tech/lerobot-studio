@@ -324,6 +324,18 @@ describe('preflightRemoteArchive', () => {
     );
   });
 
+  it('rejects invalid archive URLs without fetching', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(preflightRemoteArchive('not-a-url')).resolves.toEqual({
+      ok: false,
+      kind: 'unknown',
+      failure: { code: 'unknown', detail: 'Invalid archive URL' },
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   it('rejects HTTP archive URLs without fetching', async () => {
     const fetchMock = vi.fn();
     vi.stubGlobal('fetch', fetchMock);
