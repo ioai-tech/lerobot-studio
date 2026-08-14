@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.1.0
+
+### Minor Changes
+
+- Add `createRemoteManifestDataSource` and `RemoteFileEntry` so hosts can embed the viewer with per-file HTTP(S) URLs. Manifest sources now implement `listPaths()` so v3 episode shards can be discovered without guessing sequential paths.
+
 ## 1.0.3
 
 ### Patch Changes

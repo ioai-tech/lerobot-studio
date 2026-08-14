@@ -199,6 +199,24 @@ describe('remote manifest limits', () => {
     ).toThrowError(expect.objectContaining({ code: 'TOTAL_SIZE_LIMIT' }));
   });
 
+  it('lists normalized manifest paths for v3 shard discovery', async () => {
+    const source = new RemoteManifestDataSource([
+      {
+        logicalPath: './meta/episodes/chunk-000/file-000.parquet',
+        presignedUrl: 'https://example.test/ep0',
+      },
+      {
+        logicalPath: 'meta/info.json',
+        presignedUrl: 'https://example.test/info',
+      },
+    ]);
+
+    await expect(source.listPaths()).resolves.toEqual([
+      'meta/episodes/chunk-000/file-000.parquet',
+      'meta/info.json',
+    ]);
+  });
+
   it('stops an unknown-length response before a large allocation', async () => {
     let cancelled = false;
     const body = new ReadableStream<Uint8Array>({

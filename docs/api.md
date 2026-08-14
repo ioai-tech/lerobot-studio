@@ -21,6 +21,7 @@ import '@ioai/lerobot-studio/style.css';
 
 - `createArchiveDataSourceFromFile` — local ZIP / TAR / TAR.GZ
 - `createArchiveDataSourceFromUrl` — remote archive you want to reuse
+- `createRemoteManifestDataSource` — host-owned list of per-file HTTP(S) URLs
 
 The viewer supports in-session episode changes when the dataset allows them. `onExport` is a callback for your host UI; it does not export anything by itself.
 

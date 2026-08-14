@@ -7,8 +7,8 @@
 请从包根目录导入，详见 [API](./api)：
 
 - `LeRobotViewer`
-- `createArchiveDataSourceFromFile` / `createArchiveDataSourceFromUrl`
-- 公开类型
+- `createArchiveDataSourceFromFile` / `createArchiveDataSourceFromUrl` / `createRemoteManifestDataSource`
+- 公开类型（`RemoteFileEntry`、`DataSource`、查看器属性）
 - `@ioai/lerobot-studio/style.css`
 
 `onExport` 是宿主按钮钩子，不是导出引擎。

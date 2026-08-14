@@ -21,6 +21,7 @@ import '@ioai/lerobot-studio/style.css';
 
 - `createArchiveDataSourceFromFile` — 本地 ZIP / TAR / TAR.GZ
 - `createArchiveDataSourceFromUrl` — 要复用的远程归档
+- `createRemoteManifestDataSource` — 宿主已签名的逐文件 HTTP(S) URL 清单
 
 数据集支持时，查看器可以在当前会话中修改 Episode。`onExport` 只是宿主 UI 的回调，不会自行导出数据。
 

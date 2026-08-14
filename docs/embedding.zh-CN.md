@@ -12,7 +12,7 @@
 
 ## 安装
 
-`@ioai/lerobot-studio` 尚未发布到 npm。首次发布后，可通过以下命令安装：
+安装已发布的包：
 
 ```bash
 npm install @ioai/lerobot-studio
@@ -71,6 +71,30 @@ export function LocalDatasetViewer({ file }: { file: File }) {
 
 npm 查看器不包含本地文件或文件夹选择器。如果应用需要该流程，请使用独立应用。
 
+## 展示远程文件清单
+
+当宿主已经为单个数据集文件签好名、且不能整包下载归档时，使用这个辅助函数。`getObjectUrl` 会直接返回远程 URL，浏览器可以通过 Range 请求流式播放媒体。
+
+```tsx
+import {
+  createRemoteManifestDataSource,
+  LeRobotViewer,
+  type RemoteFileEntry,
+} from '@ioai/lerobot-studio';
+
+export function SignedManifestViewer({ files }: { files: RemoteFileEntry[] }) {
+  const dataSource = createRemoteManifestDataSource(files);
+
+  return (
+    <div style={{ height: 720 }}>
+      <LeRobotViewer dataSource={dataSource} theme="system" />
+    </div>
+  );
+}
+```
+
+每条记录需要逻辑路径和 HTTP(S) URL。可选的 `contentType` 与 `sizeBytes` 会帮助查看器和内置安全限额。
+
 ## Next.js
 
 在 Client Component 中加载查看器，并关闭 SSR：
@@ -90,16 +114,16 @@ const LeRobotViewer = dynamic(
 
 常用属性：
 
-| 属性                      | 作用                                 |
-| ------------------------- | ------------------------------------ |
-| `dataSource`              | 远程归档 URL 或自定义 `DataSource`   |
-| `theme`                   | `light`、`dark` 或 `system`          |
-| `language`                | `en`、`zh` 或 `ja`                   |
-| `showSidebar`             | 显示或隐藏 Episode 侧栏              |
-| `showPlaybackBar`         | 显示或隐藏播放控制栏                 |
-| `enableKeyboardShortcuts` | 启用或关闭查看器快捷键               |
-| `onFatalError`            | 接收加载失败信息，并自行显示错误状态 |
-| `onExport`                | 用户点击宿主导出按钮时的回调         |
+| 属性                      | 作用                                            |
+| ------------------------- | ----------------------------------------------- |
+| `dataSource`              | 远程归档 URL、远程文件清单或自定义 `DataSource` |
+| `theme`                   | `light`、`dark` 或 `system`                     |
+| `language`                | `en`、`zh` 或 `ja`                              |
+| `showSidebar`             | 显示或隐藏 Episode 侧栏                         |
+| `showPlaybackBar`         | 显示或隐藏播放控制栏                            |
+| `enableKeyboardShortcuts` | 启用或关闭查看器快捷键                          |
+| `onFatalError`            | 接收加载失败信息，并自行显示错误状态            |
+| `onExport`                | 用户点击宿主导出按钮时的回调                    |
 
 `onExport` 只是回调，不包含独立应用中的导出引擎。
 
