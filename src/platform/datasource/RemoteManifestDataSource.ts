@@ -1,4 +1,4 @@
-import type { DataSource, ProgressHandler } from './dataSources';
+import type { DataSource, ProgressHandler } from '../../core/datasource/types';
 import {
   assertMaterializable,
   DataSourceSafetyError,
@@ -7,10 +7,15 @@ import {
   validateUntrustedPath,
 } from './inputSafety';
 
+/** One host-signed file in a remote dataset manifest. */
 export interface RemoteFileEntry {
+  /** Logical path inside the LeRobot dataset, such as `meta/info.json`. */
   logicalPath: string;
+  /** HTTP(S) URL the browser can fetch or stream. */
   presignedUrl: string;
+  /** Optional MIME type for the file. */
   contentType?: string | null;
+  /** Optional size in bytes; used by safety limits when present. */
   sizeBytes?: number | null;
 }
 
@@ -81,6 +86,10 @@ export class RemoteManifestDataSource implements DataSource {
 
   async exists(path: string): Promise<boolean> {
     return this.entryMap.has(normalizePath(path));
+  }
+
+  async listPaths(): Promise<string[]> {
+    return [...this.entryMap.keys()];
   }
 
   async readText(path: string): Promise<string> {

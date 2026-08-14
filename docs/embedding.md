@@ -12,7 +12,7 @@ Use `@ioai/lerobot-studio` when you want to show a LeRobot dataset inside your o
 
 ## Install
 
-`@ioai/lerobot-studio` has not yet been published to npm. After its first registry release, install it with:
+Install the published package:
 
 ```bash
 npm install @ioai/lerobot-studio
@@ -71,6 +71,30 @@ export function LocalDatasetViewer({ file }: { file: File }) {
 
 The npm viewer does not include a local file or folder picker. Use the standalone application when your application needs that flow.
 
+## Show a remote file manifest
+
+Use this when the host already signed individual dataset files and must not download a full archive. `getObjectUrl` returns the remote URL so the browser can stream media with Range requests.
+
+```tsx
+import {
+  createRemoteManifestDataSource,
+  LeRobotViewer,
+  type RemoteFileEntry,
+} from '@ioai/lerobot-studio';
+
+export function SignedManifestViewer({ files }: { files: RemoteFileEntry[] }) {
+  const dataSource = createRemoteManifestDataSource(files);
+
+  return (
+    <div style={{ height: 720 }}>
+      <LeRobotViewer dataSource={dataSource} theme="system" />
+    </div>
+  );
+}
+```
+
+Each entry needs a logical dataset path and an HTTP(S) URL. Optional `contentType` and `sizeBytes` help the viewer and the built-in safety limits.
+
 ## Next.js
 
 Load the viewer from a Client Component and disable SSR:
@@ -90,16 +114,16 @@ const LeRobotViewer = dynamic(
 
 Common props include:
 
-| Prop                      | Use                                                     |
-| ------------------------- | ------------------------------------------------------- |
-| `dataSource`              | Remote archive URL or a custom `DataSource`             |
-| `theme`                   | `light`, `dark`, or `system`                            |
-| `language`                | `en`, `zh`, or `ja`                                     |
-| `showSidebar`             | Show or hide the episode sidebar                        |
-| `showPlaybackBar`         | Show or hide playback controls                          |
-| `enableKeyboardShortcuts` | Enable or disable viewer shortcuts                      |
-| `onFatalError`            | Receive a loading error and render your own error state |
-| `onExport`                | Respond when a user clicks your export button           |
+| Prop                      | Use                                                                |
+| ------------------------- | ------------------------------------------------------------------ |
+| `dataSource`              | Remote archive URL, remote file manifest, or a custom `DataSource` |
+| `theme`                   | `light`, `dark`, or `system`                                       |
+| `language`                | `en`, `zh`, or `ja`                                                |
+| `showSidebar`             | Show or hide the episode sidebar                                   |
+| `showPlaybackBar`         | Show or hide playback controls                                     |
+| `enableKeyboardShortcuts` | Enable or disable viewer shortcuts                                 |
+| `onFatalError`            | Receive a loading error and render your own error state            |
+| `onExport`                | Respond when a user clicks your export button                      |
 
 `onExport` is a callback only. It does not include the standalone app's export engine.
 

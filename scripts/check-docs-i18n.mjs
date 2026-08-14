@@ -18,6 +18,7 @@ const SKIP_DIRS = new Set([
   '.vitepress',
   'coverage',
   'temp',
+  '.changeset',
 ]);
 
 /** @type {{ exceptions: Array<{ path: string; zhEntry?: string | null }>; skipScanDirs?: Array<{ dir: string }> }} */

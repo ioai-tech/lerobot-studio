@@ -13,6 +13,9 @@ export function createArchiveDataSourceFromFile(file: File): DataSource;
 export function createArchiveDataSourceFromUrl(url: string): DataSource;
 
 // @public
+export function createRemoteManifestDataSource(files: RemoteFileEntry[]): DataSource;
+
+// @public
 export interface DataSource {
     clear(): void | Promise<void>;
     exists(path: string): Promise<boolean>;
@@ -63,6 +66,14 @@ export interface ProgressInfo {
     message?: string;
     phase: LoadingPhase;
     total?: number;
+}
+
+// @public
+export interface RemoteFileEntry {
+    contentType?: string | null;
+    logicalPath: string;
+    presignedUrl: string;
+    sizeBytes?: number | null;
 }
 
 ```

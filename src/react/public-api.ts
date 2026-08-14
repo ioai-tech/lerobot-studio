@@ -8,6 +8,10 @@ import {
   createArchiveDataSourceFromFile as createArchiveDataSourceFromFileInternal,
   createArchiveDataSourceFromUrl as createArchiveDataSourceFromUrlInternal,
 } from '../platform/datasource/ArchiveDataSourceFactory';
+import {
+  RemoteManifestDataSource,
+  type RemoteFileEntry,
+} from '../platform/datasource/RemoteManifestDataSource';
 
 export { LeRobotViewer } from './components/LeRobotViewer';
 export type {
@@ -21,6 +25,7 @@ export type {
   ProgressHandler,
   ProgressInfo,
 } from '../core/datasource/types';
+export type { RemoteFileEntry };
 
 /** Create a viewer data source for a local ZIP, TAR, or TAR.GZ archive. */
 export function createArchiveDataSourceFromFile(file: File): DataSource {
@@ -34,4 +39,15 @@ export function createArchiveDataSourceFromFile(file: File): DataSource {
  */
 export function createArchiveDataSourceFromUrl(url: string): DataSource {
   return createArchiveDataSourceFromUrlInternal(url);
+}
+
+/**
+ * Create a viewer data source from a host-owned list of per-file HTTP(S) URLs.
+ *
+ * Use this when the host already signed individual dataset files and must not
+ * download a full archive. `getObjectUrl` returns the remote URL so the
+ * browser can stream media with Range requests.
+ */
+export function createRemoteManifestDataSource(files: RemoteFileEntry[]): DataSource {
+  return new RemoteManifestDataSource(files);
 }

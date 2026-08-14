@@ -7,8 +7,8 @@
 Import from the package root only — see [API](./api.md):
 
 - `LeRobotViewer`
-- `createArchiveDataSourceFromFile` / `createArchiveDataSourceFromUrl`
-- public types
+- `createArchiveDataSourceFromFile` / `createArchiveDataSourceFromUrl` / `createRemoteManifestDataSource`
+- public types (`RemoteFileEntry`, `DataSource`, viewer props)
 - `@ioai/lerobot-studio/style.css`
 
 `onExport` is a host button hook, not an export engine.
