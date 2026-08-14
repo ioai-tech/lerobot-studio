@@ -149,10 +149,6 @@ function isInsecureHttpUrl(url: string): boolean {
   }
 }
 
-function isSecurePage(): boolean {
-  return typeof window !== 'undefined' && window.isSecureContext === true;
-}
-
 function isTimeoutOrAbort(error: unknown): boolean {
   if (
     error instanceof DOMException &&
@@ -183,13 +179,13 @@ function createPreflightSignal(timeoutMs: number): { signal: AbortSignal; cancel
  * - 只读取前几个字节，用响应头和文件魔数推断归档类型，避免整包下载
  */
 export async function preflightRemoteArchive(url: string): Promise<RemotePreflightResult> {
-  if (isSecurePage() && isInsecureHttpUrl(url)) {
+  if (isInsecureHttpUrl(url)) {
     return {
       ok: false,
       kind: 'network',
       failure: {
         code: 'network',
-        detail: 'Blocked mixed content: HTTPS page cannot fetch an HTTP archive',
+        detail: 'Blocked insecure HTTP archive URL; use HTTPS',
       },
     };
   }

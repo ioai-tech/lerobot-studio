@@ -324,8 +324,7 @@ describe('preflightRemoteArchive', () => {
     );
   });
 
-  it('rejects mixed-content HTTP URLs on a secure page without fetching', async () => {
-    vi.stubGlobal('window', { isSecureContext: true });
+  it('rejects HTTP archive URLs without fetching', async () => {
     const fetchMock = vi.fn();
     vi.stubGlobal('fetch', fetchMock);
 
@@ -334,7 +333,7 @@ describe('preflightRemoteArchive', () => {
       kind: 'network',
       failure: {
         code: 'network',
-        detail: 'Blocked mixed content: HTTPS page cannot fetch an HTTP archive',
+        detail: 'Blocked insecure HTTP archive URL; use HTTPS',
       },
     });
     expect(fetchMock).not.toHaveBeenCalled();
