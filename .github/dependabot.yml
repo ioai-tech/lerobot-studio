@@ -4,12 +4,20 @@ updates:
     directory: /
     schedule:
       interval: weekly
-    open-pull-requests-limit: 10
+    open-pull-requests-limit: 5
+    groups:
+      npm-minor-and-patch:
+        applies-to: version-updates
+        patterns:
+          - '*'
+        update-types:
+          - minor
+          - patch
   - package-ecosystem: github-actions
     directory: /
     schedule:
       interval: weekly
-    open-pull-requests-limit: 10
+    open-pull-requests-limit: 5
     groups:
       github-actions:
         patterns:
@@ -19,8 +27,16 @@ updates:
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
+    groups:
+      docker:
+        patterns:
+          - '*'
   - package-ecosystem: docker
     directory: /tests/npm-consumer
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
+    groups:
+      docker:
+        patterns:
+          - '*'
