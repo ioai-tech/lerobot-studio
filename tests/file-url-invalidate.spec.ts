@@ -17,6 +17,8 @@ vi.mock('../src/platform/workers/workerManager.ts', () => ({
 }));
 
 import { LeRobotDataLoader } from '@/platform';
+import { sanitizeMp4ForBrowserSeek } from '../src/platform/utils/mp4SeekSanitizer';
+import { buildBrokenAvcMp4 } from './helpers/brokenAvcMp4';
 
 describe('LeRobotDataLoader.invalidateFileUrl', () => {
   it('clears loader cache and forwards to DataSource.invalidateObjectUrl', async () => {
@@ -53,6 +55,38 @@ describe('LeRobotDataLoader.invalidateFileUrl', () => {
     const u2 = await loader.getFileUrl(path);
     expect(getObjectUrl).toHaveBeenCalledTimes(2);
     expect(u2).not.toBe(u1);
+
+    await loader.dispose();
+  });
+
+  it('serves a sanitized blob URL when the MP4 sync table marks P-frames as keyframes', async () => {
+    const broken = buildBrokenAvcMp4();
+    const sanitized = sanitizeMp4ForBrowserSeek(broken);
+    expect(sanitized).not.toBe(broken);
+
+    const created: string[] = [];
+    const source: DataSource = {
+      exists: async () => true,
+      readText: async () => '',
+      readBytes: async () => broken,
+      getObjectUrl: async () => {
+        const url = URL.createObjectURL(new Blob([broken], { type: 'video/mp4' }));
+        created.push(url);
+        return url;
+      },
+      clear: async () => undefined,
+      invalidateObjectUrl: async () => {
+        const url = created.shift();
+        if (url) URL.revokeObjectURL(url);
+      },
+    };
+
+    const loader = new LeRobotDataLoader(source);
+    const playable = await loader.getFileUrl(
+      'videos/observation.images.head/chunk-000/file-000.mp4',
+    );
+    expect(playable).not.toBe(created[0]);
+    expect(playable.startsWith('blob:')).toBe(true);
 
     await loader.dispose();
   });

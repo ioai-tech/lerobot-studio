@@ -45,6 +45,12 @@
 
 ---
 
+## 视频停在第一帧
+
+部分来自 macOS VideoToolbox 或 OpenCV 的 H.264 文件会把预测帧标成关键帧。查看器只在播放时重写 MP4 的 sync sample 表，不会改磁盘上的原文件。图表和原始数据仍按 parquet 时间戳对齐。导出写入的是原始字节。
+
+---
+
 ## Next.js 出现服务端错误
 
 请使用 Client Component 和 `dynamic(..., { ssr: false })`。该包只能在浏览器中运行。见 [嵌入指南](./embedding)。

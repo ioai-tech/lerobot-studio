@@ -45,6 +45,12 @@ Playback depends on the video codec and browser. Try the file in the target brow
 
 ---
 
+## Video stays on the first frame
+
+Some H.264 files from macOS VideoToolbox or OpenCV mark predicted frames as keyframes. The viewer rewrites the MP4 sync-sample table for playback only and does not change the files on disk. Charts and raw data still follow the parquet timestamps. Export writes the original bytes.
+
+---
+
 ## Next.js reports a server-side error
 
 Use a Client Component and `dynamic(..., { ssr: false })`. This package runs only in the browser. See [Embedding Guide](./embedding.md).

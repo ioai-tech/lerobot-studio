@@ -20,6 +20,7 @@ import {
 } from '@/core';
 import { tableFromIPC, Table } from 'apache-arrow';
 import { LRUCache } from '../utils/MediaCache';
+import { isMp4PlaybackPath, sanitizeMp4ForBrowserSeek } from '../utils/mp4SeekSanitizer';
 import type { DataSource } from '../datasource/dataSources';
 import type { Remote } from 'comlink';
 import { createParquetWorker, terminateWorker } from '../workers/workerManager';
@@ -60,6 +61,8 @@ export class LeRobotDataLoader {
   private fileBytesCache: FileBytesCache | null = null;
   private pendingParses: Map<string, Promise<Table>> = new Map();
   private fileUrlLoading: Map<string, Promise<string>> = new Map();
+  /** Playback-only copies with a corrected MP4 sync table; this cache owns the blob URLs. */
+  private sanitizedVideoUrls: LRUCache<string, string>;
 
   constructor(dataSource: DataSource) {
     this._dataSource = dataSource;
@@ -67,6 +70,7 @@ export class LeRobotDataLoader {
     this.worker = createParquetWorker();
     // blob URL 由 DataSource 创建与 revoke；本层仅做 path→URL 查表，避免双层 LRU 互相 revoke 导致失效 URL
     this.fileUrlCache = new LRUCache<string, string>(50, false);
+    this.sanitizedVideoUrls = new LRUCache<string, string>(8, true);
   }
 
   get dataSource(): DataSource {
@@ -78,6 +82,7 @@ export class LeRobotDataLoader {
     this.disposed = true;
     try {
       this.fileUrlCache.clear();
+      this.sanitizedVideoUrls.clear();
       this.fileUrlLoading.clear();
       this.pendingParses.clear();
     } catch {
@@ -439,6 +444,10 @@ export class LeRobotDataLoader {
   }
 
   async getFileUrl(path: string): Promise<string> {
+    const sanitizedUrl = this.sanitizedVideoUrls.get(path);
+    if (sanitizedUrl) {
+      return sanitizedUrl;
+    }
     const cachedUrl = this.fileUrlCache.get(path);
     if (cachedUrl) {
       return cachedUrl;
@@ -451,8 +460,11 @@ export class LeRobotDataLoader {
 
     const promise = (async () => {
       const url = await this._dataSource.getObjectUrl(path);
-      this.fileUrlCache.set(path, url);
-      return url;
+      const playable = await this.maybeSanitizePlaybackVideo(path, url);
+      if (playable === url) {
+        this.fileUrlCache.set(path, playable);
+      }
+      return playable;
     })();
     this.fileUrlLoading.set(path, promise);
 
@@ -469,8 +481,22 @@ export class LeRobotDataLoader {
    */
   async invalidateFileUrl(path: string): Promise<void> {
     this.fileUrlCache.delete(path);
+    this.sanitizedVideoUrls.delete(path);
     this.fileUrlLoading.delete(path);
     await this._dataSource.invalidateObjectUrl?.(path);
+  }
+
+  private async maybeSanitizePlaybackVideo(path: string, url: string): Promise<string> {
+    if (!isMp4PlaybackPath(path)) return url;
+    if (!url.startsWith('blob:')) return url;
+    const bytes = await this._dataSource.readBytes(path);
+    const sanitized = sanitizeMp4ForBrowserSeek(bytes);
+    if (sanitized === bytes) return url;
+    const copy = new Uint8Array(sanitized.byteLength);
+    copy.set(sanitized);
+    const playable = URL.createObjectURL(new Blob([copy], { type: 'video/mp4' }));
+    this.sanitizedVideoUrls.set(path, playable);
+    return playable;
   }
 
   /**
@@ -483,6 +509,7 @@ export class LeRobotDataLoader {
 
   clearCache(): void {
     this.fileUrlCache.clear();
+    this.sanitizedVideoUrls.clear();
     this.fileUrlLoading.clear();
     this.pendingParses.clear();
     this.parsedFileCache = null;
