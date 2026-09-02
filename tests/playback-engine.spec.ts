@@ -120,6 +120,26 @@ describe('PlaybackEngine', () => {
     engine.dispose();
   });
 
+  it('holds at the last frame and skips advancing when annotation asks to hold', () => {
+    const onNaturalEnd = vi.fn();
+    const state = callbacks({
+      getFrameCount: () => 2,
+      getFrameIndex: () => 1,
+      shouldHoldAtEpisodeEnd: () => true,
+      onNaturalEnd,
+    });
+    const engine = new PlaybackEngine(state);
+    engine.start();
+    (engine as any).tick(1);
+    (engine as any).tick(40);
+
+    expect(state.onStop).toHaveBeenCalledOnce();
+    expect(onNaturalEnd).toHaveBeenCalledOnce();
+    expect(state.onAdvanceEpisode).not.toHaveBeenCalled();
+    expect(state.onResumeAfterEpisode).not.toHaveBeenCalled();
+    engine.dispose();
+  });
+
   it('skips a deleted sequential episode before requesting the next load', async () => {
     const state = callbacks({ getDeletedEpisodes: () => new Set([1]) });
     const engine = new PlaybackEngine(state);

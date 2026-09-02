@@ -81,16 +81,15 @@ export interface LeRobotSubtaskContextType {
   currentSegments: SubtaskSegment[];
   knownLabels: string[];
   coverage: SubtaskCoverage;
-  pendingStart: number | null;
   pendingRange: PendingSubtaskRange | null;
-  labelAtFrame: (frameIndex: number) => string | null;
-  markStart: (frameIndex: number) => void;
-  markEnd: (frameIndex: number) => boolean;
+  endAtPlayhead: (frameIndex: number) => boolean;
+  beginPendingRange: (startFrame: number, endFrame: number) => boolean;
   cancelPending: () => void;
-  commitPending: (label: string) => void;
+  clearPendingAnnotation: () => void;
+  commitPending: (label: string, range?: PendingSubtaskRange | null) => void;
   updateSegment: (index: number, segment: SubtaskSegment) => void;
+  replaceEpisodeSegments: (segments: SubtaskSegment[]) => void;
   removeSegment: (index: number) => void;
-  jumpToFrame: (frameIndex: number) => void;
 }
 
 /** Presentation-only UI state (dialogs), kept out of domain contexts */
@@ -99,6 +98,9 @@ export interface LeRobotUiContextType {
   setHealthDialogOpen: (open: boolean) => void;
   subtaskDialogOpen: boolean;
   setSubtaskDialogOpen: (open: boolean) => void;
+  /** Episode/subtask mutation chrome. Off by default; pause-to-label is gated on this. */
+  episodeEditMode: boolean;
+  setEpisodeEditMode: (open: boolean) => void;
 }
 
 /**

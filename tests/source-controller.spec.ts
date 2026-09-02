@@ -25,6 +25,7 @@ vi.mock('../src/platform/utils/handleStore.ts', () => ({
 }));
 
 vi.mock('../src/platform/utils/fsPermissions.ts', () => ({
+  canUseFileSystemAccess: vi.fn(() => true),
   supportsHandlePersistence: vi.fn(() => true),
   verifyPermission: vi.fn(),
 }));
@@ -91,10 +92,12 @@ describe('SourceController initialization', () => {
         pushState: vi.fn(),
         replaceState: vi.fn(),
       },
+      isSecureContext: true,
       showDirectoryPicker: vi.fn(),
       showOpenFilePicker: vi.fn(),
     });
     vi.mocked(handleStore.putHandle).mockResolvedValue(true);
+    vi.mocked(fsPermissions.canUseFileSystemAccess).mockReturnValue(true);
     vi.mocked(fsPermissions.supportsHandlePersistence).mockReturnValue(true);
   });
 
@@ -229,9 +232,11 @@ describe('SourceController restoreFromHistory', () => {
         pushState: vi.fn(),
         replaceState: vi.fn(),
       },
+      isSecureContext: true,
       showDirectoryPicker: vi.fn(),
       showOpenFilePicker: vi.fn(),
     });
+    vi.mocked(fsPermissions.canUseFileSystemAccess).mockReturnValue(true);
     vi.mocked(fsPermissions.supportsHandlePersistence).mockReturnValue(true);
   });
 
@@ -343,6 +348,55 @@ describe('SourceController restoreFromHistory', () => {
     expect(deps.showToast).toHaveBeenCalledWith('source.restoreHandleMissing', 'warning');
     expect(window.showDirectoryPicker).toHaveBeenCalled();
   });
+
+  it('does not call showDirectoryPicker when File System Access is unsafe', async () => {
+    const { deps } = createDeps();
+    const controller = new SourceController(deps);
+    vi.mocked(fsPermissions.canUseFileSystemAccess).mockReturnValue(false);
+    vi.mocked(fsPermissions.supportsHandlePersistence).mockReturnValue(false);
+
+    const file = new File(['{}'], 'info.json');
+    Object.defineProperty(file, 'webkitRelativePath', { value: 'dataset-root/meta/info.json' });
+    const input = {
+      type: '',
+      multiple: false,
+      style: { display: '' },
+      files: [file] as unknown as FileList,
+      setAttribute: vi.fn(),
+      click() {
+        this.onchange?.();
+      },
+      onchange: null as ((this: unknown) => void) | null,
+      oncancel: null,
+    };
+    vi.stubGlobal('document', {
+      createElement: (tag: string) => {
+        if (tag !== 'input') throw new Error(`unexpected element ${tag}`);
+        return input;
+      },
+      body: {
+        contains: () => true,
+        appendChild: vi.fn(),
+        removeChild: vi.fn(),
+      },
+    });
+
+    vi.mocked(handleStore.getHandle).mockResolvedValue(null);
+
+    const item: HistoryItem = {
+      id: 'directory:folder://dataset-root',
+      kind: 'directory',
+      label: 'dataset-root',
+      payload: { path: 'dataset-root' },
+      openedAt: Date.now(),
+      hasHandle: true,
+    };
+
+    await controller.restoreFromHistory(item);
+
+    expect(window.showDirectoryPicker).not.toHaveBeenCalled();
+    expect(deps.showToast).toHaveBeenCalledWith('source.insecureOriginPickerFallback', 'info');
+  });
 });
 
 describe('SourceController tryRestoreFromUrl', () => {
@@ -350,7 +404,9 @@ describe('SourceController tryRestoreFromUrl', () => {
     vi.stubGlobal('window', {
       location: { search: '', pathname: '/lerobot' },
       history: { pushState: vi.fn(), replaceState: vi.fn() },
+      isSecureContext: true,
     });
+    vi.mocked(fsPermissions.canUseFileSystemAccess).mockReturnValue(true);
     vi.mocked(fsPermissions.supportsHandlePersistence).mockReturnValue(true);
   });
 

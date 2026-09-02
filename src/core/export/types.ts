@@ -29,6 +29,11 @@ export interface ExportOptions {
   targetVersion?: TargetVersion;
   includeVideos: boolean;
   includeData: boolean;
+  /**
+   * UI passes true only when "Include subtasks" is checked.
+   * `false` omits subtask files. Omitted keeps auto-include for existing callers.
+   */
+  includeSubtasks?: boolean;
   onProgress?: (progress: ExportProgress) => void;
   /** When aborted, export will throw DOMException with name 'AbortError'. */
   signal?: AbortSignal;

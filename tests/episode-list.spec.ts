@@ -49,5 +49,6 @@ describe('EpisodeList', () => {
     expect(markup).toContain('sidebar.selectEpisode:0');
     expect(markup).toContain('sidebar.selectEpisode:1');
     expect(markup).not.toContain('sidebar.emptyNoDataset');
+    expect(markup).not.toContain('subtask.listTitle');
   });
 });

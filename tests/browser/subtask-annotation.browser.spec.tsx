@@ -24,9 +24,10 @@ function waitFor(predicate: () => boolean, timeoutMs = 30_000): Promise<void> {
 }
 
 function segmentTitles(host: HTMLElement): string[] {
-  return Array.from(host.querySelectorAll('li button[title]')).map(
-    (element) => element.getAttribute('title') ?? '',
-  );
+  return Array.from(host.querySelectorAll('[aria-label="Subtasks"] [role="listitem"]'))
+    .map((element) => element.getAttribute('title') ?? '')
+    .filter((title) => title.length > 0 && !title.startsWith('Unlabeled'))
+    .map((title) => title.replace(/ \d+–\d+$/, ''));
 }
 
 type DatasetStatus = {
@@ -61,43 +62,45 @@ describe('browser: subtask viewing and annotation', () => {
     host.remove();
   });
 
-  it('annotates a v3 fixture with Start/End and saves a labeled segment', async () => {
+  it('annotates a v3 fixture from an unlabeled range and saves a labeled segment', async () => {
     const source = new FetchDataSource('/tests/fixtures/datasets/lerobotv3');
     await act(async () => {
       root.render(<LeRobotViewer dataSource={source} language="en" showSidebar showPlaybackBar />);
     });
 
     await waitFor(() => (host.textContent ?? '').includes('Episodes'));
-    await waitFor(() => host.querySelector('[aria-label="Start (Q)"]') !== null);
-
-    const start = host.querySelector<HTMLButtonElement>('[aria-label="Start (Q)"]');
-    const end = host.querySelector<HTMLButtonElement>('[aria-label="End (R)"]');
-    expect(start).toBeTruthy();
-    expect(end).toBeTruthy();
-
+    expect(host.querySelector('[aria-label="Start (Q)"]')).toBeNull();
+    expect(host.querySelector('[aria-label="End (E)"]')).toBeNull();
+    const edit = host.querySelector<HTMLButtonElement>('[title="Edit episodes"]');
+    expect(edit).toBeTruthy();
     await act(async () => {
-      start?.click();
+      edit?.click();
     });
-    const nextFrame = host.querySelector<HTMLButtonElement>('[aria-label="Next frame"]');
-    await act(async () => {
-      nextFrame?.click();
-      end?.click();
-    });
+    await waitFor(() => host.querySelector('[title="Done editing"]') !== null);
+    await waitFor(() => host.querySelector('[aria-label="Subtasks"]') !== null);
+    expect(host.querySelector('[aria-label="End (E)"]')).toBeNull();
 
-    await waitFor(() => (host.textContent ?? '').includes('Describe subtask'));
-    const textarea = host.querySelector('textarea');
-    expect(textarea).toBeTruthy();
-    await userEvent.fill(textarea!, 'Grasp the apple');
-    const save = Array.from(host.querySelectorAll('button')).find((button) =>
-      (button.textContent ?? '').includes('Save subtask'),
+    const gap = Array.from(host.querySelectorAll('[aria-label="Subtasks"] [role="listitem"]')).find(
+      (element) => (element.getAttribute('title') ?? '').startsWith('Unlabeled'),
+    );
+    expect(gap).toBeTruthy();
+    await act(async () => {
+      gap?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    });
+    await waitFor(() => host.querySelector('#subtask-label') !== null);
+    const labelInput = host.querySelector<HTMLInputElement>('#subtask-label');
+    expect(labelInput).toBeTruthy();
+    await userEvent.type(labelInput!, 'Pick the cube');
+    const save = Array.from(host.querySelectorAll('[data-slot="dialog-content"] button')).find(
+      (button) => (button.textContent ?? '').trim() === 'Save',
     );
     expect(save).toBeTruthy();
     await act(async () => {
       save?.click();
     });
 
-    await waitFor(() => (host.textContent ?? '').includes('Grasp the apple'));
-    expect(host.textContent).toContain('Grasp the apple');
+    await waitFor(() => (host.textContent ?? '').includes('Pick the cube'));
+    expect(host.textContent).toContain('Pick the cube');
   }, 60_000);
 
   it('loads the optional local v2.1 dataset and shows source subtasks (view only)', async ({
@@ -114,10 +117,9 @@ describe('browser: subtask viewing and annotation', () => {
       root.render(<LeRobotViewer dataSource={source} language="en" showSidebar showPlaybackBar />);
     });
 
-    await waitFor(() => (host.textContent ?? '').includes('Subtasks'), 90_000);
+    await waitFor(() => segmentTitles(host).length > 0, 90_000);
     expect(host.querySelector('[aria-label="Start (Q)"]')).toBeNull();
-    expect(host.querySelector('[aria-label="End (R)"]')).toBeNull();
-    expect(host.textContent ?? '').toMatch(/\d+\/\d+/);
+    expect(host.querySelector('[aria-label="End (E)"]')).toBeNull();
     expect(segmentTitles(host).length).toBeGreaterThan(0);
   }, 120_000);
 
@@ -136,41 +138,18 @@ describe('browser: subtask viewing and annotation', () => {
     });
 
     await waitFor(() => segmentTitles(host).includes('Subtask 15'), 90_000);
-    await waitFor(() => host.querySelector('[aria-label="Start (Q)"]') !== null);
     expect(segmentTitles(host)).toEqual(expect.arrayContaining(['Subtask 15', 'Subtask 4']));
-    expect(host.querySelector('[aria-label="Start (Q)"]')).toBeTruthy();
-    expect(host.querySelector('[aria-label="End (R)"]')).toBeTruthy();
-    expect(host.textContent ?? '').toMatch(/\d+\/\d+/);
+    expect(host.querySelector('[aria-label="Start (Q)"]')).toBeNull();
+    expect(host.querySelector('[aria-label="End (E)"]')).toBeNull();
 
-    const deleteButton = Array.from(host.querySelectorAll('button')).find(
-      (button) => (button.textContent ?? '').trim() === 'Delete',
-    );
-    expect(deleteButton).toBeTruthy();
+    const edit = host.querySelector<HTMLButtonElement>('[title="Edit episodes"]');
+    expect(edit).toBeTruthy();
     await act(async () => {
-      deleteButton?.click();
+      edit?.click();
     });
-
-    const start = host.querySelector<HTMLButtonElement>('[aria-label="Start (Q)"]');
-    const end = host.querySelector<HTMLButtonElement>('[aria-label="End (R)"]');
-    await act(async () => {
-      start?.click();
-    });
-    const nextFrame = host.querySelector<HTMLButtonElement>('[aria-label="Next frame"]');
-    await act(async () => {
-      nextFrame?.click();
-      end?.click();
-    });
-    await waitFor(() => (host.textContent ?? '').includes('Describe subtask'));
-    const textarea = host.querySelector('textarea');
-    await userEvent.fill(textarea!, 'Reach the object');
-    const save = Array.from(host.querySelectorAll('button')).find((button) =>
-      (button.textContent ?? '').includes('Save subtask'),
-    );
-    await act(async () => {
-      save?.click();
-    });
-    await waitFor(() => segmentTitles(host).includes('Reach the object'));
-    expect(segmentTitles(host)).toContain('Reach the object');
+    await waitFor(() => host.querySelector('[title="Done editing"]') !== null);
+    expect(host.querySelector('[aria-label="Start (Q)"]')).toBeNull();
+    expect(host.querySelector('[aria-label="End (E)"]')).toBeNull();
 
     const loader = new LeRobotDataLoader(new FetchDataSource('/e2e-datasets/v3'));
     try {
@@ -221,12 +200,11 @@ describe('browser: subtask viewing and annotation', () => {
     });
 
     await waitFor(() => (host.textContent ?? '').includes('Push the T-shaped'), 90_000);
-    await waitFor(() => host.querySelector('[aria-label="Start (Q)"]') !== null);
-    expect(host.querySelector('[aria-label="Start (Q)"]')).toBeTruthy();
+    await waitFor(() => host.querySelector('[aria-label="Next frame"]') !== null, 90_000);
+    expect(host.querySelector('[aria-label="Start (Q)"]')).toBeNull();
     expect(segmentTitles(host)).not.toEqual(
       expect.arrayContaining(['phase 1', 'phase 2', 'phase 3']),
     );
-    expect(host.textContent ?? '').toMatch(/0\/\d+/);
 
     const episode1 = host.querySelector<HTMLButtonElement>('[aria-label="Select Episode 1"]');
     expect(episode1).toBeTruthy();

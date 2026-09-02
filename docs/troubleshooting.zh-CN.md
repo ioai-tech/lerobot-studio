@@ -51,10 +51,10 @@ Studio 只映射官方 LeRobot 的 `subtask_index`。
 
 - `lerobot/libero_10_subtask` 在缺少 `meta/subtasks.parquet` 时显示 `Subtask N`。
 - `lerobot/pusht-subtask` 显示 `phase 1/2/3`；`subtask_index = -1` 的帧保持为 **未标注**。
-- `k1000dai/libero-subtaskid-segments` 使用 `subtask_id` 而不是 `subtask_index`，因此不会列出分段。
-- `v2.1` 可以显示已有索引，但没有 **开始** / **结束** 按钮。
+- `k1000dai/libero-subtaskid-segments` 使用 `subtask_id` 而不是 `subtask_index`，因此不会显示分段。
+- `v2.1` 可以显示已有索引，但不能新增标注。
 
-下载命令见 [数据格式 — 官方 Hub 示例](./data-formats#official-hub-examples)。导出为 `v3.0` 时，每个被导出帧都必须已标注；应用不会写入 `-1`。
+下载命令见 [数据格式 — 官方 Hub 示例](./data-formats#official-hub-examples)。勾选 **包含子任务** 后，导出为 `v3.0` 时每个被导出帧都必须已标注；应用不会写入 `-1`。
 
 ---
 

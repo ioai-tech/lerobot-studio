@@ -39,7 +39,7 @@ vi.mock('@/core', async (importOriginal) => {
 });
 
 import { ExportService } from '../src/platform/export/ExportService';
-import { classifyLeRobotVersion } from '@/core';
+import { SubtaskCoverageError, classifyLeRobotVersion } from '@/core';
 
 const info = { codebase_version: 'v3.0', features: { camera: { dtype: 'image' } } } as any;
 const episodes = [{ episode_index: 0, length: 2, tasks: ['pick'] }] as any;
@@ -161,6 +161,50 @@ describe('ExportService', () => {
     );
     expect(target.finalize).toHaveBeenCalledWith('directory');
     expect(progress).toHaveBeenLastCalledWith(expect.objectContaining({ percent: 100 }));
+  });
+
+  it('skips subtask files and coverage when includeSubtasks is false', async () => {
+    const target = adapter();
+    await new ExportService(loader(), target).exportWithData(
+      info,
+      episodes,
+      { 0: 'pick' },
+      {
+        format: 'zip',
+        targetVersion: 'v3.0',
+        includeData: true,
+        includeVideos: false,
+        includeSubtasks: false,
+        subtaskOverlay: new Map([[0, [{ startFrame: 0, endFrame: 0, label: 'grasp' }]]]),
+      },
+    );
+
+    expect(mocks.writeMetadata.mock.calls[0][11]).toBeUndefined();
+    expect(mocks.exportDataFiles.mock.calls[0][1].features.subtask_index).toBeUndefined();
+    expect(mocks.exportDataFiles.mock.calls[0][7]).toEqual(
+      expect.objectContaining({
+        excludeColumns: new Set(['subtask_index']),
+      }),
+    );
+  });
+
+  it('validates subtask coverage when includeSubtasks is true', async () => {
+    await expect(
+      new ExportService(loader(), adapter()).exportWithData(
+        info,
+        episodes,
+        { 0: 'pick' },
+        {
+          format: 'zip',
+          targetVersion: 'v3.0',
+          includeData: true,
+          includeVideos: false,
+          includeSubtasks: true,
+          subtaskOverlay: new Map([[0, [{ startFrame: 0, endFrame: 0, label: 'grasp' }]]]),
+        },
+      ),
+    ).rejects.toBeInstanceOf(SubtaskCoverageError);
+    expect(mocks.writeMetadata).not.toHaveBeenCalled();
   });
 
   it('does not mutate an adapter when cancellation precedes export', async () => {

@@ -5,12 +5,25 @@ export interface VerifyPermissionOptions {
 }
 
 /**
+ * True only when File System Access pickers/handles are safe to call.
+ *
+ * Chrome still exposes `showDirectoryPicker` on `http://192.168.x.x`, but the
+ * browser process then kills the tab:
+ * "File System Access access from Unsecure Origin".
+ */
+export function canUseFileSystemAccess(): boolean {
+  if (typeof window === 'undefined') return false;
+  if (!window.isSecureContext) return false;
+  return typeof window.showDirectoryPicker === 'function';
+}
+
+/**
  * 检测当前环境是否支持将 FileSystemHandle 持久化到 IndexedDB 并恢复。
  */
 export function supportsHandlePersistence(): boolean {
   if (typeof window === 'undefined') return false;
   if (typeof indexedDB === 'undefined') return false;
-  return 'showDirectoryPicker' in window;
+  return canUseFileSystemAccess();
 }
 
 /**

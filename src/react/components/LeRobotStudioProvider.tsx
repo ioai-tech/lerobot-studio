@@ -69,8 +69,9 @@ export const LeRobotStudioProvider: React.FC<LeRobotStudioProviderProps> = ({
       {wrapRoot ? (
         <div
           ref={setRootEl}
+          tabIndex={-1}
           className={cn(
-            'lerobot-root h-full w-full relative bg-background text-foreground',
+            'lerobot-root h-full w-full relative bg-background text-foreground outline-none',
             className,
           )}
         >
@@ -81,7 +82,11 @@ export const LeRobotStudioProvider: React.FC<LeRobotStudioProviderProps> = ({
       ) : (
         <div
           ref={setRootEl}
-          className={cn('lerobot-root h-full w-full bg-background text-foreground', className)}
+          tabIndex={-1}
+          className={cn(
+            'lerobot-root h-full w-full bg-background text-foreground outline-none',
+            className,
+          )}
         >
           <StudioTree theme={theme} showToaster={showToaster} portalContainer={rootEl}>
             {children}

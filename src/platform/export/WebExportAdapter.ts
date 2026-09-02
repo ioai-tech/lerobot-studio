@@ -1,4 +1,5 @@
 import type { ExportAdapter, ExportFormat } from '@/core';
+import { canUseFileSystemAccess } from '../utils/fsPermissions';
 
 export interface WebExportAdapterOptions {
   /** When exporting to directory, pass a handle obtained during user gesture (e.g. from showDirectoryPicker). */
@@ -68,7 +69,7 @@ export class WebExportAdapter implements ExportAdapter {
   private async finalizeDirectory(): Promise<void> {
     const dirHandle = this.directoryHandle;
     if (!dirHandle) {
-      if (typeof window === 'undefined' || !('showDirectoryPicker' in window)) {
+      if (!canUseFileSystemAccess()) {
         throw new Error('File System Access API is not supported');
       }
       throw new Error(

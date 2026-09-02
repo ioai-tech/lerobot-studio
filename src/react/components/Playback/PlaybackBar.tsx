@@ -1,4 +1,4 @@
-import React, { useMemo, useRef, useEffect, useCallback } from 'react';
+import React, { useMemo, useRef, useEffect, useCallback, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   useLeRobotData,
@@ -9,13 +9,18 @@ import {
 } from '../../contexts/LeRobotContext';
 import { EditSubtaskDialog } from '../dialogs/EditSubtaskDialog';
 import { useLoading } from '../../contexts/LoadingContext';
-import { hasSubtaskIndexFeature, shouldStartAutoplay } from '@/core';
+import { shouldStartAutoplay } from '@/core';
 import { PlaybackProgressSlider } from './PlaybackProgressSlider';
 import { Button } from '@/ui';
 import { Badge } from '@/ui';
 import { Separator } from '@/ui';
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/ui';
 import { Play, Pause, ChevronLeft, ChevronRight, Repeat, Repeat1, Shuffle } from 'lucide-react';
+
+function frameTimeSeconds(timestamp: number | undefined, frameIndex: number, fps: number): number {
+  if (typeof timestamp === 'number' && Number.isFinite(timestamp)) return timestamp;
+  return frameIndex / Math.max(fps, 1);
+}
 
 export const PlaybackBar: React.FC = () => {
   const { t } = useTranslation();
@@ -36,16 +41,18 @@ export const PlaybackBar: React.FC = () => {
     canAnnotate,
     currentSegments,
     knownLabels,
-    coverage,
-    pendingStart,
     pendingRange,
-    labelAtFrame,
-    markStart,
-    markEnd,
     cancelPending,
     commitPending,
+    replaceEpisodeSegments,
+    updateSegment,
+    endAtPlayhead,
+    beginPendingRange,
+    removeSegment,
   } = useLeRobotSubtask();
-  const { subtaskDialogOpen, setSubtaskDialogOpen } = useLeRobotUi();
+  const { subtaskDialogOpen, setSubtaskDialogOpen, episodeEditMode } = useLeRobotUi();
+  const annotationEnabled = canAnnotate && episodeEditMode;
+  const [renameIndex, setRenameIndex] = useState<number | null>(null);
 
   const { tasks } = useLoading();
   const activeTask = tasks.find(
@@ -77,13 +84,30 @@ export const PlaybackBar: React.FC = () => {
 
   useEffect(() => {
     userPausedRef.current = false;
-  }, [selectedEpisodeIndex]);
+    setRenameIndex(null);
+    setSubtaskDialogOpen(false);
+  }, [selectedEpisodeIndex, setSubtaskDialogOpen]);
 
   useEffect(() => {
     if (isLoading) {
       didAutoPlayRef.current = null;
     }
   }, [isLoading]);
+
+  useEffect(() => {
+    if (annotationEnabled) return;
+    setRenameIndex(null);
+    cancelPending();
+    setSubtaskDialogOpen(false);
+  }, [annotationEnabled, cancelPending, setSubtaskDialogOpen]);
+
+  useEffect(() => {
+    if (isPlaying || isLoading || totalFrames <= 0) return;
+    const currentId = `${selectedEpisodeIndex}-${totalFrames}`;
+    if (didAutoPlayRef.current === currentId) {
+      userPausedRef.current = true;
+    }
+  }, [isPlaying, isLoading, selectedEpisodeIndex, totalFrames]);
 
   const nextMode = () => {
     if (playbackMode === 'sequential') setPlaybackMode('shuffle');
@@ -129,22 +153,42 @@ export const PlaybackBar: React.FC = () => {
   }, [totalFrames, currentFrames, fps]);
 
   const handlePlayPauseClick = useCallback(() => {
-    const nextPlaying = !isPlaying;
-    userPausedRef.current = !nextPlaying;
-    setPlaying(nextPlaying);
-  }, [isPlaying, setPlaying]);
-
-  const handleMarkStart = useCallback(() => {
-    markStart(getFrameIndex());
-  }, [getFrameIndex, markStart]);
-
-  const handleMarkEnd = useCallback(() => {
-    if (markEnd(getFrameIndex())) {
-      setSubtaskDialogOpen(true);
+    if (subtaskDialogOpen) return;
+    if (isPlaying) {
+      userPausedRef.current = true;
+      setRenameIndex(null);
+      setPlaying(false);
+      if (annotationEnabled && endAtPlayhead(getFrameIndex())) {
+        setSubtaskDialogOpen(true);
+      }
+      return;
     }
-  }, [getFrameIndex, markEnd, setSubtaskDialogOpen]);
+    userPausedRef.current = false;
+    setPlaying(true);
+  }, [
+    annotationEnabled,
+    endAtPlayhead,
+    getFrameIndex,
+    isPlaying,
+    setPlaying,
+    setSubtaskDialogOpen,
+    subtaskDialogOpen,
+  ]);
 
-  const currentSubtaskLabel = labelAtFrame(currentFrameIndex);
+  useEffect(() => {
+    if (!subtaskDialogOpen) return;
+    userPausedRef.current = true;
+    setPlaying(false);
+  }, [subtaskDialogOpen, setPlaying]);
+
+  const dialogStartFrame =
+    pendingRange?.startFrame ??
+    (renameIndex != null ? currentSegments[renameIndex]?.startFrame : 0) ??
+    0;
+  const dialogEndFrame =
+    pendingRange?.endFrame ??
+    (renameIndex != null ? currentSegments[renameIndex]?.endFrame : 0) ??
+    0;
 
   // Render placeholder if no data and not loading
   if (totalFrames === 0 && !isLoading && !activeTask) {
@@ -189,7 +233,7 @@ export const PlaybackBar: React.FC = () => {
   }
 
   return (
-    <div className="h-16 border-t bg-background text-foreground px-4 flex items-center gap-4">
+    <div className="min-h-16 border-t bg-background text-foreground px-4 py-2 flex items-center gap-4">
       {/* Left: Navigation Controls */}
       <div className="flex items-center gap-1">
         <Tooltip>
@@ -236,7 +280,7 @@ export const PlaybackBar: React.FC = () => {
                 size="icon"
                 className="h-8 w-8"
                 onClick={() => setFrameIndex(Math.max(0, getFrameIndex() - 1))}
-                disabled={isLoading}
+                disabled={isLoading || subtaskDialogOpen}
                 aria-label={t('panels.keyboardShortcuts.prevFrame.action')}
               />
             }
@@ -254,14 +298,18 @@ export const PlaybackBar: React.FC = () => {
                 size="icon"
                 className="h-9 w-9 rounded-full transition-all"
                 onClick={handlePlayPauseClick}
-                disabled={isLoading || totalFrames === 0}
+                disabled={isLoading || totalFrames === 0 || subtaskDialogOpen}
                 aria-label={t('panels.keyboardShortcuts.playPause.action')}
               />
             }
           >
             {isPlaying ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4 fill-current" />}
           </TooltipTrigger>
-          <TooltipContent>{t('panels.keyboardShortcuts.playPause.action')}</TooltipContent>
+          <TooltipContent>
+            {annotationEnabled && isPlaying
+              ? t('subtask.pauseToLabel', 'Pause to label')
+              : t('panels.keyboardShortcuts.playPause.action')}
+          </TooltipContent>
         </Tooltip>
 
         <Tooltip>
@@ -272,7 +320,7 @@ export const PlaybackBar: React.FC = () => {
                 size="icon"
                 className="h-8 w-8"
                 onClick={() => setFrameIndex(Math.min(totalFrames - 1, getFrameIndex() + 1))}
-                disabled={isLoading}
+                disabled={isLoading || subtaskDialogOpen}
                 aria-label={t('panels.keyboardShortcuts.nextFrame.action')}
               />
             }
@@ -281,45 +329,6 @@ export const PlaybackBar: React.FC = () => {
           </TooltipTrigger>
           <TooltipContent>{t('panels.keyboardShortcuts.nextFrame.action')}</TooltipContent>
         </Tooltip>
-
-        {canAnnotate ? (
-          <>
-            <Tooltip>
-              <TooltipTrigger
-                render={
-                  <Button
-                    variant={pendingStart != null ? 'secondary' : 'ghost'}
-                    size="sm"
-                    className="h-8 px-2 text-xs"
-                    onClick={handleMarkStart}
-                    disabled={isLoading || totalFrames === 0}
-                    aria-label={t('subtask.start', 'Start (Q)')}
-                  />
-                }
-              >
-                {t('subtask.startShort', 'Start')}
-              </TooltipTrigger>
-              <TooltipContent>{t('subtask.startHint', 'Mark subtask start (Q)')}</TooltipContent>
-            </Tooltip>
-            <Tooltip>
-              <TooltipTrigger
-                render={
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-8 px-2 text-xs"
-                    onClick={handleMarkEnd}
-                    disabled={isLoading || totalFrames === 0}
-                    aria-label={t('subtask.end', 'End (R)')}
-                  />
-                }
-              >
-                {t('subtask.endShort', 'End')}
-              </TooltipTrigger>
-              <TooltipContent>{t('subtask.endHint', 'Mark subtask end (R)')}</TooltipContent>
-            </Tooltip>
-          </>
-        ) : null}
       </div>
 
       <Separator orientation="vertical" className="h-8 mx-2 bg-border" />
@@ -330,35 +339,51 @@ export const PlaybackBar: React.FC = () => {
         totalFrames={totalFrames}
         totalTime={totalTime}
         initialFrameIndex={currentFrameIndex}
-        isDisabled={isLoading || !!activeTask}
+        isDisabled={isLoading || !!activeTask || subtaskDialogOpen}
         setFrameIndex={setFrameIndex}
         getFrameIndex={getFrameIndex}
         subscribeFrameIndex={subscribeFrameIndex}
         segments={currentSegments}
-        pendingRange={pendingRange}
-        pendingStart={pendingStart}
+        pendingRange={annotationEnabled ? pendingRange : null}
+        editRanges={annotationEnabled && !subtaskDialogOpen}
+        knownLabels={knownLabels}
+        onReplaceSegments={(next) => {
+          try {
+            replaceEpisodeSegments(next);
+          } catch (error) {
+            console.warn('Could not save subtask ranges', error);
+          }
+        }}
+        onDeleteSegment={removeSegment}
+        onFillGap={
+          annotationEnabled
+            ? (startFrame, endFrame) => {
+                setRenameIndex(null);
+                userPausedRef.current = true;
+                setPlaying(false);
+                if (beginPendingRange(startFrame, endFrame)) {
+                  setSubtaskDialogOpen(true);
+                }
+              }
+            : undefined
+        }
+        onRenameSegment={
+          annotationEnabled
+            ? (index) => {
+                cancelPending();
+                setRenameIndex(index);
+                userPausedRef.current = true;
+                setPlaying(false);
+                setSubtaskDialogOpen(true);
+              }
+            : undefined
+        }
       />
 
       <Separator orientation="vertical" className="h-8 mx-2 bg-border" />
 
       {/* Right: Meta Info */}
       <div className="flex items-center gap-4 pr-2">
-        {currentSegments.length > 0 || (canAnnotate && hasSubtaskIndexFeature(info?.features)) ? (
-          <div className="flex flex-col items-end min-w-0 max-w-[140px]">
-            <span className="text-[9px] font-bold text-muted-foreground/60 uppercase tracking-wider">
-              {t('subtask.current', 'Subtask')}
-            </span>
-            <span
-              className="truncate text-[10px] font-medium text-foreground/80"
-              title={currentSubtaskLabel ?? t('subtask.unlabeled', 'Unlabeled')}
-            >
-              {currentSubtaskLabel ?? t('subtask.unlabeled', 'Unlabeled')}
-            </span>
-            <span className="font-mono text-[9px] text-muted-foreground">
-              {coverage.labeledFrames}/{coverage.totalFrames}
-            </span>
-          </div>
-        ) : null}
         <div className="flex flex-col items-end">
           <span className="text-[9px] font-bold text-muted-foreground/60 uppercase tracking-wider">
             {t('playback.meta.fps')}
@@ -376,19 +401,38 @@ export const PlaybackBar: React.FC = () => {
           </span>
         </div>
       </div>
-      {pendingRange ? (
-        <EditSubtaskDialog
-          open={subtaskDialogOpen}
-          onOpenChange={(open) => {
-            setSubtaskDialogOpen(open);
-            if (!open) cancelPending();
-          }}
-          startFrame={pendingRange.startFrame}
-          endFrame={pendingRange.endFrame}
-          knownLabels={knownLabels}
-          onSave={commitPending}
-        />
-      ) : null}
+      <EditSubtaskDialog
+        open={subtaskDialogOpen}
+        onOpenChange={(open) => {
+          setSubtaskDialogOpen(open);
+          if (!open) {
+            cancelPending();
+            setRenameIndex(null);
+          }
+        }}
+        startFrame={dialogStartFrame}
+        endFrame={dialogEndFrame}
+        startSeconds={frameTimeSeconds(
+          currentFrames[dialogStartFrame]?.timestamp,
+          dialogStartFrame,
+          fps,
+        )}
+        endSeconds={frameTimeSeconds(currentFrames[dialogEndFrame]?.timestamp, dialogEndFrame, fps)}
+        initialLabel={
+          pendingRange
+            ? ''
+            : ((renameIndex != null ? currentSegments[renameIndex]?.label : '') ?? '')
+        }
+        knownLabels={knownLabels}
+        onSave={(label) => {
+          if (renameIndex != null && !pendingRange) {
+            updateSegment(renameIndex, { ...currentSegments[renameIndex], label });
+            setRenameIndex(null);
+            return;
+          }
+          commitPending(label, { startFrame: dialogStartFrame, endFrame: dialogEndFrame });
+        }}
+      />
     </div>
   );
 };

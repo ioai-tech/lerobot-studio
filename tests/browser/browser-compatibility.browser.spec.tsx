@@ -56,7 +56,7 @@ describe('browser compatibility smoke', () => {
 
   it('reports unavailable browser capabilities as explicit fallbacks', () => {
     const capabilities = detectPlatformCapabilities();
-    const hasFileSystemAccess = 'showDirectoryPicker' in window;
+    const hasFileSystemAccess = window.isSecureContext && 'showDirectoryPicker' in window;
     const hasWebCodecs = 'VideoDecoder' in window && 'VideoEncoder' in window;
 
     expect(capabilities.isReactNative).toBe(false);

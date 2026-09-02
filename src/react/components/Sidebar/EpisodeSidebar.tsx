@@ -4,8 +4,9 @@ import {
   useLeRobotData,
   useLeRobotSelection,
   useLeRobotSubtask,
+  useLeRobotUi,
 } from '../../contexts/LeRobotContext';
-import { hasSubtaskIndexFeature, type EpisodeMetadata } from '@/core';
+import type { EpisodeMetadata } from '@/core';
 import { EditTaskDialog } from '../dialogs/EditTaskDialog';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/ui';
 import { Button } from '@/ui';
@@ -15,7 +16,6 @@ import { EpisodeSearch } from './episodes/EpisodeSearch';
 import { EpisodeFilters } from './episodes/EpisodeFilters';
 import { EpisodeToolbar } from './episodes/EpisodeToolbar';
 import { EpisodeList } from './episodes/EpisodeList';
-import { SubtaskSegmentList } from './SubtaskSegmentList';
 
 export const EpisodeSidebar: React.FC = () => {
   const { t } = useTranslation();
@@ -34,10 +34,9 @@ export const EpisodeSidebar: React.FC = () => {
     deleteEpisode,
     restoreEpisode,
   } = useLeRobotSelection();
-  const { canAnnotate, currentSegments, coverage, knownLabels, removeSegment, jumpToFrame } =
-    useLeRobotSubtask();
+  const { clearPendingAnnotation } = useLeRobotSubtask();
+  const { episodeEditMode, setEpisodeEditMode, setSubtaskDialogOpen } = useLeRobotUi();
   const [searchTerm, setSearchTerm] = useState('');
-  const [editMode, setEditMode] = useState(false);
   const [multiSelectMode, setMultiSelectMode] = useState(false);
   const [durationMin, setDurationMin] = useState<string>('');
   const [durationMax, setDurationMax] = useState<string>('');
@@ -47,15 +46,24 @@ export const EpisodeSidebar: React.FC = () => {
   const [bulkEditOpen, setBulkEditOpen] = useState(false);
   const [bulkEditText, setBulkEditText] = useState('');
   const mutationDisabled = isReadOnly || Boolean(info && versionCapability?.status !== 'supported');
+  const editMode = !mutationDisabled && episodeEditMode;
 
   useEffect(() => {
     if (!mutationDisabled) return;
-    setEditMode(false);
+    setEpisodeEditMode(false);
     setMultiSelectMode(false);
     setEditDialogOpen(false);
     setBulkEditOpen(false);
     clearEpisodeSelection();
-  }, [mutationDisabled, clearEpisodeSelection]);
+    clearPendingAnnotation();
+    setSubtaskDialogOpen(false);
+  }, [
+    mutationDisabled,
+    clearEpisodeSelection,
+    setEpisodeEditMode,
+    clearPendingAnnotation,
+    setSubtaskDialogOpen,
+  ]);
 
   const filteredEpisodes = useMemo(() => {
     if (!episodes) return [];
@@ -175,7 +183,14 @@ export const EpisodeSidebar: React.FC = () => {
           editMode={editMode}
           multiSelectMode={multiSelectMode}
           isReadOnly={mutationDisabled}
-          onToggleEditMode={() => setEditMode((v) => !v)}
+          onToggleEditMode={() => {
+            const next = !editMode;
+            setEpisodeEditMode(next);
+            if (!next) {
+              clearPendingAnnotation();
+              setSubtaskDialogOpen(false);
+            }
+          }}
           onToggleMultiSelectMode={() => {
             setMultiSelectMode((v) => !v);
             if (multiSelectMode) clearEpisodeSelection();
@@ -223,7 +238,7 @@ export const EpisodeSidebar: React.FC = () => {
           filteredEpisodes={listRows}
           isLoading={isLoading}
           multiSelectMode={!mutationDisabled && multiSelectMode}
-          editMode={!mutationDisabled && editMode}
+          editMode={editMode}
           onRowClick={handleRowClick}
           onToggleSelection={(episode, event) => {
             event.preventDefault();
@@ -233,15 +248,6 @@ export const EpisodeSidebar: React.FC = () => {
           onEdit={(episode, event) => openEditDialog(event, episode)}
           onDelete={(episodeIndex, event) => handleDelete(event, episodeIndex)}
           onRestore={(episodeIndex, event) => handleRestore(event, episodeIndex)}
-        />
-        <SubtaskSegmentList
-          segments={currentSegments}
-          coverage={coverage}
-          canAnnotate={canAnnotate}
-          knownLabels={knownLabels}
-          sourceAvailable={hasSubtaskIndexFeature(info?.features) || knownLabels.length > 0}
-          onJump={jumpToFrame}
-          onDelete={removeSegment}
         />
       </div>
 

@@ -1,3 +1,5 @@
+import { canUseFileSystemAccess } from './fsPermissions';
+
 export interface DirectoryFile {
   file: File;
   path: string;
@@ -66,7 +68,7 @@ export async function resolveDroppedItem(dataTransfer: DataTransfer): Promise<Dr
   if (!item) return { kind: 'none' };
 
   const handleItem = item as DataTransferItemWithHandle;
-  if (handleItem.getAsFileSystemHandle) {
+  if (canUseFileSystemAccess() && handleItem.getAsFileSystemHandle) {
     try {
       const handle = await handleItem.getAsFileSystemHandle();
       if (handle?.kind === 'directory') {

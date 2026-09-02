@@ -30,7 +30,7 @@ import {
 import { preflightRemoteArchive, translateRemotePreflightFailure } from '@/platform';
 import type { DataSource } from '@/platform';
 import { deleteHandle, getHandle, putHandle } from '@/platform';
-import { supportsHandlePersistence, verifyPermission } from '@/platform';
+import { canUseFileSystemAccess, supportsHandlePersistence, verifyPermission } from '@/platform';
 
 type TFunction = (
   key: string,
@@ -82,6 +82,7 @@ export class SourceController {
   private lastHandledUrl = '';
   /** Serializes open operations so rapid A→B switches discard stale work. */
   private openGeneration = 0;
+  private insecureOriginFallbackNotified = false;
 
   constructor(deps: SourceControllerDeps) {
     this.deps = deps;
@@ -126,13 +127,23 @@ export class SourceController {
     this.deps.setWelcomeRequest(requested);
   }
 
+  private notifyInsecureOriginPickerFallback() {
+    if (this.insecureOriginFallbackNotified) return;
+    if (typeof window === 'undefined') return;
+    if (canUseFileSystemAccess()) return;
+    if (typeof window.showDirectoryPicker !== 'function') return;
+    this.insecureOriginFallbackNotified = true;
+    this.deps.showToast?.(this.tDefault('source.insecureOriginPickerFallback'), 'info');
+  }
+
   async openDirectory() {
     const taskId = 'open-dir';
     try {
-      if (typeof window.showDirectoryPicker === 'function') {
+      if (canUseFileSystemAccess()) {
         const handle = await window.showDirectoryPicker();
         await this.openDirectoryHandle(handle);
       } else {
+        this.notifyInsecureOriginPickerFallback();
         const files = await this.pickDirectoryFilesWithInput();
         await this.openDirectoryFiles(files);
       }
@@ -264,7 +275,7 @@ export class SourceController {
   private async openLocalArchiveWithPicker() {
     const taskId = 'open-local-archive';
     try {
-      if (typeof window.showOpenFilePicker === 'function') {
+      if (canUseFileSystemAccess() && typeof window.showOpenFilePicker === 'function') {
         const [fileHandle] = await window.showOpenFilePicker({
           types: [
             {
@@ -282,7 +293,7 @@ export class SourceController {
         const file = await fileHandle.getFile();
         await this.openFile(file, fileHandle);
       } else {
-        // Fallback for Firefox using manual input
+        this.notifyInsecureOriginPickerFallback();
         const input = document.createElement('input');
         input.type = 'file';
         input.accept = '.zip,.tar,.tar.gz,.tgz';

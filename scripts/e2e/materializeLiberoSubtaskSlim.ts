@@ -3,7 +3,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import * as arrow from 'apache-arrow';
 import { tableFromIPC } from 'apache-arrow';
-import { getParquetWasmNode } from '../../tests/helpers/parquetWasmNode.ts';
+import { getParquetWasmNode } from '../parquetWasmNode.ts';
 
 export const DEFAULT_V3_SUBTASK_DATASET = '/data/lerobot/libero_10_subtask';
 

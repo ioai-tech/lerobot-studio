@@ -251,6 +251,260 @@ export function frameIndicesFromSegments(
   return frames;
 }
 
+export function isSegmentInsideEpisode(
+  segment: Pick<SubtaskSegment, 'startFrame' | 'endFrame'>,
+  episodeLength: number,
+): boolean {
+  return (
+    Number.isSafeInteger(episodeLength) &&
+    episodeLength > 0 &&
+    Number.isSafeInteger(segment.startFrame) &&
+    Number.isSafeInteger(segment.endFrame) &&
+    segment.startFrame >= 0 &&
+    segment.endFrame >= segment.startFrame &&
+    segment.endFrame < episodeLength
+  );
+}
+
+export function segmentsInsideEpisode(
+  segments: readonly SubtaskSegment[],
+  episodeLength: number,
+): SubtaskSegment[] {
+  return segments.filter((segment) => isSegmentInsideEpisode(segment, episodeLength));
+}
+
+function clampFrame(frame: number, episodeLength: number): number {
+  if (episodeLength <= 0) return 0;
+  return Math.max(0, Math.min(episodeLength - 1, frame));
+}
+
+export function resizeSubtaskSegment(
+  segments: readonly SubtaskSegment[],
+  index: number,
+  edge: 'start' | 'end',
+  frame: number,
+  episodeLength: number,
+): SubtaskSegment[] {
+  if (!Number.isSafeInteger(index) || index < 0 || index >= segments.length) {
+    throw new Error(`Subtask segment index ${index} is out of range`);
+  }
+  const current = segments[index];
+  const nextFrame = clampFrame(frame, episodeLength);
+  const startFrame = edge === 'start' ? Math.min(nextFrame, current.endFrame) : current.startFrame;
+  const endFrame = edge === 'end' ? Math.max(nextFrame, current.startFrame) : current.endFrame;
+  return replaceSubtaskSegment(
+    segments,
+    index,
+    { ...current, startFrame, endFrame },
+    episodeLength,
+  );
+}
+
+export type SubtaskLaneItem =
+  | {
+      kind: 'segment';
+      index: number;
+      startFrame: number;
+      endFrame: number;
+      label: string;
+    }
+  | {
+      kind: 'gap';
+      startFrame: number;
+      endFrame: number;
+    };
+
+export function buildSubtaskLane(
+  segments: readonly SubtaskSegment[],
+  episodeLength: number,
+): SubtaskLaneItem[] {
+  if (!Number.isSafeInteger(episodeLength) || episodeLength <= 0) return [];
+  const sorted = sortSubtaskSegments(segmentsInsideEpisode(segments, episodeLength));
+  const items: SubtaskLaneItem[] = [];
+  let cursor = 0;
+  sorted.forEach((segment, index) => {
+    if (segment.startFrame > cursor) {
+      items.push({ kind: 'gap', startFrame: cursor, endFrame: segment.startFrame - 1 });
+    }
+    items.push({
+      kind: 'segment',
+      index,
+      startFrame: segment.startFrame,
+      endFrame: segment.endFrame,
+      label: segment.label,
+    });
+    cursor = segment.endFrame + 1;
+  });
+  if (cursor < episodeLength) {
+    items.push({ kind: 'gap', startFrame: cursor, endFrame: episodeLength - 1 });
+  }
+  return items;
+}
+
+/** Last unlabeled gap in episode order, or null when every frame is labeled. */
+export function lastUnlabeledGap(
+  segments: readonly SubtaskSegment[],
+  episodeLength: number,
+): { startFrame: number; endFrame: number } | null {
+  const lane = buildSubtaskLane(segments, episodeLength);
+  for (let index = lane.length - 1; index >= 0; index--) {
+    const item = lane[index];
+    if (item.kind === 'gap') return { startFrame: item.startFrame, endFrame: item.endFrame };
+  }
+  return null;
+}
+
+/** Unlabeled run ending at the playhead: from the previous clip's end (or 0) to `playhead`. */
+export function subtaskRangeToPlayhead(
+  segments: readonly SubtaskSegment[],
+  playhead: number,
+  episodeLength: number,
+): { startFrame: number; endFrame: number } | null {
+  if (!Number.isSafeInteger(playhead) || !Number.isSafeInteger(episodeLength)) return null;
+  if (playhead < 0 || playhead >= episodeLength || episodeLength <= 0) return null;
+  const sorted = sortSubtaskSegments(segmentsInsideEpisode(segments, episodeLength));
+  if (sorted.some((segment) => playhead >= segment.startFrame && playhead <= segment.endFrame)) {
+    return null;
+  }
+  let startFrame = 0;
+  for (const segment of sorted) {
+    if (segment.endFrame < playhead) startFrame = segment.endFrame + 1;
+    else break;
+  }
+  if (startFrame > playhead) return null;
+  return { startFrame, endFrame: playhead };
+}
+
+/** Shrink/grow the first clip's start or the last clip's end, leaving unlabeled frames. */
+export function resizeOuterSubtaskEdge(
+  segments: readonly SubtaskSegment[],
+  edge: 'start' | 'end',
+  frame: number,
+  episodeLength: number,
+): SubtaskSegment[] {
+  const sorted = sortSubtaskSegments(segmentsInsideEpisode(segments, episodeLength));
+  if (sorted.length === 0) return [];
+  return resizeSubtaskClipEdge(
+    sorted,
+    edge === 'start' ? 0 : sorted.length - 1,
+    edge,
+    frame,
+    episodeLength,
+  );
+}
+
+/**
+ * Resize one clip edge. Shrinking leaves a gap; growing fills a gap or steals
+ * from a flush neighbor (neighbor keeps at least one frame).
+ */
+export function resizeSubtaskClipEdge(
+  segments: readonly SubtaskSegment[],
+  index: number,
+  edge: 'start' | 'end',
+  frame: number,
+  episodeLength: number,
+): SubtaskSegment[] {
+  const sorted = sortSubtaskSegments(segmentsInsideEpisode(segments, episodeLength));
+  if (!Number.isSafeInteger(index) || index < 0 || index >= sorted.length) {
+    throw new Error(`Subtask segment index ${index} is out of range`);
+  }
+  const current = sorted[index];
+  const next = sorted.map((segment) => ({ ...segment }));
+
+  if (edge === 'end') {
+    const neighbor = next[index + 1];
+    const minEnd = current.startFrame;
+    const maxEnd = neighbor ? neighbor.endFrame : episodeLength - 1;
+    const endFrame = clampFrame(Math.max(minEnd, Math.min(maxEnd, frame)), episodeLength);
+    next[index] = { ...current, endFrame };
+    if (neighbor && endFrame >= neighbor.startFrame) {
+      next[index + 1] = {
+        ...neighbor,
+        startFrame: Math.min(endFrame + 1, neighbor.endFrame),
+      };
+    }
+  } else {
+    const neighbor = next[index - 1];
+    const maxStart = current.endFrame;
+    const minStart = neighbor ? neighbor.startFrame : 0;
+    const startFrame = clampFrame(Math.max(minStart, Math.min(maxStart, frame)), episodeLength);
+    next[index] = { ...current, startFrame };
+    if (neighbor && startFrame <= neighbor.endFrame) {
+      next[index - 1] = {
+        ...neighbor,
+        endFrame: Math.max(neighbor.startFrame, startFrame - 1),
+      };
+    }
+  }
+
+  return next.map((segment) => validateSubtaskSegment(segment, episodeLength));
+}
+
+/**
+ * Drag the shared boundary between two adjacent lane items.
+ * `rightStartFrame` is the first frame of the item to the right of the handle.
+ * Adjacent labeled clips stay flush (no gap, no overlap). Gaps can shrink to empty.
+ */
+export function dragSubtaskLaneBoundary(
+  segments: readonly SubtaskSegment[],
+  boundaryIndex: number,
+  rightStartFrame: number,
+  episodeLength: number,
+): SubtaskSegment[] {
+  const lane = buildSubtaskLane(segments, episodeLength);
+  if (boundaryIndex < 0 || boundaryIndex >= lane.length - 1) {
+    throw new Error(`Invalid subtask boundary ${boundaryIndex}`);
+  }
+  const left = lane[boundaryIndex];
+  const right = lane[boundaryIndex + 1];
+  const minStart = left.startFrame + (left.kind === 'segment' ? 1 : 0);
+  const maxStart = right.kind === 'segment' ? right.endFrame : right.endFrame + 1;
+  const nextStart = Math.max(minStart, Math.min(maxStart, rightStartFrame));
+  const sorted = sortSubtaskSegments(segmentsInsideEpisode(segments, episodeLength));
+  const next = sorted.map((segment) => ({ ...segment }));
+  if (left.kind === 'segment') {
+    next[left.index] = { ...next[left.index], endFrame: nextStart - 1 };
+  }
+  if (right.kind === 'segment') {
+    next[right.index] = { ...next[right.index], startFrame: nextStart };
+  }
+  return sortSubtaskSegments(next.map((segment) => validateSubtaskSegment(segment, episodeLength)));
+}
+
+export function translateSubtaskSegment(
+  segments: readonly SubtaskSegment[],
+  index: number,
+  deltaFrames: number,
+  episodeLength: number,
+): SubtaskSegment[] {
+  if (!Number.isSafeInteger(index) || index < 0 || index >= segments.length) {
+    throw new Error(`Subtask segment index ${index} is out of range`);
+  }
+  if (!Number.isSafeInteger(deltaFrames)) {
+    throw new Error(`Invalid subtask translation ${deltaFrames}`);
+  }
+  const current = segments[index];
+  const span = current.endFrame - current.startFrame;
+  let startFrame = current.startFrame + deltaFrames;
+  let endFrame = current.endFrame + deltaFrames;
+  if (startFrame < 0) {
+    startFrame = 0;
+    endFrame = span;
+  }
+  if (endFrame >= episodeLength) {
+    endFrame = episodeLength - 1;
+    startFrame = endFrame - span;
+  }
+  startFrame = clampFrame(startFrame, episodeLength);
+  endFrame = Math.max(startFrame, clampFrame(endFrame, episodeLength));
+  return replaceSubtaskSegment(
+    segments,
+    index,
+    { ...current, startFrame, endFrame },
+    episodeLength,
+  );
+}
+
 export function computeSubtaskCoverage(
   episodeLength: number,
   segments: readonly SubtaskSegment[],
@@ -258,10 +512,12 @@ export function computeSubtaskCoverage(
   if (!Number.isSafeInteger(episodeLength) || episodeLength < 0) {
     throw new Error(`Invalid episode length ${episodeLength}`);
   }
+  if (episodeLength === 0) {
+    return { labeledFrames: 0, totalFrames: 0, gaps: [], complete: false };
+  }
   const covered = new Array<boolean>(episodeLength).fill(false);
-  for (const segment of segments) {
-    const next = validateSubtaskSegment(segment, episodeLength);
-    for (let frame = next.startFrame; frame <= next.endFrame; frame++) {
+  for (const segment of segmentsInsideEpisode(segments, episodeLength)) {
+    for (let frame = segment.startFrame; frame <= segment.endFrame; frame++) {
       covered[frame] = true;
     }
   }

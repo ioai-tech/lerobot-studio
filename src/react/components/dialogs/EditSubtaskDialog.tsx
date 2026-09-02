@@ -9,14 +9,18 @@ import {
   DialogFooter,
 } from '@/ui';
 import { Button } from '@/ui';
-import { Textarea } from '@/ui';
+import { Input } from '@/ui';
+import { usePortalContainer } from '@/ui';
 
 export interface EditSubtaskDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   startFrame: number;
   endFrame: number;
+  startSeconds?: number;
+  endSeconds?: number;
   knownLabels: string[];
+  initialLabel?: string;
   onSave: (label: string) => void;
 }
 
@@ -25,19 +29,23 @@ export const EditSubtaskDialog: React.FC<EditSubtaskDialogProps> = ({
   onOpenChange,
   startFrame,
   endFrame,
+  startSeconds,
+  endSeconds,
   knownLabels,
+  initialLabel = '',
   onSave,
 }) => {
   const { t } = useTranslation();
+  const portalContainer = usePortalContainer();
   const [label, setLabel] = useState('');
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (open) {
-      setLabel('');
+      setLabel(initialLabel);
       setError(null);
     }
-  }, [open, startFrame, endFrame]);
+  }, [open, startFrame, endFrame, initialLabel]);
 
   const suggestions = useMemo(() => {
     const query = label.trim().toLowerCase();
@@ -48,7 +56,7 @@ export const EditSubtaskDialog: React.FC<EditSubtaskDialogProps> = ({
   const handleSave = () => {
     const trimmed = label.trim();
     if (!trimmed) {
-      setError(t('subtask.labelRequired', 'Enter a subtask description'));
+      setError(t('subtask.labelRequired', 'Enter a name'));
       return;
     }
     try {
@@ -59,33 +67,51 @@ export const EditSubtaskDialog: React.FC<EditSubtaskDialogProps> = ({
     }
   };
 
+  const stopPlaybackKeys = (event: React.KeyboardEvent) => {
+    if (event.key === ' ' || event.key.length === 1) {
+      event.stopPropagation();
+    }
+  };
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent
+        className="sm:max-w-md"
+        onKeyDown={stopPlaybackKeys}
+        onKeyUp={stopPlaybackKeys}
+        onCloseAutoFocus={(event) => {
+          event.preventDefault();
+          portalContainer?.focus({ preventScroll: true });
+        }}
+      >
         <DialogHeader>
-          <DialogTitle>{t('subtask.dialogTitle', 'Describe subtask')}</DialogTitle>
+          <DialogTitle>{t('subtask.dialogTitle', 'Subtask')}</DialogTitle>
           <DialogDescription>
-            {t('subtask.dialogRange', 'Frames {{start}}–{{end}}', {
+            {t('subtask.dialogRange', '{{start}}–{{end}} · {{startTime}}–{{endTime}} s', {
               start: startFrame,
               end: endFrame,
+              startTime: (startSeconds ?? startFrame).toFixed(1),
+              endTime: (endSeconds ?? endFrame).toFixed(1),
             })}
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-3 py-2">
-          <div className="space-y-2">
-            <label className="text-sm font-medium text-muted-foreground" htmlFor="subtask-label">
-              {t('subtask.label', 'Subtask description')}
-            </label>
-            <Textarea
-              id="subtask-label"
-              value={label}
-              onChange={(event) => setLabel(event.target.value)}
-              placeholder={t('subtask.labelPlaceholder', 'e.g. Grasp the apple')}
-              rows={3}
-              className="resize-none"
-              autoFocus
-            />
-          </div>
+          <Input
+            id="subtask-label"
+            value={label}
+            onChange={(event) => setLabel(event.target.value)}
+            onKeyDown={(event) => {
+              stopPlaybackKeys(event);
+              if (event.key === 'Enter') {
+                event.preventDefault();
+                handleSave();
+              }
+            }}
+            placeholder={t('subtask.labelPlaceholder', 'Grasp the apple')}
+            aria-label={t('subtask.label', 'Name')}
+            autoFocus
+            autoComplete="off"
+          />
           {suggestions.length > 0 && (
             <div className="flex flex-wrap gap-1">
               {suggestions.map((item) => (
@@ -108,7 +134,7 @@ export const EditSubtaskDialog: React.FC<EditSubtaskDialogProps> = ({
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             {t('common.cancel', 'Cancel')}
           </Button>
-          <Button onClick={handleSave}>{t('subtask.save', 'Save subtask')}</Button>
+          <Button onClick={handleSave}>{t('subtask.save', 'Save')}</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

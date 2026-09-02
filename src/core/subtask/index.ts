@@ -13,28 +13,40 @@ export {
   resolveSubtaskLabelFeatureKey,
 } from './types';
 export type { SubtaskCoverage, SubtaskGap, SubtaskSegment, SubtaskTable } from './types';
+export type { SubtaskLaneItem } from './subtaskPlan';
+export { colorForSubtaskLabel, SUBTASK_COLOR_PALETTE } from './subtaskColor';
 
 export {
   assertExportCoverage,
   assignNewSubtaskLabels,
+  buildSubtaskLane,
   buildSubtaskTable,
   collectSubtaskLabels,
   fallbackSubtaskLabel,
   computeSubtaskCoverage,
   currentSubtaskLabel,
+  dragSubtaskLaneBoundary,
+  resizeOuterSubtaskEdge,
+  resizeSubtaskClipEdge,
+  lastUnlabeledGap,
+  subtaskRangeToPlayhead,
   findOverlappingSegment,
   frameIndicesFromSegments,
   indexForSubtaskLabel,
   indicesFromFrameLabels,
   insertSubtaskSegment,
+  isSegmentInsideEpisode,
   labelForSubtaskIndex,
   normalizeSubtaskIndex,
   normalizeSubtaskLabel,
   parseSubtaskTableFromRows,
   replaceSubtaskSegment,
+  resizeSubtaskSegment,
   segmentsFromFrameIndices,
+  segmentsInsideEpisode,
   segmentsOverlap,
   sortSubtaskSegments,
   tableFromSubtaskIndices,
+  translateSubtaskSegment,
   validateSubtaskSegment,
 } from './subtaskPlan';

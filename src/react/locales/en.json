@@ -99,24 +99,16 @@
     "speed": "Playback speed"
   },
   "subtask": {
-    "listTitle": "Subtasks",
-    "empty": "No labeled subtasks on this episode",
-    "coverage": "{{labeled}}/{{total}} frames labeled",
-    "coverageIncomplete": "Unlabeled frames remain. v3.0 export needs every frame labeled; official -1 is treated as unlabeled.",
-    "current": "Subtask",
-    "unlabeled": "Unlabeled",
-    "start": "Start (Q)",
-    "startShort": "Start",
-    "startHint": "Mark subtask start (Q)",
-    "end": "End (R)",
-    "endShort": "End",
-    "endHint": "Mark subtask end (R)",
-    "dialogTitle": "Describe subtask",
-    "dialogRange": "Frames {{start}}–{{end}}",
-    "label": "Subtask description",
-    "labelPlaceholder": "e.g. Grasp the apple",
-    "labelRequired": "Enter a subtask description",
-    "save": "Save subtask"
+    "pauseToLabel": "Pause to label",
+    "dialogTitle": "Subtask",
+    "dialogRange": "{{start}}–{{end}} · {{startTime}}–{{endTime}} s",
+    "label": "Name",
+    "labelPlaceholder": "Grasp the apple",
+    "labelRequired": "Enter a name",
+    "save": "Save",
+    "rangeTrack": "Subtasks",
+    "resizeBoundary": "Move boundary",
+    "unlabeledGap": "Unlabeled {{start}}–{{end}}"
   },
   "health": {
     "noData": "Load a dataset to see health checks",
@@ -568,7 +560,7 @@
       "title": "Keyboard Shortcuts",
       "description": "Operate faster: play/seek/switch episode via keyboard.",
       "playPause": {
-        "action": "Play/Pause",
+        "action": "Play/pause",
         "key": "Space"
       },
       "prevFrame": {
@@ -602,14 +594,6 @@
       "lastFrame": {
         "action": "Last frame",
         "key": "End"
-      },
-      "subtaskStart": {
-        "action": "Mark subtask start",
-        "key": "Q"
-      },
-      "subtaskEnd": {
-        "action": "Mark subtask end",
-        "key": "R"
       }
     },
     "welcome": {
@@ -701,6 +685,7 @@
   },
   "export": {
     "title": "Export Dataset",
+    "a11yDescription": "Choose export format and target dataset version, then export to a file or folder.",
     "format": "Export Format",
     "directory": "Local Directory",
     "targetVersion": "Target Version",
@@ -708,9 +693,11 @@
     "changesSummary": "Changes Summary",
     "modifiedCount": "Modified",
     "deletedCount": "Deleted",
-    "subtaskEpisodes": "Subtask-annotated episodes",
-    "subtaskCoverageHint": "v3.0 export with subtasks requires every frame of every exported episode to be labeled. Official unlabeled values (-1) block export; Studio does not write -1.",
-    "subtaskCoverageIncomplete": "Episode {{index}} has unlabeled frames ({{labeled}}/{{total}}). Label every frame before exporting v3.0. Studio does not write subtask_index = -1.",
+    "subtaskEpisodes": "Subtask episodes",
+    "includeSubtasks": "Include subtasks",
+    "subtaskCoverageHint": "Every exported episode must be fully labeled.",
+    "subtaskCoverageMissing": "Episode #{{index}} has no subtask labels.",
+    "subtaskCoverageIncomplete": "Episode #{{index}} is missing labels ({{labeled}}/{{total}}).",
     "totalEpisodes": "Total episodes",
     "metadataOnlyHint": "Current export includes metadata only (info, episodes, tasks).",
     "export": "Export",
@@ -724,7 +711,8 @@
     "percentDone": "{{percent}}%",
     "errorUnknown": "Export failed",
     "cancelled": "Export cancelled.",
-    "cancelExport": "Cancel export"
+    "cancelExport": "Cancel export",
+    "versionReadOnly": "This dataset version is not supported for export and can only be viewed."
   },
   "dialogs": {
     "remoteArchive": {
@@ -759,7 +747,9 @@
     "restoreHandleMissing": "Saved file access expired. Please select the file or folder again.",
     "restorePermissionDenied": "Permission denied. Please select the file or folder again.",
     "restoreHandleMismatch": "Saved access is invalid. Please select the file or folder again.",
-    "restoreHandleNotFound": "The file or folder was moved or deleted. Please select it again."
+    "restoreHandleNotFound": "The file or folder was moved or deleted. Please select it again.",
+    "insecureOriginPickerFallback": "Not a secure origin. Using the file picker. Prefer localhost or HTTPS.",
+    "insecureOriginExportDirectory": "Folder export needs localhost or HTTPS."
   },
   "pagination": {
     "previous": "Previous",

@@ -12,6 +12,10 @@ export type PlaybackEngineCallbacks = {
   getSelectedEpisodeIndex: () => number | null;
   getDeletedEpisodes: () => Set<number>;
   onStop: () => void;
+  /** When true, stay on this episode at the last frame instead of looping or advancing. */
+  shouldHoldAtEpisodeEnd?: () => boolean;
+  /** Fired after a hold-at-end stop, so the UI can open the last unlabeled subtask. */
+  onNaturalEnd?: () => void;
   /** Resolves true only after the next episode is ready to play. */
   onAdvanceEpisode: (episodeIndex: number) => Promise<boolean>;
   onResumeAfterEpisode: () => void;
@@ -135,6 +139,12 @@ export class PlaybackEngine {
       let newIndex = this.callbacks.getFrameIndex() + 1;
 
       if (newIndex >= frameCount) {
+        if (this.callbacks.shouldHoldAtEpisodeEnd?.()) {
+          this.callbacks.onStop();
+          this.callbacks.onNaturalEnd?.();
+          this.stop();
+          return;
+        }
         if (this.callbacks.getPlaybackMode() === 'loop') {
           newIndex = 0;
           this.callbacks.setFrameIndexSilent(newIndex);

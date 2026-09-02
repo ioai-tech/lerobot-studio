@@ -7,29 +7,31 @@ import {
   useLeRobotUi,
 } from '../contexts/LeRobotContext';
 import { usePortalContainer } from '@/ui';
+import { isEventInsideStudio, isPlaybackShortcutBlocked } from './shortcutTarget';
 
-/**
- * 全局键盘快捷键处理Hook
- * 提供类似视频播放器的快捷键操作
- */
+/** Video-player keyboard shortcuts. */
 export const useKeyboardShortcuts = (enabled: boolean = true) => {
   const portalContainer = usePortalContainer();
   const { episodes, getFrameIndex, isLoading } = useLeRobotData();
   const { selectedEpisodeIndex, selectEpisode } = useLeRobotSelection();
-  const { setFrameIndex, togglePlay, currentFrames } = useLeRobotPlayback();
-  const { canAnnotate, markStart, markEnd } = useLeRobotSubtask();
-  const { setSubtaskDialogOpen } = useLeRobotUi();
+  const { setFrameIndex, setPlaying, currentFrames, isPlaying } = useLeRobotPlayback();
+  const { canAnnotate, endAtPlayhead, pendingRange, clearPendingAnnotation } = useLeRobotSubtask();
+  const { setSubtaskDialogOpen, episodeEditMode, subtaskDialogOpen } = useLeRobotUi();
 
-  // 使用ref存储，避免闭包问题
   const enabledRef = useRef(enabled);
   const episodesRef = useRef(episodes);
   const selectedEpisodeIndexRef = useRef(selectedEpisodeIndex);
   const currentFramesRef = useRef(currentFrames);
   const isLoadingRef = useRef(isLoading);
   const canAnnotateRef = useRef(canAnnotate);
-  const markStartRef = useRef(markStart);
-  const markEndRef = useRef(markEnd);
+  const episodeEditModeRef = useRef(episodeEditMode);
+  const endAtPlayheadRef = useRef(endAtPlayhead);
+  const pendingRangeRef = useRef(pendingRange);
+  const clearPendingAnnotationRef = useRef(clearPendingAnnotation);
   const setSubtaskDialogOpenRef = useRef(setSubtaskDialogOpen);
+  const setPlayingRef = useRef(setPlaying);
+  const isPlayingRef = useRef(isPlaying);
+  const subtaskDialogOpenRef = useRef(subtaskDialogOpen);
 
   useEffect(() => {
     enabledRef.current = enabled;
@@ -56,33 +58,46 @@ export const useKeyboardShortcuts = (enabled: boolean = true) => {
   }, [canAnnotate]);
 
   useEffect(() => {
-    markStartRef.current = markStart;
-  }, [markStart]);
+    episodeEditModeRef.current = episodeEditMode;
+  }, [episodeEditMode]);
 
   useEffect(() => {
-    markEndRef.current = markEnd;
-  }, [markEnd]);
+    endAtPlayheadRef.current = endAtPlayhead;
+  }, [endAtPlayhead]);
+
+  useEffect(() => {
+    pendingRangeRef.current = pendingRange;
+  }, [pendingRange]);
+
+  useEffect(() => {
+    clearPendingAnnotationRef.current = clearPendingAnnotation;
+  }, [clearPendingAnnotation]);
 
   useEffect(() => {
     setSubtaskDialogOpenRef.current = setSubtaskDialogOpen;
   }, [setSubtaskDialogOpen]);
 
+  useEffect(() => {
+    setPlayingRef.current = setPlaying;
+  }, [setPlaying]);
+
+  useEffect(() => {
+    isPlayingRef.current = isPlaying;
+  }, [isPlaying]);
+
+  useEffect(() => {
+    subtaskDialogOpenRef.current = subtaskDialogOpen;
+  }, [subtaskDialogOpen]);
+
   const handleKeyDown = useCallback(
     (e: KeyboardEvent) => {
-      // 如果快捷键被禁用，或者正在加载，则忽略
       if (!enabledRef.current || isLoadingRef.current) return;
+      if (e.defaultPrevented) return;
 
-      const target = e.target as HTMLElement;
-      if (!portalContainer?.contains(target)) return;
-      const isInputElement =
-        target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable;
+      const target = e.target;
+      if (!isEventInsideStudio(target, portalContainer)) return;
+      if (isPlaybackShortcutBlocked(target)) return;
 
-      // 如果在输入框中，只允许空格键（用于播放/暂停），其他快捷键忽略
-      if (isInputElement && e.key !== ' ') {
-        return;
-      }
-
-      // 阻止默认行为（避免页面滚动等）
       const preventDefaultKeys = ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', ' '];
       if (preventDefaultKeys.includes(e.key)) {
         e.preventDefault();
@@ -94,10 +109,11 @@ export const useKeyboardShortcuts = (enabled: boolean = true) => {
       const currentFrames = currentFramesRef.current;
       const currentFrameIndex = getFrameIndex();
       const totalFrames = currentFrames.length;
+      const canUseSubtaskKeys =
+        canAnnotateRef.current && episodeEditModeRef.current && totalFrames > 0;
 
       switch (e.key) {
         case 'ArrowUp': {
-          // 切换到上一个episode
           if (currentEpisodes.length === 0) return;
 
           const currentEpisode = currentEpisodes.find(
@@ -105,7 +121,6 @@ export const useKeyboardShortcuts = (enabled: boolean = true) => {
           );
 
           if (!currentEpisode) {
-            // 如果没有选中的，选择第一个
             if (currentEpisodes.length > 0) {
               selectEpisode(currentEpisodes[0].episode_index);
             }
@@ -124,7 +139,6 @@ export const useKeyboardShortcuts = (enabled: boolean = true) => {
         }
 
         case 'ArrowDown': {
-          // 切换到下一个episode
           if (currentEpisodes.length === 0) return;
 
           const currentEpisode = currentEpisodes.find(
@@ -132,7 +146,6 @@ export const useKeyboardShortcuts = (enabled: boolean = true) => {
           );
 
           if (!currentEpisode) {
-            // 如果没有选中的，选择第一个
             if (currentEpisodes.length > 0) {
               selectEpisode(currentEpisodes[0].episode_index);
             }
@@ -151,9 +164,6 @@ export const useKeyboardShortcuts = (enabled: boolean = true) => {
         }
 
         case 'ArrowLeft': {
-          // 后退一帧
-          // Shift: 10帧
-          // Ctrl/Cmd: 5帧
           if (totalFrames === 0) return;
 
           let step = 1;
@@ -169,9 +179,6 @@ export const useKeyboardShortcuts = (enabled: boolean = true) => {
         }
 
         case 'ArrowRight': {
-          // 前进一帧
-          // Shift: 10帧
-          // Ctrl/Cmd: 5帧
           if (totalFrames === 0) return;
 
           let step = 1;
@@ -187,19 +194,20 @@ export const useKeyboardShortcuts = (enabled: boolean = true) => {
         }
 
         case ' ': {
-          // 空格键：播放/暂停
-          // 如果在输入框中，不处理
-          if (isInputElement) return;
-
           e.preventDefault();
-          if (totalFrames > 0) {
-            togglePlay();
+          if (totalFrames === 0 || subtaskDialogOpenRef.current) return;
+          if (isPlayingRef.current) {
+            setPlayingRef.current(false);
+            if (canUseSubtaskKeys && endAtPlayheadRef.current(currentFrameIndex)) {
+              setSubtaskDialogOpenRef.current(true);
+            }
+          } else {
+            setPlayingRef.current(true);
           }
           break;
         }
 
         case 'Home': {
-          // Home键：跳转到第一帧
           if (totalFrames > 0) {
             setFrameIndex(0);
           }
@@ -207,33 +215,22 @@ export const useKeyboardShortcuts = (enabled: boolean = true) => {
         }
 
         case 'End': {
-          // End键：跳转到最后一帧
           if (totalFrames > 0) {
             setFrameIndex(totalFrames - 1);
           }
           break;
         }
 
-        case 'q':
-        case 'Q': {
-          if (!canAnnotateRef.current || totalFrames === 0) return;
-          e.preventDefault();
-          markStartRef.current(currentFrameIndex);
-          break;
-        }
-
-        case 'r':
-        case 'R': {
-          if (!canAnnotateRef.current || totalFrames === 0) return;
-          e.preventDefault();
-          if (markEndRef.current(currentFrameIndex)) {
-            setSubtaskDialogOpenRef.current(true);
+        case 'Escape': {
+          if (pendingRangeRef.current != null && !subtaskDialogOpenRef.current) {
+            e.preventDefault();
+            clearPendingAnnotationRef.current();
           }
           break;
         }
       }
     },
-    [selectEpisode, setFrameIndex, togglePlay, getFrameIndex, portalContainer],
+    [selectEpisode, setFrameIndex, getFrameIndex, portalContainer],
   );
 
   useEffect(() => {
