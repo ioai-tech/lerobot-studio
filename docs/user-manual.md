@@ -36,16 +36,14 @@ The playback bar lets you:
 
 Keyboard shortcuts:
 
-| Key                        | Action                   |
-| -------------------------- | ------------------------ |
-| `Space`                    | Play or pause            |
-| `←` / `→`                  | Previous or next frame   |
-| `Shift` + `←` / `→`        | Move 10 frames           |
-| `Cmd` / `Ctrl` + `←` / `→` | Move 5 frames            |
-| `↑` / `↓`                  | Previous or next episode |
-| `Home` / `End`             | First or last frame      |
-| `Q`                        | Mark subtask start       |
-| `R`                        | Mark subtask end         |
+| Key                        | Action                              |
+| -------------------------- | ----------------------------------- |
+| `Space`                    | Play/pause. In Edit, pause to label |
+| `←` / `→`                  | Previous or next frame              |
+| `Shift` + `←` / `→`        | Move 10 frames                      |
+| `Cmd` / `Ctrl` + `←` / `→` | Move 5 frames                       |
+| `↑` / `↓`                  | Previous or next episode            |
+| `Home` / `End`             | First or last frame                 |
 
 ## Read the data
 
@@ -72,16 +70,16 @@ These edits stay in the current browser session until you export a dataset. The 
 
 ### Annotate subtasks
 
-Writable `v3.0` datasets can be labeled with frame-range subtasks. `v2.1` can show existing `subtask_index` values (including PI-style `metadata.subtask_*` columns) but cannot add labels. **Start** / **End** (`Q` / `R`) appear only on writable `v3.0`.
+Writable `v3.0` can be labeled in **Edit**. `v2.1` can show existing `subtask_index` values but cannot add labels.
 
-1. Press **Start** or `Q` on the first frame of a subtask.
-2. Seek or play to the last frame, then press **End** or `R`.
-3. Enter a description in the dialog. Existing labels are offered as shortcuts.
-4. Repeat. The next start defaults to the frame after the previous end.
+- Pause (`Space`) to name the range from the previous end (or frame 0) to the playhead.
+- Episode end stays here and offers the last unlabeled gap.
+- Click an unlabeled bar region to name that gap.
+- Drag edges, double-click to rename, or hover to delete.
 
-The timeline shows colored ranges. The sidebar lists segments and `labeled/total` coverage for the current episode. Official unlabeled frames (`subtask_index = -1`) show as **Unlabeled** and are not listed as segments. When `meta/subtasks.parquet` is missing, indices display as `Subtask N`.
+Colored ranges show whenever subtasks exist, including outside Edit. Official unlabeled frames (`subtask_index = -1`) stay empty. Missing `meta/subtasks.parquet` falls back to `Subtask N`.
 
-Export to `v3.0` requires every frame of every exported episode to have a subtask. Unlabeled frames block export; the app does not write `subtask_index = -1`. Extra official columns such as `task_index_high_level` are kept.
+`v3.0` export requires every exported frame labeled and never writes `-1`. Extra official columns such as `task_index_high_level` are kept.
 
 Verified Hub examples and download commands: [Data formats — Official Hub examples](./data-formats.md#official-hub-examples).
 

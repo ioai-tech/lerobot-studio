@@ -40,6 +40,8 @@ type UsePlaybackBridgeOptions = {
   selectedEpisodeIndex: number | null;
   deletedEpisodes: Set<number>;
   selectEpisodeRef: MutableRefObject<(episodeIndex: number) => Promise<boolean>>;
+  shouldHoldAtEpisodeEndRef?: MutableRefObject<() => boolean>;
+  onNaturalEndRef?: MutableRefObject<() => void>;
 };
 
 export function usePlaybackBridge({
@@ -54,6 +56,8 @@ export function usePlaybackBridge({
   selectedEpisodeIndex,
   deletedEpisodes,
   selectEpisodeRef,
+  shouldHoldAtEpisodeEndRef,
+  onNaturalEndRef,
 }: UsePlaybackBridgeOptions) {
   const [currentFrameIndex, setCurrentFrameIndex] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -124,6 +128,8 @@ export function usePlaybackBridge({
       getSelectedEpisodeIndex: () => selectedEpisodeIndex,
       getDeletedEpisodes: () => deletedEpisodes,
       onStop: () => setIsPlaying(false),
+      shouldHoldAtEpisodeEnd: () => shouldHoldAtEpisodeEndRef?.current() ?? false,
+      onNaturalEnd: () => onNaturalEndRef?.current(),
       onAdvanceEpisode: (episodeIndex) => selectEpisodeRef.current(episodeIndex),
       onResumeAfterEpisode: () => setIsPlaying(true),
     });
@@ -143,6 +149,8 @@ export function usePlaybackBridge({
     deletedEpisodes,
     selectEpisodeRef,
     notifyFrameSubscribers,
+    shouldHoldAtEpisodeEndRef,
+    onNaturalEndRef,
   ]);
 
   useEffect(() => {

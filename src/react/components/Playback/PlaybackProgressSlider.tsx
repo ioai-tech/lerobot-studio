@@ -2,15 +2,7 @@ import React, { memo, useCallback, useEffect, useMemo, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { FrameData, SubtaskSegment } from '@/core';
 import type { PendingSubtaskRange } from '../../contexts/useSubtaskAnnotation';
-
-function subtaskBandColor(label: string): string {
-  let hash = 0;
-  for (let i = 0; i < label.length; i++) {
-    hash = (hash * 31 + label.charCodeAt(i)) | 0;
-  }
-  const hue = Math.abs(hash) % 360;
-  return `hsl(${hue} 65% 50% / 0.4)`;
-}
+import { SubtaskRangeTrack } from './SubtaskRangeTrack';
 
 const THUMB_SIZE_PX = 16;
 const A11Y_SYNC_INTERVAL_MS = 250;
@@ -39,7 +31,12 @@ export interface PlaybackProgressSliderProps {
   subscribeFrameIndex: (callback: (frameIndex: number) => void) => () => void;
   segments?: SubtaskSegment[];
   pendingRange?: PendingSubtaskRange | null;
-  pendingStart?: number | null;
+  editRanges?: boolean;
+  knownLabels?: string[];
+  onReplaceSegments?: (segments: SubtaskSegment[]) => void;
+  onFillGap?: (startFrame: number, endFrame: number) => void;
+  onDeleteSegment?: (index: number) => void;
+  onRenameSegment?: (index: number) => void;
 }
 
 const PlaybackProgressSliderComponent: React.FC<PlaybackProgressSliderProps> = ({
@@ -54,7 +51,12 @@ const PlaybackProgressSliderComponent: React.FC<PlaybackProgressSliderProps> = (
   subscribeFrameIndex,
   segments = [],
   pendingRange = null,
-  pendingStart = null,
+  editRanges = false,
+  knownLabels = [],
+  onReplaceSegments,
+  onFillGap,
+  onDeleteSegment,
+  onRenameSegment,
 }) => {
   const { t } = useTranslation();
   const currentTimeRef = useRef<HTMLSpanElement>(null);
@@ -308,6 +310,21 @@ const PlaybackProgressSliderComponent: React.FC<PlaybackProgressSliderProps> = (
         </div>
       </div>
 
+      {editRanges || segments.length > 0 || pendingRange ? (
+        <SubtaskRangeTrack
+          segments={segments}
+          knownLabels={knownLabels}
+          totalFrames={totalFrames}
+          editable={editRanges}
+          onJump={setFrameIndex}
+          pendingRange={pendingRange}
+          onCommit={(next) => onReplaceSegments?.(next)}
+          onFillGap={editRanges ? onFillGap : undefined}
+          onDelete={editRanges ? onDeleteSegment : undefined}
+          onRename={editRanges ? onRenameSegment : undefined}
+        />
+      ) : null}
+
       <div
         ref={trackRef}
         className="relative h-1.5 w-full cursor-pointer rounded-full bg-primary/20 touch-none"
@@ -322,24 +339,6 @@ const PlaybackProgressSliderComponent: React.FC<PlaybackProgressSliderProps> = (
         aria-valuenow={initialFrameIndex}
         aria-valuetext={initialA11yText}
       >
-        {totalFrames > 1
-          ? segments.map((segment) => {
-              const left = (segment.startFrame / (totalFrames - 1)) * 100;
-              const width =
-                ((segment.endFrame - segment.startFrame + 1) / Math.max(1, totalFrames)) * 100;
-              return (
-                <div
-                  key={`${segment.startFrame}-${segment.endFrame}-${segment.label}`}
-                  className="absolute top-0 h-full rounded-full pointer-events-none"
-                  style={{
-                    left: `${left}%`,
-                    width: `${Math.max(width, 0.5)}%`,
-                    background: subtaskBandColor(segment.label),
-                  }}
-                />
-              );
-            })
-          : null}
         {totalFrames > 1 && pendingRange ? (
           <div
             className="absolute top-0 h-full rounded-full pointer-events-none bg-primary/30"
@@ -350,12 +349,6 @@ const PlaybackProgressSliderComponent: React.FC<PlaybackProgressSliderProps> = (
                 0.5,
               )}%`,
             }}
-          />
-        ) : null}
-        {totalFrames > 1 && pendingStart != null && !pendingRange ? (
-          <div
-            className="absolute top-0 h-full w-0.5 pointer-events-none bg-primary"
-            style={{ left: `${(pendingStart / (totalFrames - 1)) * 100}%` }}
           />
         ) : null}
         <div

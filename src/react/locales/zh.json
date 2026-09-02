@@ -99,24 +99,16 @@
     "speed": "播放速度"
   },
   "subtask": {
-    "listTitle": "子任务",
-    "empty": "当前 episode 没有已标注的子任务",
-    "coverage": "已标注 {{labeled}}/{{total}} 帧",
-    "coverageIncomplete": "仍有未标注帧。导出 v3.0 需要每一帧都有子任务；官方的 -1 视为未覆盖。",
-    "current": "子任务",
-    "unlabeled": "未标注",
-    "start": "开始 (Q)",
-    "startShort": "开始",
-    "startHint": "标记子任务开始 (Q)",
-    "end": "结束 (R)",
-    "endShort": "结束",
-    "endHint": "标记子任务结束 (R)",
-    "dialogTitle": "描述子任务",
-    "dialogRange": "帧 {{start}}–{{end}}",
-    "label": "子任务描述",
-    "labelPlaceholder": "例如 Grasp the apple",
-    "labelRequired": "请输入子任务描述",
-    "save": "保存子任务"
+    "pauseToLabel": "暂停即可标注",
+    "dialogTitle": "子任务",
+    "dialogRange": "{{start}}–{{end}} · {{startTime}}–{{endTime}} 秒",
+    "label": "名称",
+    "labelPlaceholder": "抓住苹果",
+    "labelRequired": "请输入名称",
+    "save": "保存",
+    "rangeTrack": "子任务",
+    "resizeBoundary": "移动分界",
+    "unlabeledGap": "未标注 {{start}}–{{end}}"
   },
   "health": {
     "noData": "加载数据集后可查看健康检查",
@@ -599,14 +591,6 @@
       "lastFrame": {
         "action": "跳到结尾",
         "key": "End"
-      },
-      "subtaskStart": {
-        "action": "标记子任务开始",
-        "key": "Q"
-      },
-      "subtaskEnd": {
-        "action": "标记子任务结束",
-        "key": "R"
       }
     },
     "welcome": {
@@ -705,9 +689,9 @@
     "changesSummary": "修改摘要",
     "modifiedCount": "已修改",
     "deletedCount": "已删除",
-    "subtaskEpisodes": "已标注子任务的 episode",
-    "subtaskCoverageHint": "带有子任务的 v3.0 导出要求每个被导出 episode 的每一帧都已标注。官方未标注值（-1）会阻止导出；Studio 不会写入 -1。",
-    "subtaskCoverageIncomplete": "Episode {{index}} 仍有未标注帧（{{labeled}}/{{total}}）。导出 v3.0 前请补全每一帧。Studio 不会写入 subtask_index = -1。",
+    "subtaskEpisodes": "含子任务的 episode",
+    "subtaskCoverageHint": "v3.0 导出需要每一帧都有子任务。",
+    "subtaskCoverageIncomplete": "Episode {{index}} 已标注 {{labeled}}/{{total}}。",
     "totalEpisodes": "Episode 总数",
     "metadataOnlyHint": "当前仅导出元数据（info、episodes、tasks）。",
     "export": "导出",
@@ -756,7 +740,9 @@
     "restoreHandleMissing": "已保存的文件访问已失效，请重新选择文件或目录。",
     "restorePermissionDenied": "权限被拒绝，请重新选择文件或目录。",
     "restoreHandleMismatch": "已保存的访问无效，请重新选择文件或目录。",
-    "restoreHandleNotFound": "文件或目录已被移动或删除，请重新选择。"
+    "restoreHandleNotFound": "文件或目录已被移动或删除，请重新选择。",
+    "insecureOriginPickerFallback": "当前不是安全源，已改用文件选择器。请优先使用 localhost 或 HTTPS。",
+    "insecureOriginExportDirectory": "导出到文件夹需要 localhost 或 HTTPS。"
   },
   "pagination": {
     "previous": "上一页",

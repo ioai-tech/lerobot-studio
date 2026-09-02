@@ -21,12 +21,12 @@ More runtime notes: [Compatibility](./compatibility.md).
 
 ## Inputs
 
-| Input          | Notes                                                                                                       |
-| -------------- | ----------------------------------------------------------------------------------------------------------- |
-| Local archive  | `.zip`, `.tar`, `.tar.gz`, `.tgz`                                                                           |
-| Local folder   | Drag or select a folder in supported browsers; only File System Access handles can be restored after reload |
-| Remote archive | CORS `GET`; large files also need Range — [CORS](./cors.md)                                                 |
-| Custom         | Implement [`DataSource`](./api.md)                                                                          |
+| Input          | Notes                                                                                                                                                                             |
+| -------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Local archive  | `.zip`, `.tar`, `.tar.gz`, `.tgz`                                                                                                                                                 |
+| Local folder   | Drag or select a folder in supported browsers. File System Access (restorable handles) needs HTTPS or localhost; on HTTP LAN origins Studio uses the browser file picker instead. |
+| Remote archive | CORS `GET`; large files also need Range — [CORS](./cors.md)                                                                                                                       |
+| Custom         | Implement [`DataSource`](./api.md)                                                                                                                                                |
 
 Archives are treated as untrusted input. A failed load does not change the source files.
 

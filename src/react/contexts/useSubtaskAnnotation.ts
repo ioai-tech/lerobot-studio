@@ -1,15 +1,18 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { LeRobotVersionCapability, SubtaskSegment, SubtaskTable } from '@/core';
 import {
   buildSubtaskTable,
   canMutateSubtasks,
   collectSubtaskLabels,
   computeSubtaskCoverage,
-  currentSubtaskLabel,
+  findOverlappingSegment,
   insertSubtaskSegment,
   replaceSubtaskSegment,
   segmentsFromFrameIndices,
+  segmentsInsideEpisode,
   sortSubtaskSegments,
+  subtaskRangeToPlayhead,
+  validateSubtaskSegment,
 } from '@/core';
 
 export interface PendingSubtaskRange {
@@ -39,28 +42,30 @@ export function useSubtaskAnnotation({
   sourceIndices,
 }: UseSubtaskAnnotationOptions) {
   const [overlay, setOverlay] = useState<Map<number, SubtaskSegment[]>>(() => new Map());
-  const [pendingStart, setPendingStart] = useState<number | null>(null);
   const [pendingRange, setPendingRange] = useState<PendingSubtaskRange | null>(null);
   const canAnnotate = canMutateSubtasks(versionCapability);
 
   const resetSubtasks = useCallback(() => {
     setOverlay(new Map());
-    setPendingStart(null);
     setPendingRange(null);
   }, []);
 
-  const sourceSegments = useMemo(
-    () => segmentsFromFrameIndices(sourceIndices, sourceTable),
-    [sourceIndices, sourceTable],
-  );
+  const sourceSegments = useMemo(() => {
+    if (sourceIndices.length !== episodeLength) return [];
+    return segmentsFromFrameIndices(sourceIndices, sourceTable);
+  }, [episodeLength, sourceIndices, sourceTable]);
 
   const currentSegments = useMemo(() => {
-    if (selectedEpisodeIndex == null) return [];
-    if (overlay.has(selectedEpisodeIndex)) {
-      return overlay.get(selectedEpisodeIndex) ?? [];
-    }
-    return sourceSegments;
-  }, [overlay, selectedEpisodeIndex, sourceSegments]);
+    if (selectedEpisodeIndex == null || episodeLength <= 0) return [];
+    const raw = overlay.has(selectedEpisodeIndex)
+      ? (overlay.get(selectedEpisodeIndex) ?? [])
+      : sourceSegments;
+    return segmentsInsideEpisode(raw, episodeLength);
+  }, [episodeLength, overlay, selectedEpisodeIndex, sourceSegments]);
+
+  useEffect(() => {
+    setPendingRange(null);
+  }, [selectedEpisodeIndex]);
 
   const knownLabels = useMemo(() => {
     const table = buildSubtaskTable(collectSubtaskLabels(overlay.values(), sourceTable));
@@ -70,11 +75,6 @@ export function useSubtaskAnnotation({
   const coverage = useMemo(
     () => computeSubtaskCoverage(episodeLength, currentSegments),
     [currentSegments, episodeLength],
-  );
-
-  const labelAtFrame = useCallback(
-    (frameIndex: number) => currentSubtaskLabel(currentSegments, frameIndex),
-    [currentSegments],
   );
 
   const ensureOverlayEpisode = useCallback(
@@ -88,47 +88,46 @@ export function useSubtaskAnnotation({
     [overlay, selectedEpisodeIndex, sourceSegments],
   );
 
-  const markStart = useCallback(
-    (frameIndex: number) => {
-      if (!canAnnotate || selectedEpisodeIndex == null) return;
-      if (!Number.isSafeInteger(frameIndex) || frameIndex < 0 || frameIndex >= episodeLength) {
-        return;
-      }
-      setPendingStart(frameIndex);
-      setPendingRange(null);
-    },
-    [canAnnotate, episodeLength, selectedEpisodeIndex],
-  );
-
-  const markEnd = useCallback(
+  const endAtPlayhead = useCallback(
     (frameIndex: number): boolean => {
-      if (!canAnnotate || selectedEpisodeIndex == null || episodeLength <= 0) return false;
-      if (!Number.isSafeInteger(frameIndex) || frameIndex < 0 || frameIndex >= episodeLength) {
-        return false;
-      }
-      const last = sortSubtaskSegments(currentSegments).at(-1);
-      const fallbackStart =
-        pendingStart ?? (last != null && last.endFrame + 1 < episodeLength ? last.endFrame + 1 : 0);
-      const startFrame = Math.min(fallbackStart, frameIndex);
-      const endFrame = Math.max(fallbackStart, frameIndex);
-      setPendingRange({ startFrame, endFrame });
+      if (!canAnnotate || selectedEpisodeIndex == null) return false;
+      const range = subtaskRangeToPlayhead(currentSegments, frameIndex, episodeLength);
+      if (!range) return false;
+      setPendingRange(range);
       return true;
     },
-    [canAnnotate, currentSegments, episodeLength, pendingStart, selectedEpisodeIndex],
+    [canAnnotate, currentSegments, episodeLength, selectedEpisodeIndex],
+  );
+
+  const beginPendingRange = useCallback(
+    (startFrame: number, endFrame: number): boolean => {
+      if (!canAnnotate || selectedEpisodeIndex == null || episodeLength <= 0) return false;
+      if (!Number.isSafeInteger(startFrame) || !Number.isSafeInteger(endFrame)) return false;
+      const start = Math.min(startFrame, endFrame);
+      const end = Math.max(startFrame, endFrame);
+      if (start < 0 || end >= episodeLength) return false;
+      const candidate = { startFrame: start, endFrame: end, label: '_' };
+      if (findOverlappingSegment(currentSegments, candidate)) return false;
+      setPendingRange({ startFrame: start, endFrame: end });
+      return true;
+    },
+    [canAnnotate, currentSegments, episodeLength, selectedEpisodeIndex],
   );
 
   const cancelPending = useCallback(() => {
     setPendingRange(null);
   }, []);
 
+  const clearPendingAnnotation = cancelPending;
+
   const commitPending = useCallback(
-    (label: string) => {
-      if (!canAnnotate || selectedEpisodeIndex == null || !pendingRange) {
+    (label: string, range: PendingSubtaskRange | null = pendingRange) => {
+      if (!canAnnotate || selectedEpisodeIndex == null || !range) {
         throw new Error('No pending subtask range');
       }
       const nextSegments = insertSubtaskSegment(
         ensureOverlayEpisode(selectedEpisodeIndex, episodeLength),
-        { ...pendingRange, label },
+        { ...range, label },
         episodeLength,
       );
       setOverlay((previous) => {
@@ -136,11 +135,32 @@ export function useSubtaskAnnotation({
         next.set(selectedEpisodeIndex, nextSegments);
         return next;
       });
-      const nextStart = pendingRange.endFrame + 1;
-      setPendingStart(nextStart < episodeLength ? nextStart : null);
       setPendingRange(null);
     },
     [canAnnotate, ensureOverlayEpisode, episodeLength, pendingRange, selectedEpisodeIndex],
+  );
+
+  const replaceEpisodeSegments = useCallback(
+    (nextSegments: SubtaskSegment[]) => {
+      if (!canAnnotate || selectedEpisodeIndex == null) return;
+      const sorted = sortSubtaskSegments(
+        nextSegments.map((segment) => validateSubtaskSegment(segment, episodeLength)),
+      );
+      for (let index = 0; index < sorted.length; index++) {
+        const overlap = findOverlappingSegment(sorted, sorted[index], index);
+        if (overlap) {
+          throw new Error(
+            `Subtask "${sorted[index].label}" overlaps "${overlap.label}" (${overlap.startFrame}-${overlap.endFrame})`,
+          );
+        }
+      }
+      setOverlay((previous) => {
+        const next = cloneOverlay(previous);
+        next.set(selectedEpisodeIndex, sorted);
+        return next;
+      });
+    },
+    [canAnnotate, episodeLength, selectedEpisodeIndex],
   );
 
   const updateSegment = useCallback(
@@ -183,14 +203,14 @@ export function useSubtaskAnnotation({
       currentSegments,
       knownLabels,
       coverage,
-      pendingStart,
       pendingRange,
-      labelAtFrame,
-      markStart,
-      markEnd,
+      endAtPlayhead,
+      beginPendingRange,
       cancelPending,
+      clearPendingAnnotation,
       commitPending,
       updateSegment,
+      replaceEpisodeSegments,
       removeSegment,
       resetSubtasks,
     }),
@@ -200,14 +220,14 @@ export function useSubtaskAnnotation({
       currentSegments,
       knownLabels,
       coverage,
-      pendingStart,
       pendingRange,
-      labelAtFrame,
-      markStart,
-      markEnd,
+      endAtPlayhead,
+      beginPendingRange,
       cancelPending,
+      clearPendingAnnotation,
       commitPending,
       updateSegment,
+      replaceEpisodeSegments,
       removeSegment,
       resetSubtasks,
     ],

@@ -8,9 +8,11 @@ import {
   LeRobotDataContext,
   LeRobotSelectionContext,
   LeRobotSubtaskContext,
+  LeRobotUiContext,
   type LeRobotDataContextType,
   type LeRobotSelectionContextType,
   type LeRobotSubtaskContextType,
+  type LeRobotUiContextType,
 } from '../../src/react/contexts/LeRobotContext';
 import {
   assertEpisodeMutationAllowed,
@@ -97,17 +99,23 @@ describe('read-only future dataset episodes', () => {
       currentSegments: [],
       knownLabels: [],
       coverage: { labeledFrames: 0, totalFrames: 0, gaps: [], complete: false },
-      pendingStart: null,
       pendingRange: null,
-      labelAtFrame: () => null,
-      markStart: vi.fn(),
-      markEnd: vi.fn(() => false),
+      endAtPlayhead: vi.fn(() => false),
+      beginPendingRange: vi.fn(() => false),
       cancelPending: vi.fn(),
+      clearPendingAnnotation: vi.fn(),
       commitPending: vi.fn(),
       updateSegment: vi.fn(),
       removeSegment: vi.fn(),
-      jumpToFrame: vi.fn(),
     } as unknown as LeRobotSubtaskContextType;
+    const uiValue = {
+      healthDialogOpen: false,
+      setHealthDialogOpen: vi.fn(),
+      subtaskDialogOpen: false,
+      setSubtaskDialogOpen: vi.fn(),
+      episodeEditMode: false,
+      setEpisodeEditMode: vi.fn(),
+    } as unknown as LeRobotUiContextType;
 
     const container = document.createElement('div');
     container.style.width = '320px';
@@ -121,7 +129,9 @@ describe('read-only future dataset episodes', () => {
           <LeRobotDataContext.Provider value={dataValue}>
             <LeRobotSelectionContext.Provider value={selectionValue}>
               <LeRobotSubtaskContext.Provider value={subtaskValue}>
-                <EpisodeSidebar />
+                <LeRobotUiContext.Provider value={uiValue}>
+                  <EpisodeSidebar />
+                </LeRobotUiContext.Provider>
               </LeRobotSubtaskContext.Provider>
             </LeRobotSelectionContext.Provider>
           </LeRobotDataContext.Provider>

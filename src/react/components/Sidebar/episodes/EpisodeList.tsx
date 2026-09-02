@@ -7,6 +7,8 @@ import { ScrollArea } from '@/ui';
 import { EpisodeRow } from './EpisodeRow';
 
 export const EPISODE_VIRTUALIZATION_THRESHOLD = 100;
+const EPISODE_ROW_HEIGHT = 61;
+const EPISODE_ROW_HEIGHT_EDIT = 102;
 
 export interface EpisodeListItem {
   episode: EpisodeMetadata;
@@ -166,7 +168,7 @@ export const EpisodeList: React.FC<EpisodeListProps> = ({
         {errorBanner}
         <List
           rowCount={filteredEpisodes.length}
-          rowHeight={editMode && !multiSelectMode ? 102 : 61}
+          rowHeight={editMode && !multiSelectMode ? EPISODE_ROW_HEIGHT_EDIT : EPISODE_ROW_HEIGHT}
           rowComponent={VirtualEpisodeRow}
           rowProps={virtualRowProps}
           rowKey={episodeRowKey}

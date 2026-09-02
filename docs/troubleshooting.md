@@ -51,8 +51,8 @@ Studio maps official LeRobot `subtask_index` only.
 
 - `lerobot/libero_10_subtask` shows `Subtask N` when `meta/subtasks.parquet` is missing.
 - `lerobot/pusht-subtask` shows `phase 1/2/3`; frames with `subtask_index = -1` stay **Unlabeled**.
-- `k1000dai/libero-subtaskid-segments` stores `subtask_id`, not `subtask_index`, so segments are not listed.
-- `v2.1` can display existing indices but has no **Start** / **End** buttons.
+- `k1000dai/libero-subtaskid-segments` stores `subtask_id`, not `subtask_index`, so segments are not shown.
+- `v2.1` can display existing indices but cannot add labels.
 
 Download commands: [Data formats — Official Hub examples](./data-formats.md#official-hub-examples). Export to `v3.0` fails until every exported frame is labeled; the app does not write `-1`.
 

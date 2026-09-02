@@ -23,7 +23,12 @@ import {
   type FrameIndexSubscriber,
 } from './LeRobotContext';
 import { useSubtaskAnnotation } from './useSubtaskAnnotation';
-import { buildPlaybackFrames, getEagerEpisodeColumns, getFirstAvailableEpisodeIndex } from '@/core';
+import {
+  buildPlaybackFrames,
+  getEagerEpisodeColumns,
+  getFirstAvailableEpisodeIndex,
+  lastUnlabeledGap,
+} from '@/core';
 import { createParquetImageService, type ParquetImageServiceImpl } from '@/platform';
 import { getImageFeatureNames } from '@/core';
 import { useEpisodeView } from './useEpisodeView';
@@ -84,6 +89,7 @@ export const LeRobotDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
   const [sourceSubtasks, setSourceSubtasks] = useState<SubtaskTable>({});
   const [sourceSubtaskIndices, setSourceSubtaskIndices] = useState<Array<number | null>>([]);
   const [subtaskDialogOpen, setSubtaskDialogOpen] = useState(false);
+  const [episodeEditMode, setEpisodeEditMode] = useState(false);
   const [selectedEpisodeIndex, setSelectedEpisodeIndex] = useState<number | null>(null);
   const [currentFrames, setCurrentFrames] = useState<FrameData[]>([]);
   const [chartData, setChartData] = useState<NumericalColumnMap>({});
@@ -148,6 +154,17 @@ export const LeRobotDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
   const frameIndexRef = useRef(0);
   const frameSubscribersRef = useRef<Set<FrameIndexSubscriber>>(new Set());
   const selectEpisodeRef = useRef<(episodeIndex: number) => Promise<boolean>>(async () => false);
+  const shouldHoldAtEpisodeEndRef = useRef<() => boolean>(() => false);
+  const onNaturalEndRef = useRef<() => void>(() => undefined);
+  shouldHoldAtEpisodeEndRef.current = () => subtask.canAnnotate && episodeEditMode;
+  onNaturalEndRef.current = () => {
+    if (!(subtask.canAnnotate && episodeEditMode)) return;
+    const gap = lastUnlabeledGap(subtask.currentSegments, currentFrames.length);
+    if (!gap) return;
+    if (subtask.beginPendingRange(gap.startFrame, gap.endFrame)) {
+      setSubtaskDialogOpen(true);
+    }
+  };
 
   // 卸载时清理资源
   useEffect(() => {
@@ -228,6 +245,8 @@ export const LeRobotDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
     selectedEpisodeIndex,
     deletedEpisodes,
     selectEpisodeRef,
+    shouldHoldAtEpisodeEndRef,
+    onNaturalEndRef,
   });
 
   const reset = useCallback(async () => {
@@ -259,6 +278,7 @@ export const LeRobotDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
     setSourceSubtasks({});
     setSourceSubtaskIndices([]);
     setSubtaskDialogOpen(false);
+    setEpisodeEditMode(false);
     resetSubtasks();
     setModifiedEpisodes(new Map());
     setDeletedEpisodes(new Set());
@@ -327,6 +347,7 @@ export const LeRobotDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
         setSourceSubtasks({});
         setSourceSubtaskIndices([]);
         setSubtaskDialogOpen(false);
+        setEpisodeEditMode(false);
         resetSubtasks();
         setModifiedEpisodes(new Map());
         setDeletedEpisodes(new Set());
@@ -420,6 +441,7 @@ export const LeRobotDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
       upsertTask({ id: taskId, phase: 'read', message: `Loading episode ${index}...` });
 
       setSelectedEpisodeIndex(index);
+      setCurrentFrames([]);
       setCurrentFrameIndex(0);
       frameIndexRef.current = 0;
       notifyFrameSubscribers(0);
@@ -715,8 +737,10 @@ export const LeRobotDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
       setHealthDialogOpen,
       subtaskDialogOpen,
       setSubtaskDialogOpen,
+      episodeEditMode,
+      setEpisodeEditMode,
     }),
-    [healthDialogOpen, subtaskDialogOpen],
+    [healthDialogOpen, subtaskDialogOpen, episodeEditMode],
   );
 
   const subtaskValue = useMemo(
@@ -726,18 +750,17 @@ export const LeRobotDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
       currentSegments: subtask.currentSegments,
       knownLabels: subtask.knownLabels,
       coverage: subtask.coverage,
-      pendingStart: subtask.pendingStart,
       pendingRange: subtask.pendingRange,
-      labelAtFrame: subtask.labelAtFrame,
-      markStart: subtask.markStart,
-      markEnd: subtask.markEnd,
+      endAtPlayhead: subtask.endAtPlayhead,
+      beginPendingRange: subtask.beginPendingRange,
       cancelPending: subtask.cancelPending,
+      clearPendingAnnotation: subtask.clearPendingAnnotation,
       commitPending: subtask.commitPending,
       updateSegment: subtask.updateSegment,
+      replaceEpisodeSegments: subtask.replaceEpisodeSegments,
       removeSegment: subtask.removeSegment,
-      jumpToFrame: setFrameIndex,
     }),
-    [subtask, setFrameIndex],
+    [subtask],
   );
 
   // 兼容层：完整 value 供 useLeRobot() 的现有消费者使用

@@ -10,14 +10,24 @@ import {
   frameIndicesFromSegments,
   indicesFromFrameLabels,
   insertSubtaskSegment,
+  isSegmentInsideEpisode,
+  buildSubtaskLane,
+  dragSubtaskLaneBoundary,
   normalizeSubtaskIndex,
   parseSubtaskTableFromRows,
   replaceSubtaskSegment,
+  resizeOuterSubtaskEdge,
+  resizeSubtaskClipEdge,
+  resizeSubtaskSegment,
   resolveSubtaskIndexFeatureKey,
   resolveSubtaskLabelFeatureKey,
   segmentsFromFrameIndices,
+  lastUnlabeledGap,
+  subtaskRangeToPlayhead,
   tableFromSubtaskIndices,
+  translateSubtaskSegment,
   assignNewSubtaskLabels,
+  colorForSubtaskLabel,
 } from '@/core';
 
 describe('buildSubtaskTable', () => {
@@ -172,6 +182,190 @@ describe('coverage', () => {
     ];
     expect(computeSubtaskCoverage(4, segments).complete).toBe(true);
     expect(() => assertExportCoverage(0, 4, segments)).not.toThrow();
+  });
+
+  it('ignores segments that belong to a different episode length', () => {
+    expect(
+      computeSubtaskCoverage(57, [{ startFrame: 43, endFrame: 95, label: 'phase 2' }]),
+    ).toEqual({
+      labeledFrames: 0,
+      totalFrames: 57,
+      gaps: [{ startFrame: 0, endFrame: 56 }],
+      complete: false,
+    });
+    expect(isSegmentInsideEpisode({ startFrame: 43, endFrame: 95 }, 57)).toBe(false);
+  });
+});
+
+describe('range editing', () => {
+  const segments = [
+    { startFrame: 0, endFrame: 10, label: 'A' },
+    { startFrame: 20, endFrame: 30, label: 'B' },
+  ];
+
+  it('resizes a segment start and end without overlapping neighbors', () => {
+    expect(resizeSubtaskSegment(segments, 1, 'start', 15, 40)).toEqual([
+      { startFrame: 0, endFrame: 10, label: 'A' },
+      { startFrame: 15, endFrame: 30, label: 'B' },
+    ]);
+    expect(resizeSubtaskSegment(segments, 0, 'end', 12, 40)).toEqual([
+      { startFrame: 0, endFrame: 12, label: 'A' },
+      { startFrame: 20, endFrame: 30, label: 'B' },
+    ]);
+  });
+
+  it('translates a segment and clamps it to the episode', () => {
+    expect(translateSubtaskSegment(segments, 1, 5, 40)).toEqual([
+      { startFrame: 0, endFrame: 10, label: 'A' },
+      { startFrame: 25, endFrame: 35, label: 'B' },
+    ]);
+    expect(translateSubtaskSegment(segments, 1, 100, 40)).toEqual([
+      { startFrame: 0, endFrame: 10, label: 'A' },
+      { startFrame: 29, endFrame: 39, label: 'B' },
+    ]);
+  });
+
+  it('rejects a resize that would overlap another subtask', () => {
+    expect(() => resizeSubtaskSegment(segments, 1, 'start', 5, 40)).toThrow(/overlaps/);
+  });
+});
+
+describe('subtask colors', () => {
+  it('assigns distinct palette colors for neighboring labels', () => {
+    const labels = ['phase 1', 'phase 2', 'phase 3'];
+    const colors = labels.map((label) => colorForSubtaskLabel(label, labels));
+    expect(new Set(colors).size).toBe(3);
+    expect(colorForSubtaskLabel('phase 2', labels)).toBe(colors[1]);
+  });
+});
+
+describe('contiguous lane editing', () => {
+  it('builds labeled clips and unlabeled gaps in frame order', () => {
+    expect(
+      buildSubtaskLane(
+        [
+          { startFrame: 10, endFrame: 19, label: 'B' },
+          { startFrame: 0, endFrame: 9, label: 'A' },
+        ],
+        30,
+      ),
+    ).toEqual([
+      { kind: 'segment', index: 0, startFrame: 0, endFrame: 9, label: 'A' },
+      { kind: 'segment', index: 1, startFrame: 10, endFrame: 19, label: 'B' },
+      { kind: 'gap', startFrame: 20, endFrame: 29 },
+    ]);
+  });
+
+  it('moves a shared boundary without creating a gap or overlap', () => {
+    const segments = [
+      { startFrame: 0, endFrame: 10, label: 'A' },
+      { startFrame: 11, endFrame: 20, label: 'B' },
+    ];
+    expect(dragSubtaskLaneBoundary(segments, 0, 15, 21)).toEqual([
+      { startFrame: 0, endFrame: 14, label: 'A' },
+      { startFrame: 15, endFrame: 20, label: 'B' },
+    ]);
+  });
+
+  it('lets a clip absorb an unlabeled gap', () => {
+    const segments = [{ startFrame: 0, endFrame: 10, label: 'A' }];
+    expect(dragSubtaskLaneBoundary(segments, 0, 21, 21)).toEqual([
+      { startFrame: 0, endFrame: 20, label: 'A' },
+    ]);
+  });
+
+  it('returns the last unlabeled gap for end-of-episode labeling', () => {
+    expect(lastUnlabeledGap([], 10)).toEqual({ startFrame: 0, endFrame: 9 });
+    expect(
+      lastUnlabeledGap(
+        [
+          { startFrame: 0, endFrame: 3, label: 'A' },
+          { startFrame: 8, endFrame: 9, label: 'B' },
+        ],
+        10,
+      ),
+    ).toEqual({ startFrame: 4, endFrame: 7 });
+    expect(
+      lastUnlabeledGap(
+        [
+          { startFrame: 0, endFrame: 4, label: 'A' },
+          { startFrame: 5, endFrame: 9, label: 'B' },
+        ],
+        10,
+      ),
+    ).toBeNull();
+  });
+
+  it('cuts a new clip from the previous end to the playhead', () => {
+    expect(subtaskRangeToPlayhead([], 7, 20)).toEqual({ startFrame: 0, endFrame: 7 });
+    expect(subtaskRangeToPlayhead([{ startFrame: 0, endFrame: 4, label: 'A' }], 10, 20)).toEqual({
+      startFrame: 5,
+      endFrame: 10,
+    });
+    expect(subtaskRangeToPlayhead([{ startFrame: 0, endFrame: 4, label: 'A' }], 3, 20)).toBeNull();
+    expect(
+      subtaskRangeToPlayhead(
+        [
+          { startFrame: 0, endFrame: 4, label: 'A' },
+          { startFrame: 15, endFrame: 19, label: 'B' },
+        ],
+        10,
+        20,
+      ),
+    ).toEqual({ startFrame: 5, endFrame: 10 });
+  });
+
+  it('shrinks the last clip to leave unlabeled frames at the end', () => {
+    expect(
+      resizeOuterSubtaskEdge(
+        [
+          { startFrame: 0, endFrame: 10, label: 'A' },
+          { startFrame: 11, endFrame: 20, label: 'B' },
+        ],
+        'end',
+        15,
+        21,
+      ),
+    ).toEqual([
+      { startFrame: 0, endFrame: 10, label: 'A' },
+      { startFrame: 11, endFrame: 15, label: 'B' },
+    ]);
+  });
+
+  it('shrinks an earlier clip to leave a gap for a new subtask', () => {
+    expect(
+      resizeSubtaskClipEdge(
+        [
+          { startFrame: 0, endFrame: 10, label: 'A' },
+          { startFrame: 11, endFrame: 20, label: 'B' },
+        ],
+        0,
+        'end',
+        6,
+        21,
+      ),
+    ).toEqual([
+      { startFrame: 0, endFrame: 6, label: 'A' },
+      { startFrame: 11, endFrame: 20, label: 'B' },
+    ]);
+  });
+
+  it('grows a clip by stealing from a flush neighbor', () => {
+    expect(
+      resizeSubtaskClipEdge(
+        [
+          { startFrame: 0, endFrame: 10, label: 'A' },
+          { startFrame: 11, endFrame: 20, label: 'B' },
+        ],
+        0,
+        'end',
+        15,
+        21,
+      ),
+    ).toEqual([
+      { startFrame: 0, endFrame: 15, label: 'A' },
+      { startFrame: 16, endFrame: 20, label: 'B' },
+    ]);
   });
 });
 

@@ -14,7 +14,7 @@ import {
   useLeRobotSelection,
   useLeRobotSubtask,
 } from '../../contexts/LeRobotContext';
-import { detectPlatformCapabilities } from '@/platform';
+import { canUseFileSystemAccess, detectPlatformCapabilities } from '@/platform';
 import { ExportService } from '@/platform';
 import { WebExportAdapter } from '@/platform';
 import type { ExportFormat } from '@/core';
@@ -67,8 +67,13 @@ export const ExportDialog: React.FC<ExportDialogProps> = ({ open, onOpenChange }
     setExportError(null);
     let directoryHandle: FileSystemDirectoryHandle | null = null;
     if (format === 'directory') {
-      if (typeof window === 'undefined' || !('showDirectoryPicker' in window)) {
-        setExportError('File System Access API is not supported in this browser.');
+      if (!canUseFileSystemAccess()) {
+        setExportError(
+          t(
+            'source.insecureOriginExportDirectory',
+            'Exporting to a folder requires HTTPS or localhost.',
+          ),
+        );
         return;
       }
       try {
@@ -140,7 +145,7 @@ export const ExportDialog: React.FC<ExportDialogProps> = ({ open, onOpenChange }
           setExportError(
             t(
               'export.subtaskCoverageIncomplete',
-              'Episode {{index}} has unlabeled frames ({{labeled}}/{{total}}). Label every frame before exporting v3.0. Studio does not write subtask_index = -1.',
+              'Episode {{index}} is {{labeled}}/{{total}} labeled.',
               {
                 index: e.episodeIndex,
                 labeled: e.coverage.labeledFrames,
@@ -267,7 +272,7 @@ export const ExportDialog: React.FC<ExportDialogProps> = ({ open, onOpenChange }
                   {t('export.deletedCount', 'Deleted')}: {deletedEpisodes.size}
                 </li>
                 <li>
-                  {t('export.subtaskEpisodes', 'Subtask-annotated episodes')}: {overlay.size}
+                  {t('export.subtaskEpisodes', 'Subtask episodes')}: {overlay.size}
                 </li>
                 <li>
                   {t('export.totalEpisodes', 'Total episodes')}: {episodesForExport.length}
@@ -275,10 +280,7 @@ export const ExportDialog: React.FC<ExportDialogProps> = ({ open, onOpenChange }
               </ul>
               {targetVersion === 'v3.0' ? (
                 <p className="mt-2 text-xs text-muted-foreground">
-                  {t(
-                    'export.subtaskCoverageHint',
-                    'v3.0 export with subtasks requires every frame of every exported episode to be labeled. Official unlabeled values (-1) block export; Studio does not write -1.',
-                  )}
+                  {t('export.subtaskCoverageHint', 'v3.0 export needs every frame labeled.')}
                 </p>
               ) : null}
             </div>
