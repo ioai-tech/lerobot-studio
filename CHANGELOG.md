@@ -7,6 +7,7 @@
 - Label subtasks from the playback timeline in Edit.
 - Skip File System Access on insecure origins.
 - Make v3.0 subtask export opt-in. Unlabeled episodes report `Episode #N has no subtask labels.`
+- Fix the Docker image build: Vite no longer loads test-only parquet helpers that `.dockerignore` excludes.
 
 ## 1.2.0
 

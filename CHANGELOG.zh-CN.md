@@ -7,6 +7,7 @@
 - 可在编辑模式下从播放时间轴标注子任务。
 - 在非安全源上跳过 File System Access。
 - v3.0 导出默认不包含子任务；勾选后才校验覆盖。未标注 episode 提示为 `Episode #N 还没有标注子任务。`
+- 修复 Docker 镜像构建：Vite 不再加载被 `.dockerignore` 排除的测试 parquet helper。
 
 ## 1.2.0
 

@@ -1,11 +1,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import type { Plugin } from 'vite';
-import {
-  DEFAULT_V3_SUBTASK_DATASET,
-  isV3SubtaskSourceAvailable,
-  materializeLiberoSubtaskSlim,
-} from '../e2e/materializeLiberoSubtaskSlim.ts';
+
+const DEFAULT_V3_SUBTASK_DATASET = '/data/lerobot/libero_10_subtask';
 
 export const DEFAULT_V2_SUBTASK_DATASET = '/data/lerobot/route_subtasks_dual_overhead_pi05';
 export const DEFAULT_PUSHT_SUBTASK_DATASET = '/data/lerobot/pusht-subtask';
@@ -37,6 +34,14 @@ function safeJoin(root: string, relativePath: string): string | null {
 function hasMetaInfo(root: string): boolean {
   try {
     return fs.existsSync(path.join(root, 'meta', 'info.json'));
+  } catch {
+    return false;
+  }
+}
+
+function isV3SubtaskSourceAvailable(root: string): boolean {
+  try {
+    return fs.existsSync(path.join(root, 'data/chunk-000/file-000.parquet'));
   } catch {
     return false;
   }
@@ -98,7 +103,8 @@ export function localDatasetPlugin(): Plugin {
     name: 'local-dataset',
     configureServer(server) {
       if (isV3SubtaskSourceAvailable(v3Source)) {
-        v3Ready = materializeLiberoSubtaskSlim(v3Source)
+        v3Ready = import('../e2e/materializeLiberoSubtaskSlim.ts')
+          .then(({ materializeLiberoSubtaskSlim }) => materializeLiberoSubtaskSlim(v3Source))
           .then((root) => {
             v3Root = root;
             return root;
