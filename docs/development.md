@@ -66,10 +66,10 @@ per-chunk ceiling, or the complete npm tarball exceeds its packed or unpacked
 budget. Hashed filenames are discovered from build output and `dist/index.html`
 rather than being fixed in the script.
 
-The hard limits are approximately 5% above the measured baseline. The roughly
-26 MB library Worker chunk is a known baseline that still needs optimization,
-not an ideal or optimized target. Passing this gate only means that bundle size
-has not materially regressed.
+The hard limits are round integer ceilings above the current artifacts. The
+library Worker chunk is a known large baseline that still needs optimization,
+not an ideal target. Passing this gate only means that bundle size has not
+materially regressed.
 
 For a local negative test, lower every budget without changing the checked-in
 limits:

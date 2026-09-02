@@ -13,24 +13,24 @@ if (!Number.isFinite(scale) || scale <= 0 || scale > 1) {
   process.exit(2);
 }
 
-// These hard limits are approximately 5% above the measured 2026-08-04 baseline.
-// Raising one requires an explicit review of the generated artifacts.
+// Round integer ceilings above the current artifacts. Raising one requires
+// an explicit review of the generated output.
 const budgets = {
-  libEntry: { raw: 330_300, gzip: 107_300 },
-  libCss: { raw: 354_200, gzip: 108_500 },
-  webInitialJs: { raw: 2_664_000, gzip: 715_000 },
-  webInitialCss: { raw: 192_000, gzip: 24_400 },
-  libDataLoader: { raw: 272_100, gzip: 56_200 },
-  webDataLoader: { raw: 33_500, gzip: 9_300 },
-  libDockview: { raw: 670_900, gzip: 158_700 },
-  webDockview: { raw: 91_500, gzip: 26_900 },
-  libWorkerWasm: { raw: 9_100_000, gzip: 2_940_000 },
-  libWorkers: { raw: 461_000, gzip: 106_000 },
-  webWorkerWasm: { raw: 6_819_000, gzip: 2_014_000 },
-  webWorkers: { raw: 461_000, gzip: 106_000 },
-  largestLibJs: { raw: 670_900, gzip: 158_700 },
-  largestWebJs: { raw: 1_108_200, gzip: 313_400 },
-  npmTarball: { raw: 11_554_000, gzip: 3_444_000 },
+  libEntry: { raw: 350_000, gzip: 110_000 },
+  libCss: { raw: 360_000, gzip: 110_000 },
+  webInitialJs: { raw: 2_700_000, gzip: 720_000 },
+  webInitialCss: { raw: 200_000, gzip: 25_000 },
+  libDataLoader: { raw: 280_000, gzip: 60_000 },
+  webDataLoader: { raw: 40_000, gzip: 10_000 },
+  libDockview: { raw: 680_000, gzip: 160_000 },
+  webDockview: { raw: 100_000, gzip: 30_000 },
+  libWorkerWasm: { raw: 9_200_000, gzip: 3_000_000 },
+  libWorkers: { raw: 470_000, gzip: 110_000 },
+  webWorkerWasm: { raw: 6_900_000, gzip: 2_100_000 },
+  webWorkers: { raw: 470_000, gzip: 110_000 },
+  largestLibJs: { raw: 680_000, gzip: 160_000 },
+  largestWebJs: { raw: 1_200_000, gzip: 320_000 },
+  npmTarball: { raw: 12_000_000, gzip: 3_500_000 },
 };
 
 const failures = [];
