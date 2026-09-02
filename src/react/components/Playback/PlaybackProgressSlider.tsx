@@ -1,6 +1,16 @@
 import React, { memo, useCallback, useEffect, useMemo, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
-import type { FrameData } from '@/core';
+import type { FrameData, SubtaskSegment } from '@/core';
+import type { PendingSubtaskRange } from '../../contexts/useSubtaskAnnotation';
+
+function subtaskBandColor(label: string): string {
+  let hash = 0;
+  for (let i = 0; i < label.length; i++) {
+    hash = (hash * 31 + label.charCodeAt(i)) | 0;
+  }
+  const hue = Math.abs(hash) % 360;
+  return `hsl(${hue} 65% 50% / 0.4)`;
+}
 
 const THUMB_SIZE_PX = 16;
 const A11Y_SYNC_INTERVAL_MS = 250;
@@ -27,6 +37,9 @@ export interface PlaybackProgressSliderProps {
   setFrameIndex: (index: number) => void;
   getFrameIndex: () => number;
   subscribeFrameIndex: (callback: (frameIndex: number) => void) => () => void;
+  segments?: SubtaskSegment[];
+  pendingRange?: PendingSubtaskRange | null;
+  pendingStart?: number | null;
 }
 
 const PlaybackProgressSliderComponent: React.FC<PlaybackProgressSliderProps> = ({
@@ -39,6 +52,9 @@ const PlaybackProgressSliderComponent: React.FC<PlaybackProgressSliderProps> = (
   setFrameIndex,
   getFrameIndex,
   subscribeFrameIndex,
+  segments = [],
+  pendingRange = null,
+  pendingStart = null,
 }) => {
   const { t } = useTranslation();
   const currentTimeRef = useRef<HTMLSpanElement>(null);
@@ -306,9 +322,45 @@ const PlaybackProgressSliderComponent: React.FC<PlaybackProgressSliderProps> = (
         aria-valuenow={initialFrameIndex}
         aria-valuetext={initialA11yText}
       >
+        {totalFrames > 1
+          ? segments.map((segment) => {
+              const left = (segment.startFrame / (totalFrames - 1)) * 100;
+              const width =
+                ((segment.endFrame - segment.startFrame + 1) / Math.max(1, totalFrames)) * 100;
+              return (
+                <div
+                  key={`${segment.startFrame}-${segment.endFrame}-${segment.label}`}
+                  className="absolute top-0 h-full rounded-full pointer-events-none"
+                  style={{
+                    left: `${left}%`,
+                    width: `${Math.max(width, 0.5)}%`,
+                    background: subtaskBandColor(segment.label),
+                  }}
+                />
+              );
+            })
+          : null}
+        {totalFrames > 1 && pendingRange ? (
+          <div
+            className="absolute top-0 h-full rounded-full pointer-events-none bg-primary/30"
+            style={{
+              left: `${(pendingRange.startFrame / (totalFrames - 1)) * 100}%`,
+              width: `${Math.max(
+                ((pendingRange.endFrame - pendingRange.startFrame + 1) / totalFrames) * 100,
+                0.5,
+              )}%`,
+            }}
+          />
+        ) : null}
+        {totalFrames > 1 && pendingStart != null && !pendingRange ? (
+          <div
+            className="absolute top-0 h-full w-0.5 pointer-events-none bg-primary"
+            style={{ left: `${(pendingStart / (totalFrames - 1)) * 100}%` }}
+          />
+        ) : null}
         <div
           ref={progressRef}
-          className="absolute h-full rounded-full bg-primary pointer-events-none"
+          className="absolute h-full rounded-full bg-primary/70 pointer-events-none"
           style={{
             width: '100%',
             transform: `scaleX(${totalFrames > 1 ? initialFrameIndex / (totalFrames - 1) : 0})`,

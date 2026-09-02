@@ -16,6 +16,8 @@ Choose one of the following:
 
 Local files are processed in the browser and are not uploaded to a cloud service. When you open a remote archive, the browser requests it from the URL you provide.
 
+Official Hugging Face datasets can be downloaded with `hf download` and opened as a local folder. Examples: [Data formats — Official Hub examples](./data-formats.md#official-hub-examples).
+
 ## View the dataset
 
 After the dataset opens:

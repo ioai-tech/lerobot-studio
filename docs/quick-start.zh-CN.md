@@ -16,6 +16,8 @@
 
 本地文件会在浏览器中处理，不会上传到云端。打开远程压缩包时，浏览器会从你提供的链接请求数据。
 
+官方 Hugging Face 数据集可用 `hf download` 下载后作为本地文件夹打开。示例见 [数据格式 — 官方 Hub 示例](./data-formats#official-hub-examples)。
+
 ## 查看数据集
 
 打开数据集后：

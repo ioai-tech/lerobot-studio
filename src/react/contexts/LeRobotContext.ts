@@ -10,7 +10,8 @@ import type { LeRobotDataLoader } from '@/platform';
 import type { NumericalColumnMap } from '@/platform';
 import type { DataSource } from '@/platform';
 import type { ParquetImageServiceImpl } from '@/platform';
-import type { ValidationReport } from '@/core';
+import type { ValidationReport, SubtaskSegment, SubtaskCoverage, SubtaskTable } from '@/core';
+import type { PendingSubtaskRange } from './useSubtaskAnnotation';
 
 // 帧索引订阅者回调类型
 export type FrameIndexSubscriber = (frameIndex: number) => void;
@@ -30,6 +31,7 @@ export interface LeRobotDataContextType {
   imageService: ParquetImageServiceImpl;
   episodes: EpisodeMetadata[];
   tasks: Record<number, string>;
+  subtasks: SubtaskTable;
   lastValidationReport: ValidationReport | null;
   initialize: (dataSource: DataSource | FileSystemDirectoryHandle) => Promise<void>;
   reset: () => Promise<void>;
@@ -73,10 +75,30 @@ export interface LeRobotPlaybackContextType {
   setPlaybackSpeed: (speed: number) => void;
 }
 
+export interface LeRobotSubtaskContextType {
+  canAnnotate: boolean;
+  overlay: ReadonlyMap<number, SubtaskSegment[]>;
+  currentSegments: SubtaskSegment[];
+  knownLabels: string[];
+  coverage: SubtaskCoverage;
+  pendingStart: number | null;
+  pendingRange: PendingSubtaskRange | null;
+  labelAtFrame: (frameIndex: number) => string | null;
+  markStart: (frameIndex: number) => void;
+  markEnd: (frameIndex: number) => boolean;
+  cancelPending: () => void;
+  commitPending: (label: string) => void;
+  updateSegment: (index: number, segment: SubtaskSegment) => void;
+  removeSegment: (index: number) => void;
+  jumpToFrame: (frameIndex: number) => void;
+}
+
 /** Presentation-only UI state (dialogs), kept out of domain contexts */
 export interface LeRobotUiContextType {
   healthDialogOpen: boolean;
   setHealthDialogOpen: (open: boolean) => void;
+  subtaskDialogOpen: boolean;
+  setSubtaskDialogOpen: (open: boolean) => void;
 }
 
 /**
@@ -88,6 +110,7 @@ export interface LeRobotContextType
     LeRobotDataContextType,
     LeRobotSelectionContextType,
     LeRobotPlaybackContextType,
+    LeRobotSubtaskContextType,
     LeRobotUiContextType {}
 
 export const LeRobotContext = createContext<LeRobotContextType | null>(null);
@@ -95,6 +118,7 @@ export const LeRobotDataContext = createContext<LeRobotDataContextType | null>(n
 export const LeRobotPlaybackContext = createContext<LeRobotPlaybackContextType | null>(null);
 export const LeRobotSelectionContext = createContext<LeRobotSelectionContextType | null>(null);
 export const LeRobotUiContext = createContext<LeRobotUiContextType | null>(null);
+export const LeRobotSubtaskContext = createContext<LeRobotSubtaskContextType | null>(null);
 
 /** @deprecated Prefer domain hooks (useLeRobotData / useLeRobotPlayback / useLeRobotSelection). */
 export const useLeRobot = () => {
@@ -124,5 +148,11 @@ export const useLeRobotSelection = () => {
 export const useLeRobotUi = () => {
   const context = useContext(LeRobotUiContext);
   if (!context) throw new Error('useLeRobotUi must be used within LeRobotDataProvider');
+  return context;
+};
+
+export const useLeRobotSubtask = () => {
+  const context = useContext(LeRobotSubtaskContext);
+  if (!context) throw new Error('useLeRobotSubtask must be used within LeRobotDataProvider');
   return context;
 };

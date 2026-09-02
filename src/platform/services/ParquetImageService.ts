@@ -18,6 +18,7 @@ import type { DataSource } from '../datasource/dataSources';
 import type { Remote } from 'comlink';
 import { createParquetImageWorker, terminateWorker } from '../workers/workerManager';
 import type { ParquetImageWorkerAPI } from '@/core';
+import { encodedImageToBlob } from '../utils/encodedImageBlob';
 
 // ─────────────────────────────────────────────
 // 类型定义
@@ -336,7 +337,7 @@ export class ParquetImageServiceImpl {
       await this.ensureWorkerHasColumn(worker, filePath, column);
 
       const imageData = await worker.getImageCached(column, rowIndex);
-      const blob = new Blob([imageData], { type: 'image/jpeg' });
+      const blob = await encodedImageToBlob(new Uint8Array(imageData));
       const url = URL.createObjectURL(blob);
       this.addToBlobCache(cacheKey, url);
       return url;

@@ -9,12 +9,17 @@ import {
   DialogFooter,
 } from '@/ui';
 import { Button } from '@/ui';
-import { useLeRobotData, useLeRobotSelection } from '../../contexts/LeRobotContext';
+import {
+  useLeRobotData,
+  useLeRobotSelection,
+  useLeRobotSubtask,
+} from '../../contexts/LeRobotContext';
 import { detectPlatformCapabilities } from '@/platform';
 import { ExportService } from '@/platform';
 import { WebExportAdapter } from '@/platform';
 import type { ExportFormat } from '@/core';
 import type { ExportProgress } from '@/core';
+import { SubtaskCoverageError } from '@/core';
 
 export interface ExportDialogProps {
   open: boolean;
@@ -23,8 +28,9 @@ export interface ExportDialogProps {
 
 export const ExportDialog: React.FC<ExportDialogProps> = ({ open, onOpenChange }) => {
   const { t } = useTranslation();
-  const { dataLoader, info, tasks } = useLeRobotData();
+  const { dataLoader, info, tasks, subtasks } = useLeRobotData();
   const { episodesForExport, modifiedEpisodes, deletedEpisodes } = useLeRobotSelection();
+  const { overlay } = useLeRobotSubtask();
 
   const capabilities = React.useMemo(() => detectPlatformCapabilities(), []);
   const versionCapability = dataLoader?.getVersionCapability() ?? null;
@@ -109,6 +115,8 @@ export const ExportDialog: React.FC<ExportDialogProps> = ({ open, onOpenChange }
           includeData: true,
           includeVideos: true,
           signal,
+          subtaskOverlay: overlay,
+          sourceSubtasks: subtasks,
         });
         abortControllerRef.current = null;
         onOpenChange(false);
@@ -128,6 +136,18 @@ export const ExportDialog: React.FC<ExportDialogProps> = ({ open, onOpenChange }
       try {
         if (isAbort) {
           setExportError(t('export.cancelled', 'Export cancelled.'));
+        } else if (e instanceof SubtaskCoverageError) {
+          setExportError(
+            t(
+              'export.subtaskCoverageIncomplete',
+              'Episode {{index}} has unlabeled frames ({{labeled}}/{{total}}). Label every frame before exporting v3.0. Studio does not write subtask_index = -1.',
+              {
+                index: e.episodeIndex,
+                labeled: e.coverage.labeledFrames,
+                total: e.coverage.totalFrames,
+              },
+            ),
+          );
         } else {
           const msg =
             e instanceof Error
@@ -148,6 +168,8 @@ export const ExportDialog: React.FC<ExportDialogProps> = ({ open, onOpenChange }
     versionCapability?.status,
     episodesForExport,
     tasks,
+    subtasks,
+    overlay,
     format,
     targetVersion,
     onOpenChange,
@@ -245,9 +267,20 @@ export const ExportDialog: React.FC<ExportDialogProps> = ({ open, onOpenChange }
                   {t('export.deletedCount', 'Deleted')}: {deletedEpisodes.size}
                 </li>
                 <li>
+                  {t('export.subtaskEpisodes', 'Subtask-annotated episodes')}: {overlay.size}
+                </li>
+                <li>
                   {t('export.totalEpisodes', 'Total episodes')}: {episodesForExport.length}
                 </li>
               </ul>
+              {targetVersion === 'v3.0' ? (
+                <p className="mt-2 text-xs text-muted-foreground">
+                  {t(
+                    'export.subtaskCoverageHint',
+                    'v3.0 export with subtasks requires every frame of every exported episode to be labeled. Official unlabeled values (-1) block export; Studio does not write -1.',
+                  )}
+                </p>
+              ) : null}
             </div>
             {exportError && <p className="text-sm text-destructive">{exportError}</p>}
             {versionCapability && versionCapability.status !== 'supported' && !exportError && (

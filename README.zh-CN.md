@@ -25,7 +25,7 @@
 | [快速开始](docs/quick-start.zh-CN.md)     | 使用独立应用或安装 React 包                          |
 | [嵌入 React](docs/embedding.zh-CN.md)     | 在自己的应用中安装和配置查看器                       |
 | [API 参考](docs/api.zh-CN.md)             | `LeRobotViewer` 属性、数据源和类型                   |
-| [数据格式](docs/data-formats.zh-CN.md)    | 支持的数据集版本与归档类型                           |
+| [数据格式](docs/data-formats.zh-CN.md)    | 支持的数据集版本、子任务与官方 Hub 示例              |
 | [CORS 与 Range](docs/cors.zh-CN.md)       | 远程归档需要的响应头                                 |
 | [浏览器支持](docs/browser.zh-CN.md)       | Chromium / Firefox / WebKit                          |
 | [故障排查](docs/troubleshooting.zh-CN.md) | 常见打不开的情况                                     |
@@ -45,6 +45,7 @@
 - **快速浏览 Episode** — 搜索和筛选 Episode，控制播放，并使用键盘快捷键
 - **检查数据集质量** — 查看数据集统计信息，导出健康检查报告
 - **在独立应用中编辑和导出** — 修改 Episode 任务、删除或恢复 Episode，并导出 `v2.1` 或 `v3.0` 数据集
+- **查看和标注子任务（`v3.0`）** — 官方 `subtask_index` 区间、Q/R 标注，以及完整覆盖导出（不会写入 `-1`）
 - **嵌入 React** — 在 React 19 应用中使用只读查看器
 - **本地数据留在本地** — 本地文件在浏览器中处理；npm 包不会收集使用数据
 

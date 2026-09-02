@@ -36,7 +36,9 @@ function toOptionalBoolean(value: unknown): boolean | null {
 }
 
 function getFeatureInfoValue(feature: LeRobotFeature | undefined, key: string): unknown {
-  return feature?.info?.[key];
+  if (!feature) return undefined;
+  const extra = feature as LeRobotFeature & { video_info?: Record<string, unknown> };
+  return extra.info?.[key] ?? extra.video_info?.[key];
 }
 
 function inferResolutionFromShape(
@@ -92,7 +94,7 @@ function inferChannels(feature: LeRobotFeature | undefined): number | null {
 
   const shape = feature?.shape;
   const names = Array.isArray(feature?.names) ? feature.names : [];
-  const channelIndex = names.indexOf('channel');
+  const channelIndex = names.findIndex((name) => name === 'channel' || name === 'channels');
   if (Array.isArray(shape) && channelIndex >= 0) {
     return toPositiveNumber(shape[channelIndex]);
   }

@@ -10,6 +10,8 @@ const INFO_JSON = 'meta/info.json';
 const EPISODES_PARQUET_PATH = 'meta/episodes/chunk-000/file-000.parquet';
 const TASKS_JSONL = 'meta/tasks.jsonl';
 const TASKS_PARQUET_PATH = 'meta/tasks.parquet';
+const SUBTASKS_PARQUET_PATH = 'meta/subtasks.parquet';
+const SUBTASK_INDEX_FEATURE_KEY = 'subtask_index';
 const DEFAULT_DATA_PATH = 'data/chunk-{chunk_index:03d}/file-{file_index:03d}.parquet';
 const DEFAULT_VIDEO_PATH = 'videos/{video_key}/chunk-{chunk_index:03d}/file-{file_index:03d}.mp4';
 
@@ -347,6 +349,41 @@ export class V3FormatValidator extends BaseLeRobotValidator {
     }
     if (hasTasks) {
       this.pass('episodes', 'tasks', 'Present', 'tasks.jsonl or tasks.parquet present');
+    }
+
+    const hasSubtaskFeature = Boolean(
+      features &&
+      typeof features === 'object' &&
+      Object.prototype.hasOwnProperty.call(features, SUBTASK_INDEX_FEATURE_KEY),
+    );
+    let hasSubtasksFile = false;
+    try {
+      hasSubtasksFile = await dataSource.exists(SUBTASKS_PARQUET_PATH);
+    } catch {
+      /* keep false */
+    }
+    if (hasSubtaskFeature && !hasSubtasksFile) {
+      this.warn(
+        'file_structure',
+        SUBTASKS_PARQUET_PATH,
+        'SUBTASKS_PARQUET_MISSING',
+        'info.features.subtask_index is present but meta/subtasks.parquet was not found',
+        'Not found',
+        'Exists',
+        'Add meta/subtasks.parquet or remove the subtask_index feature',
+      );
+    } else if (!hasSubtaskFeature && hasSubtasksFile) {
+      this.warn(
+        'meta_info',
+        'features.subtask_index',
+        'SUBTASK_INDEX_FEATURE_MISSING',
+        'meta/subtasks.parquet is present but info.features.subtask_index is missing',
+        'Missing',
+        'Feature spec { dtype: "int64", shape: [1], names: null }',
+        'Add features.subtask_index to info.json',
+      );
+    } else if (hasSubtaskFeature && hasSubtasksFile) {
+      this.pass('file_structure', SUBTASKS_PARQUET_PATH, 'Exists', 'Path or file exists');
     }
 
     // ── 9. First data file existence ────────────────────────────────────────

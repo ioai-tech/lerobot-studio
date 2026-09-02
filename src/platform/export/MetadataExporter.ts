@@ -1,5 +1,6 @@
 import * as arrow from 'apache-arrow';
-import type { LeRobotInfo, EpisodeMetadata } from '@/core';
+import type { LeRobotInfo, EpisodeMetadata, SubtaskTable } from '@/core';
+import { SUBTASK_INDEX_FEATURE, SUBTASK_INDEX_FEATURE_KEY } from '@/core';
 import type { ExportAdapter } from '@/core';
 import type { ExportProgress, EpisodeVideoOffsets, V3DataLayout } from '@/core';
 import type { DatasetStats } from '@/core';
@@ -203,6 +204,7 @@ export async function writeMetadata(
   stats?: DatasetStats,
   splits?: Record<string, string>,
   dataLayout?: V3DataLayout,
+  subtasks?: SubtaskTable,
 ): Promise<void> {
   if (signal?.aborted) throw new DOMException('Export cancelled', 'AbortError');
   const isTargetV3 = targetVersion !== undefined ? targetVersion === 'v3.0' : isV3Info(info);
@@ -214,8 +216,17 @@ export async function writeMetadata(
     validateMetadataForExport(info, episodes, targetVersion, splits);
   }
 
+  const features = { ...officialInfo.features };
+  const hasSubtasks = Boolean(subtasks && Object.keys(subtasks).length > 0);
+  if (isTargetV3 && hasSubtasks) {
+    features[SUBTASK_INDEX_FEATURE_KEY] = { ...SUBTASK_INDEX_FEATURE };
+  } else {
+    delete features[SUBTASK_INDEX_FEATURE_KEY];
+  }
+
   const infoToWrite = {
     ...officialInfo,
+    features,
     ...(!isTargetV3 && legacyTotalVideos !== undefined ? { total_videos: legacyTotalVideos } : {}),
     codebase_version: (targetVersion ?? info.codebase_version) as LeRobotInfo['codebase_version'],
     ...(isTargetV3
@@ -256,6 +267,9 @@ export async function writeMetadata(
     );
     if (signal?.aborted) throw new DOMException('Export cancelled', 'AbortError');
     await writeV3Tasks(taskPlan.tasks, adapter, onProgress, signal);
+    if (subtasks && Object.keys(subtasks).length > 0) {
+      await writeV3Subtasks(subtasks, adapter, onProgress, signal);
+    }
   } else {
     writeV2Episodes(episodes, taskPlan, adapter);
     writeV2Tasks(taskPlan.tasks, adapter);
@@ -535,6 +549,75 @@ async function writeV3Tasks(
     current: 1,
     total: 1,
     message: 'Tasks written.',
+    cancelable: false,
+  });
+}
+
+async function writeV3Subtasks(
+  subtasks: SubtaskTable,
+  adapter: ExportAdapter,
+  onProgress?: (p: ExportProgress) => void,
+  signal?: AbortSignal,
+): Promise<void> {
+  if (signal?.aborted) throw new DOMException('Export cancelled', 'AbortError');
+  const sorted = Object.entries(subtasks).sort(([left], [right]) => Number(left) - Number(right));
+  if (sorted.length === 0) return;
+
+  const subtask_index = arrow.vectorFromArray(
+    sorted.map(([idx]) => BigInt(Number(idx))),
+    new arrow.Int64(),
+  );
+  const subtask = sorted.map(([, desc]) => String(desc ?? ''));
+  const baseTable = new arrow.Table({ subtask_index, subtask: arrow.vectorFromArray(subtask) });
+  const pandasMetadata = JSON.stringify({
+    index_columns: ['subtask'],
+    column_indexes: [
+      {
+        name: null,
+        field_name: null,
+        pandas_type: 'unicode',
+        numpy_type: 'object',
+        metadata: { encoding: 'UTF-8' },
+      },
+    ],
+    columns: [
+      {
+        name: 'subtask_index',
+        field_name: 'subtask_index',
+        pandas_type: 'int64',
+        numpy_type: 'int64',
+        metadata: null,
+      },
+      {
+        name: 'subtask',
+        field_name: 'subtask',
+        pandas_type: 'unicode',
+        numpy_type: 'object',
+        metadata: null,
+      },
+    ],
+    attributes: {},
+    creator: { library: 'lerobot-studio', version: '1.0.0' },
+    pandas_version: '2.3.3',
+  });
+  const schema = new arrow.Schema(
+    baseTable.schema.fields,
+    new Map([...baseTable.schema.metadata, ['pandas', pandasMetadata]]),
+  );
+  const table = new arrow.Table(schema, baseTable.batches);
+  const wasmModule = await import('./parquetWasmLoader').then((m) => m.getParquetWasm());
+  const ipcBytes = arrow.tableToIPC(table, 'stream');
+  const ipcCopy = new Uint8Array(ipcBytes.length);
+  ipcCopy.set(ipcBytes);
+  const wasmTable = wasmModule.Table.fromIPCStream(ipcCopy);
+  const parquetBytes = wasmModule.writeParquet(wasmTable);
+  adapter.writeFile('meta/subtasks.parquet', parquetBytes);
+
+  onProgress?.({
+    phase: 'metadata',
+    current: 1,
+    total: 1,
+    message: 'Subtasks written.',
     cancelable: false,
   });
 }

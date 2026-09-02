@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useLeRobotData, useLeRobotSelection } from '../../../contexts/LeRobotContext';
-import { buildMediaDebugMetadata } from '@/core';
+import { buildMediaDebugMetadata, isDepthMapFeature } from '@/core';
 import { getFirstVisualFeatureName } from '@/core';
 import { MediaDebugOverlay } from '../Common/MediaDebugOverlay';
 
@@ -283,6 +283,8 @@ export const ImagePanel: React.FC<ImagePanelProps> = ({ params }) => {
       {/* canvas 始终保留，帧更新直接 drawImage，无 React 渲染 */}
       <canvas
         ref={canvasRef}
+        data-feature-key={featureKey}
+        data-depth-map={isDepthMapFeature(info?.features?.[featureKey]) ? 'true' : 'false'}
         className="h-full w-full object-contain"
         style={{
           display: hasImage ? 'block' : 'none',

@@ -167,6 +167,61 @@ describe('LeRobot v0.6.1 training statistics', () => {
     expect(stats['observation.images.front'].count).toEqual([8]);
   });
 
+  it('reduces official spatial image stats and fills missing quantiles', async () => {
+    const visualInfo = {
+      ...infoFor([1]),
+      features: {
+        'observation.image': {
+          dtype: 'video',
+          shape: [96, 96, 3],
+          names: ['height', 'width', 'channel'],
+        },
+      },
+    } as LeRobotInfo;
+    const stats = await computeDatasetStats(
+      { getEpisodeTableForExport: async () => ({ table: arrow.tableFromArrays({}) }) },
+      visualInfo,
+      [
+        {
+          episode_index: 0,
+          length: 2,
+          tasks: [],
+          'stats/observation.image/min': [
+            [
+              [0, 1, 2],
+              [3, 4, 5],
+            ],
+          ],
+          'stats/observation.image/max': [
+            [
+              [6, 7, 8],
+              [9, 10, 11],
+            ],
+          ],
+          'stats/observation.image/mean': [
+            [
+              [1, 2, 3],
+              [3, 4, 5],
+            ],
+          ],
+          'stats/observation.image/std': [
+            [
+              [0.1, 0.2, 0.3],
+              [0.4, 0.5, 0.6],
+            ],
+          ],
+          'stats/observation.image/count': [2],
+        },
+      ],
+    );
+
+    expect(stats['observation.image'].min).toEqual([[[0]], [[1]], [[2]]]);
+    expect(stats['observation.image'].max).toEqual([[[9]], [[10]], [[11]]]);
+    expect(stats['observation.image'].mean).toEqual([[[2]], [[3]], [[4]]]);
+    expect(stats['observation.image'].q50).toEqual([[[2]], [[3]], [[4]]]);
+    expect(stats['observation.image'].count).toEqual([2]);
+  });
+
   it('rejects a selected episode with missing visual stats', async () => {
     const visualInfo = {
       ...infoFor([1]),

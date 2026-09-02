@@ -24,6 +24,7 @@
     "dark": "Dark",
     "system": "System",
     "cancel": "Cancel",
+    "delete": "Delete",
     "retry": "Retry",
     "back": "Back",
     "error": "Error Occurred",
@@ -96,6 +97,26 @@
       "version": "Version"
     },
     "speed": "Playback speed"
+  },
+  "subtask": {
+    "listTitle": "Subtasks",
+    "empty": "No labeled subtasks on this episode",
+    "coverage": "{{labeled}}/{{total}} frames labeled",
+    "coverageIncomplete": "Unlabeled frames remain. v3.0 export needs every frame labeled; official -1 is treated as unlabeled.",
+    "current": "Subtask",
+    "unlabeled": "Unlabeled",
+    "start": "Start (Q)",
+    "startShort": "Start",
+    "startHint": "Mark subtask start (Q)",
+    "end": "End (R)",
+    "endShort": "End",
+    "endHint": "Mark subtask end (R)",
+    "dialogTitle": "Describe subtask",
+    "dialogRange": "Frames {{start}}–{{end}}",
+    "label": "Subtask description",
+    "labelPlaceholder": "e.g. Grasp the apple",
+    "labelRequired": "Enter a subtask description",
+    "save": "Save subtask"
   },
   "health": {
     "noData": "Load a dataset to see health checks",
@@ -581,6 +602,14 @@
       "lastFrame": {
         "action": "Last frame",
         "key": "End"
+      },
+      "subtaskStart": {
+        "action": "Mark subtask start",
+        "key": "Q"
+      },
+      "subtaskEnd": {
+        "action": "Mark subtask end",
+        "key": "R"
       }
     },
     "welcome": {
@@ -679,6 +708,9 @@
     "changesSummary": "Changes Summary",
     "modifiedCount": "Modified",
     "deletedCount": "Deleted",
+    "subtaskEpisodes": "Subtask-annotated episodes",
+    "subtaskCoverageHint": "v3.0 export with subtasks requires every frame of every exported episode to be labeled. Official unlabeled values (-1) block export; Studio does not write -1.",
+    "subtaskCoverageIncomplete": "Episode {{index}} has unlabeled frames ({{labeled}}/{{total}}). Label every frame before exporting v3.0. Studio does not write subtask_index = -1.",
     "totalEpisodes": "Total episodes",
     "metadataOnlyHint": "Current export includes metadata only (info, episodes, tasks).",
     "export": "Export",

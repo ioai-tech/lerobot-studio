@@ -1,5 +1,6 @@
 import type { LeRobotInfo, EpisodeMetadata } from '../types/lerobot';
 import type { SplitConfig } from '../analysis/SplitService';
+import type { SubtaskSegment, SubtaskTable } from '../subtask';
 
 export type ExportFormat = 'zip' | 'directory';
 
@@ -33,6 +34,10 @@ export interface ExportOptions {
   signal?: AbortSignal;
   /** Optional split config for reproducible train/val/test; written to v3 info.splits or meta/splits.json (v2). */
   splitsConfig?: SplitConfig;
+  /** In-memory subtask segments keyed by source episode_index. Missing keys fall back to source parquet. */
+  subtaskOverlay?: ReadonlyMap<number, SubtaskSegment[]>;
+  /** Source dataset subtask table from meta/subtasks.parquet. */
+  sourceSubtasks?: SubtaskTable;
 }
 
 export interface V3DataEpisodeLocation {

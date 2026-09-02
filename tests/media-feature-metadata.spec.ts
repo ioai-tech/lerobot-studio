@@ -94,6 +94,77 @@ describe('buildMediaDebugMetadata', () => {
     });
   });
 
+  it('reads official video_info when info is absent', () => {
+    const info = {
+      codebase_version: 'v3.0',
+      robot_type: 'unknown',
+      total_episodes: 1,
+      total_frames: 10,
+      total_tasks: 1,
+      fps: 10,
+      chunks_size: 1000,
+      splits: { train: '0:1' },
+      data_path: 'data/chunk-{chunk_index:03d}/file-{file_index:03d}.parquet',
+      video_path: 'videos/{video_key}/chunk-{chunk_index:03d}/file-{file_index:03d}.mp4',
+      features: {
+        'observation.image': {
+          dtype: 'video',
+          shape: [96, 96, 3],
+          names: ['height', 'width', 'channel'],
+          video_info: {
+            'video.fps': 10,
+            'video.codec': 'av1',
+            'video.pix_fmt': 'yuv420p',
+            'video.is_depth_map': false,
+            has_audio: false,
+          },
+        },
+      },
+    } as LeRobotInfo;
+
+    expect(buildMediaDebugMetadata(info, 'observation.image')).toMatchObject({
+      dtype: 'video',
+      fps: 10,
+      codec: 'av1',
+      pixelFormat: 'yuv420p',
+      width: 96,
+      height: 96,
+      channels: 3,
+      hasAudio: false,
+    });
+  });
+
+  it('reads official depth image shape with names.channels', () => {
+    const info = {
+      codebase_version: 'v3.0',
+      robot_type: 'realsense',
+      total_episodes: 1,
+      total_frames: 181,
+      total_tasks: 1,
+      fps: 30,
+      chunks_size: 1000,
+      splits: { train: '0:1' },
+      data_path: 'data/chunk-{chunk_index:03d}/file-{file_index:03d}.parquet',
+      video_path: null,
+      features: {
+        'observation.images.depth': {
+          dtype: 'image',
+          shape: [720, 1280, 1],
+          names: ['height', 'width', 'channels'],
+          info: { is_depth_map: true, depth_unit: 'mm' },
+        },
+      },
+    } as LeRobotInfo;
+
+    expect(buildMediaDebugMetadata(info, 'observation.images.depth')).toMatchObject({
+      dtype: 'image',
+      fps: 30,
+      width: 1280,
+      height: 720,
+      channels: 1,
+    });
+  });
+
   it('returns null for missing features', () => {
     const info = {
       codebase_version: 'v2.1',

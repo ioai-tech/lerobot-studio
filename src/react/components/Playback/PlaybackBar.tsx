@@ -4,9 +4,12 @@ import {
   useLeRobotData,
   useLeRobotPlayback,
   useLeRobotSelection,
+  useLeRobotSubtask,
+  useLeRobotUi,
 } from '../../contexts/LeRobotContext';
+import { EditSubtaskDialog } from '../dialogs/EditSubtaskDialog';
 import { useLoading } from '../../contexts/LoadingContext';
-import { shouldStartAutoplay } from '@/core';
+import { hasSubtaskIndexFeature, shouldStartAutoplay } from '@/core';
 import { PlaybackProgressSlider } from './PlaybackProgressSlider';
 import { Button } from '@/ui';
 import { Badge } from '@/ui';
@@ -29,6 +32,20 @@ export const PlaybackBar: React.FC = () => {
   } = useLeRobotPlayback();
   const { info, subscribeFrameIndex, getFrameIndex, isLoading } = useLeRobotData();
   const { selectedEpisodeIndex } = useLeRobotSelection();
+  const {
+    canAnnotate,
+    currentSegments,
+    knownLabels,
+    coverage,
+    pendingStart,
+    pendingRange,
+    labelAtFrame,
+    markStart,
+    markEnd,
+    cancelPending,
+    commitPending,
+  } = useLeRobotSubtask();
+  const { subtaskDialogOpen, setSubtaskDialogOpen } = useLeRobotUi();
 
   const { tasks } = useLoading();
   const activeTask = tasks.find(
@@ -116,6 +133,18 @@ export const PlaybackBar: React.FC = () => {
     userPausedRef.current = !nextPlaying;
     setPlaying(nextPlaying);
   }, [isPlaying, setPlaying]);
+
+  const handleMarkStart = useCallback(() => {
+    markStart(getFrameIndex());
+  }, [getFrameIndex, markStart]);
+
+  const handleMarkEnd = useCallback(() => {
+    if (markEnd(getFrameIndex())) {
+      setSubtaskDialogOpen(true);
+    }
+  }, [getFrameIndex, markEnd, setSubtaskDialogOpen]);
+
+  const currentSubtaskLabel = labelAtFrame(currentFrameIndex);
 
   // Render placeholder if no data and not loading
   if (totalFrames === 0 && !isLoading && !activeTask) {
@@ -252,6 +281,45 @@ export const PlaybackBar: React.FC = () => {
           </TooltipTrigger>
           <TooltipContent>{t('panels.keyboardShortcuts.nextFrame.action')}</TooltipContent>
         </Tooltip>
+
+        {canAnnotate ? (
+          <>
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <Button
+                    variant={pendingStart != null ? 'secondary' : 'ghost'}
+                    size="sm"
+                    className="h-8 px-2 text-xs"
+                    onClick={handleMarkStart}
+                    disabled={isLoading || totalFrames === 0}
+                    aria-label={t('subtask.start', 'Start (Q)')}
+                  />
+                }
+              >
+                {t('subtask.startShort', 'Start')}
+              </TooltipTrigger>
+              <TooltipContent>{t('subtask.startHint', 'Mark subtask start (Q)')}</TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-8 px-2 text-xs"
+                    onClick={handleMarkEnd}
+                    disabled={isLoading || totalFrames === 0}
+                    aria-label={t('subtask.end', 'End (R)')}
+                  />
+                }
+              >
+                {t('subtask.endShort', 'End')}
+              </TooltipTrigger>
+              <TooltipContent>{t('subtask.endHint', 'Mark subtask end (R)')}</TooltipContent>
+            </Tooltip>
+          </>
+        ) : null}
       </div>
 
       <Separator orientation="vertical" className="h-8 mx-2 bg-border" />
@@ -266,12 +334,31 @@ export const PlaybackBar: React.FC = () => {
         setFrameIndex={setFrameIndex}
         getFrameIndex={getFrameIndex}
         subscribeFrameIndex={subscribeFrameIndex}
+        segments={currentSegments}
+        pendingRange={pendingRange}
+        pendingStart={pendingStart}
       />
 
       <Separator orientation="vertical" className="h-8 mx-2 bg-border" />
 
       {/* Right: Meta Info */}
       <div className="flex items-center gap-4 pr-2">
+        {currentSegments.length > 0 || (canAnnotate && hasSubtaskIndexFeature(info?.features)) ? (
+          <div className="flex flex-col items-end min-w-0 max-w-[140px]">
+            <span className="text-[9px] font-bold text-muted-foreground/60 uppercase tracking-wider">
+              {t('subtask.current', 'Subtask')}
+            </span>
+            <span
+              className="truncate text-[10px] font-medium text-foreground/80"
+              title={currentSubtaskLabel ?? t('subtask.unlabeled', 'Unlabeled')}
+            >
+              {currentSubtaskLabel ?? t('subtask.unlabeled', 'Unlabeled')}
+            </span>
+            <span className="font-mono text-[9px] text-muted-foreground">
+              {coverage.labeledFrames}/{coverage.totalFrames}
+            </span>
+          </div>
+        ) : null}
         <div className="flex flex-col items-end">
           <span className="text-[9px] font-bold text-muted-foreground/60 uppercase tracking-wider">
             {t('playback.meta.fps')}
@@ -289,6 +376,19 @@ export const PlaybackBar: React.FC = () => {
           </span>
         </div>
       </div>
+      {pendingRange ? (
+        <EditSubtaskDialog
+          open={subtaskDialogOpen}
+          onOpenChange={(open) => {
+            setSubtaskDialogOpen(open);
+            if (!open) cancelPending();
+          }}
+          startFrame={pendingRange.startFrame}
+          endFrame={pendingRange.endFrame}
+          knownLabels={knownLabels}
+          onSave={commitPending}
+        />
+      ) : null}
     </div>
   );
 };

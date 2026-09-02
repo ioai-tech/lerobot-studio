@@ -1,3 +1,5 @@
+import { encodedImageToBlob } from './encodedImageBlob';
+
 /**
  * LRU缓存管理器 - 用于管理blob URLs和媒体资源
  */
@@ -130,7 +132,7 @@ export class ImageFrameCache {
     const data = imageData instanceof ArrayBuffer ? new Uint8Array(imageData) : imageData;
     // 创建一个新的 Uint8Array 来确保类型兼容性
     const buffer = new Uint8Array(data);
-    const blob = new Blob([buffer], { type: 'image/jpeg' });
+    const blob = await encodedImageToBlob(buffer);
     return URL.createObjectURL(blob);
   }
 

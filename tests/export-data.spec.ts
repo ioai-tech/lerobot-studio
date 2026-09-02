@@ -122,6 +122,42 @@ describe('exportDataFiles (v2 -> v3)', () => {
     ).toEqual([0, 0]);
   });
 
+  it('writes frame subtask_index from the export plan', async () => {
+    const table = tableFromArrays({
+      episode_index: [5, 5],
+      index: [100, 101],
+    });
+    const loader = {
+      getEpisodeTableForExport: async () => ({ table, pathHint: 'source.parquet' }),
+    } as unknown as LeRobotDataLoader;
+    const info = {
+      codebase_version: 'v3.0',
+      chunks_size: 1000,
+      features: {},
+    } as unknown as Awaited<ReturnType<LeRobotDataLoader['initialize']>>;
+    const adapter = new InMemoryExportAdapter();
+
+    await exportDataFiles(
+      loader,
+      info,
+      [{ episode_index: 5, length: 2, tasks: ['pick'], task_index: 0 }],
+      'v3.0',
+      adapter,
+      undefined,
+      undefined,
+      {
+        subtaskPlan: {
+          table: { 0: 'Approach', 1: 'Grasp' },
+          framesBySourceEpisode: new Map([[5, [0, 1]]]),
+        },
+      },
+    );
+
+    expect(
+      await readParquetColumn(adapter, 'data/chunk-000/file-000.parquet', 'subtask_index'),
+    ).toEqual([0, 1]);
+  });
+
   it('uses an episode-local task mapping when only one of two same-task episodes is edited', async () => {
     const tables = new Map([
       [10, tableFromArrays({ episode_index: [10, 10], index: [0, 1], task_index: [0, 0] })],

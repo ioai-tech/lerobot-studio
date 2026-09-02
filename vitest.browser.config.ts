@@ -3,9 +3,10 @@ import { defineConfig } from 'vitest/config';
 import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
 import { playwright } from '@vitest/browser-playwright';
+import { localDatasetPlugin } from './scripts/vite/localDatasetPlugin.ts';
 
 export default defineConfig({
-  plugins: [react(), tailwindcss()],
+  plugins: [react(), tailwindcss(), localDatasetPlugin()],
   publicDir: false,
   server: { fs: { allow: [path.resolve(import.meta.dirname)] } },
   resolve: {

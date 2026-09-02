@@ -1,7 +1,11 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useLeRobotData, useLeRobotSelection } from '../../contexts/LeRobotContext';
-import type { EpisodeMetadata } from '@/core';
+import {
+  useLeRobotData,
+  useLeRobotSelection,
+  useLeRobotSubtask,
+} from '../../contexts/LeRobotContext';
+import { hasSubtaskIndexFeature, type EpisodeMetadata } from '@/core';
 import { EditTaskDialog } from '../dialogs/EditTaskDialog';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/ui';
 import { Button } from '@/ui';
@@ -11,6 +15,7 @@ import { EpisodeSearch } from './episodes/EpisodeSearch';
 import { EpisodeFilters } from './episodes/EpisodeFilters';
 import { EpisodeToolbar } from './episodes/EpisodeToolbar';
 import { EpisodeList } from './episodes/EpisodeList';
+import { SubtaskSegmentList } from './SubtaskSegmentList';
 
 export const EpisodeSidebar: React.FC = () => {
   const { t } = useTranslation();
@@ -29,6 +34,8 @@ export const EpisodeSidebar: React.FC = () => {
     deleteEpisode,
     restoreEpisode,
   } = useLeRobotSelection();
+  const { canAnnotate, currentSegments, coverage, knownLabels, removeSegment, jumpToFrame } =
+    useLeRobotSubtask();
   const [searchTerm, setSearchTerm] = useState('');
   const [editMode, setEditMode] = useState(false);
   const [multiSelectMode, setMultiSelectMode] = useState(false);
@@ -226,6 +233,15 @@ export const EpisodeSidebar: React.FC = () => {
           onEdit={(episode, event) => openEditDialog(event, episode)}
           onDelete={(episodeIndex, event) => handleDelete(event, episodeIndex)}
           onRestore={(episodeIndex, event) => handleRestore(event, episodeIndex)}
+        />
+        <SubtaskSegmentList
+          segments={currentSegments}
+          coverage={coverage}
+          canAnnotate={canAnnotate}
+          knownLabels={knownLabels}
+          sourceAvailable={hasSubtaskIndexFeature(info?.features) || knownLabels.length > 0}
+          onJump={jumpToFrame}
+          onDelete={removeSegment}
         />
       </div>
 

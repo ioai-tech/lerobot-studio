@@ -44,6 +44,8 @@ Keyboard shortcuts:
 | `Cmd` / `Ctrl` + `←` / `→` | Move 5 frames            |
 | `↑` / `↓`                  | Previous or next episode |
 | `Home` / `End`             | First or last frame      |
+| `Q`                        | Mark subtask start       |
+| `R`                        | Mark subtask end         |
 
 ## Read the data
 
@@ -67,6 +69,21 @@ Open **Dataset health check** from the app menu to inspect common format problem
 For fully supported datasets (`v2.1` and `v3.0`), you can change episode task descriptions, select multiple episodes, and delete or restore episodes within the current session.
 
 These edits stay in the current browser session until you export a dataset. The app does not overwrite your original files.
+
+### Annotate subtasks
+
+Writable `v3.0` datasets can be labeled with frame-range subtasks. `v2.1` can show existing `subtask_index` values (including PI-style `metadata.subtask_*` columns) but cannot add labels. **Start** / **End** (`Q` / `R`) appear only on writable `v3.0`.
+
+1. Press **Start** or `Q` on the first frame of a subtask.
+2. Seek or play to the last frame, then press **End** or `R`.
+3. Enter a description in the dialog. Existing labels are offered as shortcuts.
+4. Repeat. The next start defaults to the frame after the previous end.
+
+The timeline shows colored ranges. The sidebar lists segments and `labeled/total` coverage for the current episode. Official unlabeled frames (`subtask_index = -1`) show as **Unlabeled** and are not listed as segments. When `meta/subtasks.parquet` is missing, indices display as `Subtask N`.
+
+Export to `v3.0` requires every frame of every exported episode to have a subtask. Unlabeled frames block export; the app does not write `subtask_index = -1`. Extra official columns such as `task_index_high_level` are kept.
+
+Verified Hub examples and download commands: [Data formats — Official Hub examples](./data-formats.md#official-hub-examples).
 
 Newer minor versions in the `v2` and `v3` families may open in read-only mode. `v2.0`, other major versions, and datasets without a version are not opened.
 

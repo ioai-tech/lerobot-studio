@@ -28,6 +28,26 @@ npm run dev
 | `npm run test:browser`      | 运行 Playwright 浏览器测试          |
 | `npm run fixtures:generate` | 重建合成 LeRobot fixture            |
 
+## 官方本地数据集
+
+本地 Node 和浏览器测试在这些目录缺失时会 skip。用 Hugging Face CLI 下载后，再运行 `npm run dev`（或 `npm run test:browser`）：
+
+```bash
+hf download lerobot/libero_10_subtask --type=dataset --local-dir /data/lerobot/libero_10_subtask
+hf download lerobot/pusht-subtask --type=dataset --local-dir /data/lerobot/pusht-subtask
+hf download k1000dai/libero-subtaskid-segments --type=dataset --local-dir /data/lerobot/libero-subtaskid-segments
+hf download lerobot/outdoor-depth --type=dataset --local-dir /data/lerobot/outdoor-depth
+```
+
+| 路径                                      | 用途                                                                               |
+| ----------------------------------------- | ---------------------------------------------------------------------------------- |
+| `/data/lerobot/libero_10_subtask`         | 官方 `v3.0` `subtask_index` 标准（`LEROBOT_V3_SUBTASK_DATASET`）                   |
+| `/data/lerobot/pusht-subtask`             | 官方带标签的 `v3.0`，含 `meta/subtasks.parquet`（`LEROBOT_PUSHT_SUBTASK_DATASET`） |
+| `/data/lerobot/libero-subtaskid-segments` | 社区 `subtask_id` 快照；不会按官方子任务映射                                       |
+| `/data/lerobot/outdoor-depth`             | 官方纯深度 `v3.0`（`LEROBOT_DEPTH_DATASET`）；16 位 TIFF 帧                        |
+
+`libero_10_subtask` 体积较大（含视频）。浏览器 e2e 使用第一份 parquet 的精简切片；Node 测试也会直接加载官方目录。`pusht-subtask` 足够小，可以完整提供。
+
 ## Bundle 大小门禁
 
 运行大小门禁前先构建两个目标：

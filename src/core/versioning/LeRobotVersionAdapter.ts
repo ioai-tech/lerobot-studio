@@ -5,11 +5,18 @@ import type {
   EpisodeVideoPathResult,
   MetadataLoadingHelpers,
 } from './types';
-import { normalizeTaskDisplay } from './arrowUtils';
+import { convertArrowValue, normalizeTaskDisplay } from './arrowUtils';
+import { tableFromIPC } from 'apache-arrow';
+import {
+  parseSubtaskTableFromRows,
+  SUBTASK_LABEL_COLUMN_CANDIDATES,
+  SUBTASKS_PARQUET_PATH,
+  type SubtaskTable,
+} from '../subtask';
 
 /**
  * Abstract base for LeRobot codebase version adapters.
- * Subclasses must implement version and the four methods. Path resolution and
+ * Subclasses must implement version and the data/metadata methods. Path resolution and
  * metadata loading are delegated to the adapter so DataLoader, panels, and
  * export do not branch on version.
  */
@@ -56,6 +63,32 @@ export abstract class LeRobotVersionAdapter {
     dataSource: DataSource,
     helpers: MetadataLoadingHelpers,
   ): Promise<Record<number, string>>;
+
+  /**
+   * Load optional subtask index → label mapping from meta/subtasks.parquet.
+   * Missing file returns an empty table; that is a valid unannotated dataset.
+   */
+  async loadSubtasks(
+    _dataSource: DataSource,
+    helpers: MetadataLoadingHelpers,
+  ): Promise<SubtaskTable> {
+    try {
+      const ipcBytes = await helpers.readParquetToIPC(SUBTASKS_PARQUET_PATH);
+      const table = tableFromIPC(ipcBytes);
+      const schemaNames = new Set(table.schema.fields.map((field) => field.name));
+      const labelColumnName = SUBTASK_LABEL_COLUMN_CANDIDATES.find((name) => schemaNames.has(name));
+      const labelVector = labelColumnName ? table.getChild(labelColumnName) : null;
+      const indexVector = table.getChild('subtask_index');
+      const rows = Array.from({ length: table.numRows }, (_, row) => ({
+        subtaskIndex: indexVector ? convertArrowValue(indexVector.get(row)) : row,
+        label: labelVector ? convertArrowValue(labelVector.get(row)) : '',
+      }));
+      return parseSubtaskTableFromRows(rows);
+    } catch (error) {
+      if (error instanceof RangeError) throw error;
+      return {};
+    }
+  }
 
   /**
    * Parse meta/tasks.jsonl content into task_index -> task map. Shared by v2 and v3.

@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.2.0
+
+### Minor Changes
+
+- Add official LeRobot v3.0 subtask viewing, annotation, and export, plus 16-bit TIFF depth-map playback.
+
 ## 1.1.0
 
 ### Minor Changes

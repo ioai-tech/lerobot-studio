@@ -45,6 +45,25 @@
 
 ---
 
+## 看不到子任务
+
+Studio 只映射官方 LeRobot 的 `subtask_index`。
+
+- `lerobot/libero_10_subtask` 在缺少 `meta/subtasks.parquet` 时显示 `Subtask N`。
+- `lerobot/pusht-subtask` 显示 `phase 1/2/3`；`subtask_index = -1` 的帧保持为 **未标注**。
+- `k1000dai/libero-subtaskid-segments` 使用 `subtask_id` 而不是 `subtask_index`，因此不会列出分段。
+- `v2.1` 可以显示已有索引，但没有 **开始** / **结束** 按钮。
+
+下载命令见 [数据格式 — 官方 Hub 示例](./data-formats#official-hub-examples)。导出为 `v3.0` 时，每个被导出帧都必须已标注；应用不会写入 `-1`。
+
+---
+
+## 深度图空白或无法解码
+
+官方深度数据集（如 [`lerobot/outdoor-depth`](https://huggingface.co/datasets/lerobot/outdoor-depth)）把 16 位灰度 TIFF 存在 parquet 中（`info.is_depth_map: true`）。Studio 会识别 TIFF/PNG/JPEG，将 16 位深度伪彩化后播放，而不是只按 JPEG 解码。若面板一直空白，请确认 feature 的 dtype 是 `image` 或 `depth`，并且存在 `observation.images.*`。
+
+---
+
 ## Next.js 出现服务端错误
 
 请使用 Client Component 和 `dynamic(..., { ssr: false })`。该包只能在浏览器中运行。见 [嵌入指南](./embedding)。

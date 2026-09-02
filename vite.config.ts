@@ -3,6 +3,7 @@ import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
 import path from 'path';
 import type { Plugin } from 'vite';
+import { localDatasetPlugin } from './scripts/vite/localDatasetPlugin.ts';
 
 function trimTrailingSlash(input: string) {
   return input.replace(/\/+$/, '');
@@ -94,6 +95,7 @@ export default defineConfig(() => {
       }),
       react(),
       tailwindcss(),
+      localDatasetPlugin(),
     ],
     resolve: {
       alias: [

@@ -50,6 +50,7 @@ export * from './utils/featureUtils';
 export * from './utils/datasetDisplayName';
 export * from './utils/mediaFeatureMetadata';
 export * from './utils/imageColumns';
+export * from './utils/depthImage';
 export * from './utils/episodeKeyboard';
 export * from './utils/chartTooltipPlacement';
 
@@ -63,3 +64,5 @@ export * from './panels/imagePanelRequestUtils';
 export type { ChartSeriesKind, ChartDimensionMeta } from './panels/chartTypes';
 
 export type { ParquetWorkerAPI, ParquetImageWorkerAPI } from './workers/types';
+
+export * from './subtask';

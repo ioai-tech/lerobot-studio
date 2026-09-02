@@ -19,7 +19,12 @@ import * as Comlink from 'comlink';
 import init, { readParquet } from 'parquet-wasm';
 import { tableFromIPC, Vector } from 'apache-arrow';
 import type { ParquetImageWorkerAPI } from '@/core';
-import { detectImageColumns } from '@/core';
+import {
+  detectImageColumns,
+  mimeTypeForImageFormat,
+  renderTiffDepthPreview,
+  sniffImageFormat,
+} from '@/core';
 
 let wasmInitialized = false;
 let wasmInitPromise: Promise<void> | null = null;
@@ -158,9 +163,7 @@ self.onmessage = async (event: MessageEvent) => {
         try {
           const key = `${column}:${i}`;
           if (!decodedLru.has(key)) {
-            const bitmap = await createImageBitmap(
-              new Blob([copyBytesToAB(bytes)], { type: 'image/jpeg' }),
-            );
+            const bitmap = await encodedBytesToImageBitmap(bytes);
             lruSet(key, bitmap);
           }
         } catch {
@@ -213,7 +216,7 @@ self.onmessage = async (event: MessageEvent) => {
           self.postMessage({ type: 'frame-bitmap-miss', reqId, reason: 'no-bytes' });
           return;
         }
-        bitmap = await createImageBitmap(new Blob([copyBytesToAB(bytes)], { type: 'image/jpeg' }));
+        bitmap = await encodedBytesToImageBitmap(bytes);
         // 注意：transfer 后 bitmap 所有权移交主线程，这里不再保留在 LRU 中（避免 detached 引用）
       } else {
         // 命中 LRU：直接转移（转移后从 LRU 移除，下次命中时需要重新解码）
@@ -262,9 +265,7 @@ function scheduleLookahead(
       try {
         const bytes = extractImageBytes(vector.get(startRow + relRow));
         if (!bytes) continue;
-        const bitmap = await createImageBitmap(
-          new Blob([copyBytesToAB(bytes)], { type: 'image/jpeg' }),
-        );
+        const bitmap = await encodedBytesToImageBitmap(bytes);
         if (token !== lookaheadToken) {
           try {
             bitmap.close();
@@ -315,6 +316,10 @@ function extractImageBytes(val: unknown): Uint8Array | null {
       const bytes = obj.bytes;
       if (bytes instanceof Uint8Array) return bytes;
       if (bytes instanceof ArrayBuffer) return new Uint8Array(bytes);
+      if (ArrayBuffer.isView(bytes)) {
+        const view = bytes as ArrayBufferView;
+        return new Uint8Array(view.buffer, view.byteOffset, view.byteLength);
+      }
       if (Array.isArray(bytes)) return new Uint8Array(bytes);
     }
 
@@ -334,6 +339,19 @@ function copyBytesToAB(src: Uint8Array): ArrayBuffer {
   const buf = new ArrayBuffer(src.byteLength);
   new Uint8Array(buf).set(src);
   return buf;
+}
+
+async function encodedBytesToImageBitmap(bytes: Uint8Array): Promise<ImageBitmap> {
+  const format = sniffImageFormat(bytes);
+  if (format === 'tiff') {
+    const preview = renderTiffDepthPreview(bytes);
+    const imageData = new ImageData(preview.width, preview.height);
+    imageData.data.set(preview.rgba);
+    return createImageBitmap(imageData);
+  }
+  return createImageBitmap(
+    new Blob([copyBytesToAB(bytes)], { type: mimeTypeForImageFormat(format) }),
+  );
 }
 
 // Comlink API（保留用于按需/首帧加载兼容）

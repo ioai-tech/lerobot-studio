@@ -20,10 +20,12 @@ import {
   classifyLeRobotVersion,
   computeDatasetStats,
   isSupportedLeRobotVersion,
+  SUBTASK_INDEX_FEATURE_KEY,
   type DatasetStats,
 } from '@/core';
 import { computeSplits, splitsIndicesToInfoSplits } from '@/core';
 import { buildExportTaskPlan, resolveExportTaskIndex } from './TaskPlan';
+import { applySubtaskFeaturesForExport, buildExportSubtaskPlan } from './SubtaskExportPlan';
 
 export class ExportService {
   private dataLoader: LeRobotDataLoader;
@@ -111,6 +113,8 @@ export class ExportService {
       | 'includeVideos'
       | 'signal'
       | 'splitsConfig'
+      | 'subtaskOverlay'
+      | 'sourceSubtasks'
     >,
   ): Promise<void> {
     const onProg = options.onProgress;
@@ -144,9 +148,29 @@ export class ExportService {
     // The image columns are stripped from the exported parquet so the output
     // dataset does not duplicate the image payload.
     const imageFeatureKeys = options.includeVideos ? getImageFeatureKeys(info) : [];
-    const infoForExport =
+    let infoForExport =
       imageFeatureKeys.length > 0 ? rewriteFeaturesForImageToVideo(info, imageFeatureKeys) : info;
     const columnsToExclude = new Set<string>(imageFeatureKeys);
+
+    const subtaskPlan = options.includeData
+      ? await buildExportSubtaskPlan({
+          dataLoader: this.dataLoader,
+          info: infoForExport,
+          episodes: episodesForMeta,
+          overlay: options.subtaskOverlay ?? new Map(),
+          sourceTable: options.sourceSubtasks ?? this.dataLoader.getSubtasks?.() ?? {},
+          targetVersion,
+        })
+      : null;
+    const subtaskFeatures = applySubtaskFeaturesForExport(
+      infoForExport,
+      targetVersion,
+      subtaskPlan,
+    );
+    infoForExport = subtaskFeatures.info;
+    if (subtaskFeatures.dropSubtaskColumn) {
+      columnsToExclude.add(SUBTASK_INDEX_FEATURE_KEY);
+    }
     let imageOffsets: EpisodeVideoOffsets | null = null;
 
     const taskPlan = buildExportTaskPlan(episodesForMeta, tasks);
@@ -162,6 +186,16 @@ export class ExportService {
         resolveNumericRow: (featureKey, context) => {
           if (featureKey === 'index') return context.outputGlobalIndex;
           if (featureKey === 'episode_index') return context.outputEpisodeIndex;
+          if (featureKey === SUBTASK_INDEX_FEATURE_KEY) {
+            const frames = subtaskPlan?.framesBySourceEpisode.get(context.episode.episode_index);
+            const value = frames?.[context.rowIndex];
+            if (value == null) {
+              throw new Error(
+                `Cannot map frame subtask_index for exported episode ${context.outputEpisodeIndex}`,
+              );
+            }
+            return value;
+          }
           if (featureKey !== 'task_index') return undefined;
           const sourceTaskIndex = context.sourceValues[0];
           if (!Number.isSafeInteger(sourceTaskIndex)) {
@@ -269,6 +303,7 @@ export class ExportService {
           ...(columnsToExclude.size > 0 ? { excludeColumns: columnsToExclude } : {}),
           tasks,
           taskPlan,
+          ...(subtaskPlan ? { subtaskPlan } : {}),
         },
       );
     }
@@ -286,6 +321,7 @@ export class ExportService {
       stats,
       splits,
       dataLayout,
+      subtaskPlan?.table,
     );
     throwIfAborted();
     onProg?.({

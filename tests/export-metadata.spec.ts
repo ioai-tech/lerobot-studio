@@ -172,6 +172,62 @@ describe('writeMetadata - v3.0 target', () => {
     expect(Array.from(tasksTable.getChild('task')!.toArray()).map(String)).toEqual(['a', 'b']);
   });
 
+  it('writes meta/subtasks.parquet with a pandas subtask index for the official reader', async () => {
+    const info = loadExampleInfo('lerobotv3');
+    const adapter = new InMemoryExportAdapter();
+    const episodes: EpisodeMetadata[] = [
+      { episode_index: 0, length: 2, tasks: ['a'], task_index: 0 } as EpisodeMetadata,
+    ];
+    await writeMetadata(
+      info,
+      episodes,
+      { 0: 'a' },
+      'v3.0',
+      adapter,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      { 0: 'Approach the apple', 1: 'Grasp the apple' },
+    );
+
+    const ipc = await readParquetToIPC(await adapter.readFile('meta/subtasks.parquet'));
+    const table = tableFromIPC(ipc);
+    expect(
+      table.schema.fields.find((field) => field.name === 'subtask_index')?.type.toString(),
+    ).toBe('Int64');
+    expect(Array.from(table.getChild('subtask_index')!.toArray()).map(Number)).toEqual([0, 1]);
+    expect(Array.from(table.getChild('subtask')!.toArray()).map(String)).toEqual([
+      'Approach the apple',
+      'Grasp the apple',
+    ]);
+    const pandas = table.schema.metadata.get('pandas');
+    expect(pandas).toContain('"index_columns":["subtask"]');
+
+    const helpers: MetadataLoadingHelpers = {
+      readParquetToIPC: async () => ipc,
+    };
+    const loaded = await new V3Adapter().loadSubtasks(
+      { exists: async () => true } as unknown as DataSource,
+      helpers,
+    );
+    expect(loaded).toEqual({
+      0: 'Approach the apple',
+      1: 'Grasp the apple',
+    });
+
+    const writtenInfo = JSON.parse(
+      new TextDecoder().decode(await adapter.readFile('meta/info.json')),
+    ) as LeRobotInfo;
+    expect(writtenInfo.features.subtask_index).toEqual({
+      dtype: 'int64',
+      shape: [1],
+      names: null,
+    });
+  });
+
   it('writes actual rolled data references and official v3 size defaults', async () => {
     const info = {
       ...loadExampleInfo('lerobotv3'),

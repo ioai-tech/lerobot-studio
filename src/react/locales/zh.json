@@ -25,6 +25,7 @@
     "dark": "深色",
     "system": "跟随系统",
     "cancel": "取消",
+    "delete": "删除",
     "retry": "重试",
     "back": "返回",
     "error": "发生错误",
@@ -96,6 +97,26 @@
       "version": "版本"
     },
     "speed": "播放速度"
+  },
+  "subtask": {
+    "listTitle": "子任务",
+    "empty": "当前 episode 没有已标注的子任务",
+    "coverage": "已标注 {{labeled}}/{{total}} 帧",
+    "coverageIncomplete": "仍有未标注帧。导出 v3.0 需要每一帧都有子任务；官方的 -1 视为未覆盖。",
+    "current": "子任务",
+    "unlabeled": "未标注",
+    "start": "开始 (Q)",
+    "startShort": "开始",
+    "startHint": "标记子任务开始 (Q)",
+    "end": "结束 (R)",
+    "endShort": "结束",
+    "endHint": "标记子任务结束 (R)",
+    "dialogTitle": "描述子任务",
+    "dialogRange": "帧 {{start}}–{{end}}",
+    "label": "子任务描述",
+    "labelPlaceholder": "例如 Grasp the apple",
+    "labelRequired": "请输入子任务描述",
+    "save": "保存子任务"
   },
   "health": {
     "noData": "加载数据集后可查看健康检查",
@@ -578,6 +599,14 @@
       "lastFrame": {
         "action": "跳到结尾",
         "key": "End"
+      },
+      "subtaskStart": {
+        "action": "标记子任务开始",
+        "key": "Q"
+      },
+      "subtaskEnd": {
+        "action": "标记子任务结束",
+        "key": "R"
       }
     },
     "welcome": {
@@ -676,6 +705,9 @@
     "changesSummary": "修改摘要",
     "modifiedCount": "已修改",
     "deletedCount": "已删除",
+    "subtaskEpisodes": "已标注子任务的 episode",
+    "subtaskCoverageHint": "带有子任务的 v3.0 导出要求每个被导出 episode 的每一帧都已标注。官方未标注值（-1）会阻止导出；Studio 不会写入 -1。",
+    "subtaskCoverageIncomplete": "Episode {{index}} 仍有未标注帧（{{labeled}}/{{total}}）。导出 v3.0 前请补全每一帧。Studio 不会写入 subtask_index = -1。",
     "totalEpisodes": "Episode 总数",
     "metadataOnlyHint": "当前仅导出元数据（info、episodes、tasks）。",
     "export": "导出",

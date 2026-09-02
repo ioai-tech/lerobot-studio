@@ -10,13 +10,21 @@ import type {
   LeRobotVersionAdapter,
   ValidationReport,
   LeRobotVersionCapability,
+  SubtaskTable,
 } from '@/core';
 import {
   classifyLeRobotVersion,
   getAdapterForVersion,
   getValidatorForVersion,
   hasBlockingValidationError,
+  buildSubtaskTable,
+  indicesFromFrameLabels,
+  tableFromSubtaskIndices,
   NON_BLOCKING_VALIDATION_CODES,
+  normalizeSubtaskIndex,
+  normalizeSubtaskLabel,
+  resolveSubtaskIndexFeatureKey,
+  resolveSubtaskLabelFeatureKey,
 } from '@/core';
 import { tableFromIPC, Table } from 'apache-arrow';
 import { LRUCache } from '../utils/MediaCache';
@@ -45,6 +53,7 @@ export class LeRobotDataLoader {
   private adapter: LeRobotVersionAdapter | null = null;
   private episodes: EpisodeMetadata[] = [];
   private tasks: Record<number, string> = {};
+  private subtasks: SubtaskTable = {};
   private worker: Remote<ParquetWorkerAPI>;
   private fileUrlCache: LRUCache<string, string>;
   private disposed = false;
@@ -137,6 +146,9 @@ export class LeRobotDataLoader {
 
       this.episodes = await this.adapter.loadEpisodes(this._dataSource, helpers, this.info);
       this.tasks = await this.adapter.loadTasks(this._dataSource, helpers);
+      this.subtasks = this.adapter.loadSubtasks
+        ? await this.adapter.loadSubtasks(this._dataSource, helpers)
+        : {};
 
       // v3: when episode metadata includes a scalar task_index, resolve the label from
       // meta/tasks.parquet. Official Python writers store per-episode labels in the
@@ -351,6 +363,66 @@ export class LeRobotDataLoader {
 
   getTasks() {
     return this.tasks;
+  }
+
+  getSubtasks(): SubtaskTable {
+    return this.subtasks;
+  }
+
+  /**
+   * Per-frame source subtask_index values for one episode.
+   * Missing column returns []; invalid / -1 values become null.
+   */
+  async loadEpisodeSubtaskIndices(episodeIndex: number): Promise<Array<number | null>> {
+    const source = await this.loadEpisodeSubtaskSource(episodeIndex);
+    return source.indices;
+  }
+
+  /**
+   * Load frame-level subtask indices and the label table for one episode.
+   * Prefers per-frame label columns (`metadata.subtask_label`) when present so
+   * PI-style v2 datasets without meta/subtasks.parquet still display segments.
+   */
+  async loadEpisodeSubtaskSource(episodeIndex: number): Promise<{
+    indices: Array<number | null>;
+    table: SubtaskTable;
+  }> {
+    if (!this.info) throw new Error('Not initialized');
+    const indexKey = resolveSubtaskIndexFeatureKey(this.info.features);
+    const labelKey = resolveSubtaskLabelFeatureKey(this.info.features);
+    if (!indexKey && !labelKey && Object.keys(this.subtasks).length === 0) {
+      return { indices: [], table: this.subtasks };
+    }
+
+    let labels: string[] = [];
+    if (labelKey) {
+      try {
+        const data = await this.loadFeatureData(episodeIndex, [labelKey]);
+        labels = (data[labelKey] ?? []).map((value) => normalizeSubtaskLabel(value));
+      } catch {
+        labels = [];
+      }
+    }
+    if (labels.some((label) => label.length > 0)) {
+      const table = { ...this.subtasks, ...buildSubtaskTable(labels) };
+      return { indices: indicesFromFrameLabels(labels, table), table };
+    }
+
+    if (!indexKey) return { indices: [], table: this.subtasks };
+    try {
+      const data = await this.loadAllNumericalData(episodeIndex, [indexKey]);
+      const column = data[indexKey];
+      if (!column) return { indices: [], table: this.subtasks };
+      const indices = Array.from({ length: column.rows }, (_, row) =>
+        normalizeSubtaskIndex(column.values[row * column.width]),
+      );
+      return {
+        indices,
+        table: tableFromSubtaskIndices(indices, this.subtasks),
+      };
+    } catch {
+      return { indices: [], table: this.subtasks };
+    }
   }
 
   /**

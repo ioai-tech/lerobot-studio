@@ -25,7 +25,7 @@ Use it as a standalone site at [lerobot.studio](https://lerobot.studio), or inst
 | [Quick Start](docs/quick-start.md)         | Start with the standalone app or install the React package.                  |
 | [Embed in React](docs/embedding.md)        | Install and configure the viewer in your application.                        |
 | [API Reference](docs/api.md)               | `LeRobotViewer` props, data sources, and generated types.                    |
-| [Data formats](docs/data-formats.md)       | Supported LeRobot versions and archive types.                                |
+| [Data formats](docs/data-formats.md)       | Supported LeRobot versions, subtasks, and official Hub examples.             |
 | [CORS & Range](docs/cors.md)               | Headers needed for remote archives.                                          |
 | [Browser support](docs/browser.md)         | Chromium / Firefox / WebKit notes.                                           |
 | [Troubleshooting](docs/troubleshooting.md) | Common failure modes.                                                        |
@@ -45,6 +45,7 @@ Full docs site: [ioai-tech.github.io/lerobot-studio](https://ioai-tech.github.io
 - **Navigate efficiently** — search and filter episodes, control playback, and use keyboard shortcuts
 - **Review dataset quality** — inspect dataset statistics and export health-check reports
 - **Edit and export in the standalone app** — update episode tasks, remove or restore episodes, and export `v2.1` or `v3.0` datasets
+- **View and annotate subtasks (`v3.0`)** — official `subtask_index` ranges, Q/R labels, and export with full coverage (never writes `-1`)
 - **Embed in React** — use the read-only viewer in a React 19 application
 - **Keep local data local** — local files are processed in the browser; the npm package does not collect usage data
 

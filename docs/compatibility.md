@@ -34,6 +34,8 @@ Fully supported versions use exact matching. Only newer minor releases in the `v
 
 Export is available in the standalone application, not in the npm API. Its output is checked with LeRobot `v0.6.1`. Video layout notes: [Data formats](./data-formats.md).
 
+`v3.0` subtask viewing and export are checked against official Hub datasets [`lerobot/libero_10_subtask`](https://huggingface.co/datasets/lerobot/libero_10_subtask) and [`lerobot/pusht-subtask`](https://huggingface.co/datasets/lerobot/pusht-subtask). Download commands: [Data formats — Official Hub examples](./data-formats.md#official-hub-examples).
+
 ---
 
 ## Inputs

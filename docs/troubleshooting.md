@@ -45,6 +45,25 @@ Playback depends on the video codec and browser. Try the file in the target brow
 
 ---
 
+## Subtasks do not appear
+
+Studio maps official LeRobot `subtask_index` only.
+
+- `lerobot/libero_10_subtask` shows `Subtask N` when `meta/subtasks.parquet` is missing.
+- `lerobot/pusht-subtask` shows `phase 1/2/3`; frames with `subtask_index = -1` stay **Unlabeled**.
+- `k1000dai/libero-subtaskid-segments` stores `subtask_id`, not `subtask_index`, so segments are not listed.
+- `v2.1` can display existing indices but has no **Start** / **End** buttons.
+
+Download commands: [Data formats — Official Hub examples](./data-formats.md#official-hub-examples). Export to `v3.0` fails until every exported frame is labeled; the app does not write `-1`.
+
+---
+
+## Depth map is blank or fails to decode
+
+Official depth datasets such as [`lerobot/outdoor-depth`](https://huggingface.co/datasets/lerobot/outdoor-depth) store 16-bit grayscale TIFF bytes in parquet (`info.is_depth_map: true`). Studio sniffs TIFF/PNG/JPEG, colorizes 16-bit depth for playback, and does not treat JPEG as the only encoding. If the panel stays empty, confirm the feature dtype is `image` or `depth` and that `observation.images.*` is present.
+
+---
+
 ## Next.js reports a server-side error
 
 Use a Client Component and `dynamic(..., { ssr: false })`. This package runs only in the browser. See [Embedding Guide](./embedding.md).

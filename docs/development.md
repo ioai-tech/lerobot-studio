@@ -28,6 +28,26 @@ Node 24 is required (`.nvmrc`). This repository is a single npm package with two
 | `npm run test:browser`      | Run Playwright browser tests                    |
 | `npm run fixtures:generate` | Recreate synthetic LeRobot fixtures             |
 
+## Official local datasets
+
+Local Node and browser tests skip when these folders are missing. Download with the Hugging Face CLI, then start `npm run dev` (or `npm run test:browser`):
+
+```bash
+hf download lerobot/libero_10_subtask --type=dataset --local-dir /data/lerobot/libero_10_subtask
+hf download lerobot/pusht-subtask --type=dataset --local-dir /data/lerobot/pusht-subtask
+hf download k1000dai/libero-subtaskid-segments --type=dataset --local-dir /data/lerobot/libero-subtaskid-segments
+hf download lerobot/outdoor-depth --type=dataset --local-dir /data/lerobot/outdoor-depth
+```
+
+| Path                                      | Used as                                                                                |
+| ----------------------------------------- | -------------------------------------------------------------------------------------- |
+| `/data/lerobot/libero_10_subtask`         | Official `v3.0` `subtask_index` standard (`LEROBOT_V3_SUBTASK_DATASET`)                |
+| `/data/lerobot/pusht-subtask`             | Official labeled `v3.0` with `meta/subtasks.parquet` (`LEROBOT_PUSHT_SUBTASK_DATASET`) |
+| `/data/lerobot/libero-subtaskid-segments` | Community `subtask_id` snapshot; not mapped as official subtasks                       |
+| `/data/lerobot/outdoor-depth`             | Official depth-only `v3.0` (`LEROBOT_DEPTH_DATASET`); 16-bit TIFF frames               |
+
+`libero_10_subtask` is large (videos). Browser e2e serves a slim first-parquet slice; Node tests also load the official folder directly. `pusht-subtask` is small enough to serve in full.
+
 ## Bundle size gate
 
 Build both targets before running the size gate:

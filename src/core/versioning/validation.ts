@@ -314,7 +314,20 @@ export abstract class BaseLeRobotValidator {
         // names length check
         const names = feature['names'];
         if (names !== null && names !== undefined) {
-          if (!Array.isArray(names)) {
+          if (
+            names &&
+            typeof names === 'object' &&
+            !Array.isArray(names) &&
+            Object.values(names as Record<string, unknown>).every(
+              (group) => Array.isArray(group) && group.every((item) => typeof item === 'string'),
+            )
+          ) {
+            const groups = names as Record<string, string[]>;
+            const label = Object.entries(groups)
+              .map(([group, values]) => `${group}[${values.length}]`)
+              .join(', ');
+            this.pass(cat, `${key}.names`, label, 'string[] or official { group: string[] }');
+          } else if (!Array.isArray(names)) {
             this.warn(
               cat,
               `${key}.names`,

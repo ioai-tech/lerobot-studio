@@ -1,5 +1,12 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import type { LeRobotInfo, EpisodeMetadata, FrameData, LeRobotFeature, PlaybackMode } from '@/core';
+import type {
+  LeRobotInfo,
+  EpisodeMetadata,
+  FrameData,
+  LeRobotFeature,
+  PlaybackMode,
+  SubtaskTable,
+} from '@/core';
 import type { LeRobotDataLoader } from '@/platform';
 import type { NumericalColumnMap } from '@/platform';
 import type { DataSource } from '@/platform';
@@ -12,8 +19,10 @@ import {
   LeRobotPlaybackContext,
   LeRobotSelectionContext,
   LeRobotUiContext,
+  LeRobotSubtaskContext,
   type FrameIndexSubscriber,
 } from './LeRobotContext';
+import { useSubtaskAnnotation } from './useSubtaskAnnotation';
 import { buildPlaybackFrames, getEagerEpisodeColumns, getFirstAvailableEpisodeIndex } from '@/core';
 import { createParquetImageService, type ParquetImageServiceImpl } from '@/platform';
 import { getImageFeatureNames } from '@/core';
@@ -72,6 +81,9 @@ export const LeRobotDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
   const [info, setInfo] = useState<LeRobotInfo | null>(null);
   const [episodes, setEpisodes] = useState<EpisodeMetadata[]>([]);
   const [tasks, setTasks] = useState<Record<number, string>>({});
+  const [sourceSubtasks, setSourceSubtasks] = useState<SubtaskTable>({});
+  const [sourceSubtaskIndices, setSourceSubtaskIndices] = useState<Array<number | null>>([]);
+  const [subtaskDialogOpen, setSubtaskDialogOpen] = useState(false);
   const [selectedEpisodeIndex, setSelectedEpisodeIndex] = useState<number | null>(null);
   const [currentFrames, setCurrentFrames] = useState<FrameData[]>([]);
   const [chartData, setChartData] = useState<NumericalColumnMap>({});
@@ -114,6 +126,15 @@ export const LeRobotDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
     selectAllInList,
     clearEpisodeSelection,
   } = useEpisodeView({ episodes, versionCapability });
+
+  const subtask = useSubtaskAnnotation({
+    versionCapability,
+    selectedEpisodeIndex,
+    episodeLength: currentFrames.length,
+    sourceTable: sourceSubtasks,
+    sourceIndices: sourceSubtaskIndices,
+  });
+  const resetSubtasks = subtask.resetSubtasks;
 
   // 使用 ref 跟踪当前数据源和加载器，用于清理和防止重复加载
   const dataLoaderRef = useRef<LeRobotDataLoader | null>(null);
@@ -235,6 +256,10 @@ export const LeRobotDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
     setInfo(null);
     setEpisodes([]);
     setTasks({});
+    setSourceSubtasks({});
+    setSourceSubtaskIndices([]);
+    setSubtaskDialogOpen(false);
+    resetSubtasks();
     setModifiedEpisodes(new Map());
     setDeletedEpisodes(new Set());
     setSelectedEpisodeIndex(null);
@@ -260,6 +285,7 @@ export const LeRobotDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
     setSelectedEpisodeIndices,
     setCurrentFrameIndex,
     setIsPlaying,
+    resetSubtasks,
   ]);
 
   const initialize = useCallback(
@@ -298,6 +324,10 @@ export const LeRobotDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
         setInfo(null);
         setEpisodes([]);
         setTasks({});
+        setSourceSubtasks({});
+        setSourceSubtaskIndices([]);
+        setSubtaskDialogOpen(false);
+        resetSubtasks();
         setModifiedEpisodes(new Map());
         setDeletedEpisodes(new Set());
         setSelectedEpisodeIndex(null);
@@ -342,6 +372,7 @@ export const LeRobotDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
         setInfo(normalizedInfo);
         setEpisodes(episodes);
         setTasks(loader.getTasks());
+        setSourceSubtasks(loader.getSubtasks());
         completeTask(taskId);
         failedSourcesRef.current.delete(dataSource);
       } catch (e) {
@@ -375,6 +406,7 @@ export const LeRobotDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
       setDeletedEpisodes,
       setCurrentFrameIndex,
       setIsPlaying,
+      resetSubtasks,
     ],
   );
 
@@ -393,6 +425,7 @@ export const LeRobotDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
       notifyFrameSubscribers(0);
       setChartData({});
       setFeatureData({});
+      setSourceSubtaskIndices([]);
       loadingEpisodeRef.current = index;
 
       // 若新 episode 对应的 parquet 与当前缓存不同（v3 分片 / v2.1 多文件），主动释放
@@ -424,6 +457,11 @@ export const LeRobotDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
         upsertTask({ id: taskId, phase: 'render', message: 'Processing charts...' });
         const frames = buildPlaybackFrames(numericalData, info.fps ?? 30);
         setCurrentFrames(frames);
+        const subtaskSource = await dataLoader.loadEpisodeSubtaskSource(index);
+        if (loadingEpisodeRef.current === index) {
+          setSourceSubtaskIndices(subtaskSource.indices);
+          setSourceSubtasks((previous) => ({ ...previous, ...subtaskSource.table }));
+        }
 
         if (loadingEpisodeRef.current === index) {
           setChartData(numericalData);
@@ -574,6 +612,7 @@ export const LeRobotDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
       imageService,
       episodes,
       tasks,
+      subtasks: sourceSubtasks,
       lastValidationReport,
       initialize,
       reset,
@@ -594,6 +633,7 @@ export const LeRobotDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
       imageService,
       episodes,
       tasks,
+      sourceSubtasks,
       lastValidationReport,
       initialize,
       reset,
@@ -673,14 +713,43 @@ export const LeRobotDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
     () => ({
       healthDialogOpen,
       setHealthDialogOpen,
+      subtaskDialogOpen,
+      setSubtaskDialogOpen,
     }),
-    [healthDialogOpen],
+    [healthDialogOpen, subtaskDialogOpen],
+  );
+
+  const subtaskValue = useMemo(
+    () => ({
+      canAnnotate: subtask.canAnnotate,
+      overlay: subtask.overlay,
+      currentSegments: subtask.currentSegments,
+      knownLabels: subtask.knownLabels,
+      coverage: subtask.coverage,
+      pendingStart: subtask.pendingStart,
+      pendingRange: subtask.pendingRange,
+      labelAtFrame: subtask.labelAtFrame,
+      markStart: subtask.markStart,
+      markEnd: subtask.markEnd,
+      cancelPending: subtask.cancelPending,
+      commitPending: subtask.commitPending,
+      updateSegment: subtask.updateSegment,
+      removeSegment: subtask.removeSegment,
+      jumpToFrame: setFrameIndex,
+    }),
+    [subtask, setFrameIndex],
   );
 
   // 兼容层：完整 value 供 useLeRobot() 的现有消费者使用
   const value = useMemo(
-    () => ({ ...dataValue, ...selectionValue, ...playbackValue, ...uiValue }),
-    [dataValue, selectionValue, playbackValue, uiValue],
+    () => ({
+      ...dataValue,
+      ...selectionValue,
+      ...playbackValue,
+      ...subtaskValue,
+      ...uiValue,
+    }),
+    [dataValue, selectionValue, playbackValue, subtaskValue, uiValue],
   );
 
   return (
@@ -688,7 +757,9 @@ export const LeRobotDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
       <LeRobotDataContext.Provider value={dataValue}>
         <LeRobotSelectionContext.Provider value={selectionValue}>
           <LeRobotPlaybackContext.Provider value={playbackValue}>
-            <LeRobotUiContext.Provider value={uiValue}>{children}</LeRobotUiContext.Provider>
+            <LeRobotSubtaskContext.Provider value={subtaskValue}>
+              <LeRobotUiContext.Provider value={uiValue}>{children}</LeRobotUiContext.Provider>
+            </LeRobotSubtaskContext.Provider>
           </LeRobotPlaybackContext.Provider>
         </LeRobotSelectionContext.Provider>
       </LeRobotDataContext.Provider>

@@ -154,7 +154,7 @@ describe('ExportService', () => {
       expect.any(Function),
       undefined,
       expect.objectContaining({
-        excludeColumns: new Set(['camera']),
+        excludeColumns: new Set(['camera', 'subtask_index']),
         tasks: { 0: 'pick' },
         taskPlan: expect.any(Object),
       }),

@@ -1,5 +1,17 @@
 # 变更日志
 
+## 1.2.0
+
+### 次要变更
+
+- 增加官方 LeRobot v3.0 子任务查看、标注与导出，以及 16 位 TIFF 深度图播放。
+
+## 1.1.0
+
+### 次要变更
+
+- 新增 `createRemoteManifestDataSource` 与 `RemoteFileEntry`，宿主可用按文件的 HTTP(S) URL 嵌入查看器。清单数据源实现 `listPaths()`，v3 episode 分片无需猜测连续路径。
+
 ## [1.0.3] - 2026-08-14
 
 ### 已修复

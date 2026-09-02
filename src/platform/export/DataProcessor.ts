@@ -7,6 +7,7 @@ import type { ExportAdapter } from '@/core';
 import type { ExportProgress, V3DataLayout } from '@/core';
 import { tableToParquetBytes } from './ParquetWriter';
 import { buildExportTaskPlan, resolveExportTaskIndex, type ExportTaskPlan } from './TaskPlan';
+import type { ExportSubtaskPlan } from './SubtaskExportPlan';
 
 const CHUNK_SIZE_DEFAULT = 1000;
 const DATA_FILE_SIZE_MB_DEFAULT = 100;
@@ -37,6 +38,7 @@ function rewriteEpisodeAndGlobalIndex(
   newEpisodeIndex: number,
   globalStart: number,
   taskPlan: ExportTaskPlan,
+  subtaskIndices?: number[],
 ): Table {
   const n = table.numRows;
   if (n === 0) return table;
@@ -67,6 +69,22 @@ function rewriteEpisodeAndGlobalIndex(
       rewritten[row] = BigInt(targetIndex);
     }
     overrides.task_index = arrow.vectorFromArray(rewritten, new arrow.Int64());
+  }
+  if (subtaskIndices) {
+    if (subtaskIndices.length !== n) {
+      throw new Error(
+        `subtask_index length ${subtaskIndices.length} does not match episode row count ${n}`,
+      );
+    }
+    overrides.subtask_index = arrow.vectorFromArray(
+      subtaskIndices.map((value) => {
+        if (!Number.isSafeInteger(value) || value < 0) {
+          throw new Error(`Invalid exported subtask_index ${String(value)}`);
+        }
+        return BigInt(value);
+      }),
+      new arrow.Int64(),
+    );
   }
   if (Object.keys(overrides).length === 0) return table;
 
@@ -99,6 +117,8 @@ export interface ExportDataOptions {
   tasks?: Record<number, string>;
   /** Precomputed canonical plan shared with stats and metadata preparation. */
   taskPlan?: ExportTaskPlan;
+  /** Frame-level subtask_index values keyed by source episode_index. */
+  subtaskPlan?: ExportSubtaskPlan;
 }
 
 /**
@@ -141,6 +161,13 @@ export async function exportDataFiles(
   }
 }
 
+function resolveSubtaskIndices(
+  options: ExportDataOptions | undefined,
+  sourceEpisodeIndex: number,
+): number[] | undefined {
+  return options?.subtaskPlan?.framesBySourceEpisode.get(sourceEpisodeIndex);
+}
+
 function dropColumns(table: Table, drop?: Set<string>): Table {
   if (!drop || drop.size === 0) return table;
   const keep = table.schema.fields.filter((f) => !drop.has(f.name)).map((f) => f.name);
@@ -177,7 +204,13 @@ async function filterAndWriteSameVersion(
       const ep = episodes[i];
       const table = await getValidatedEpisodeTable(dataLoader, ep);
       const stripped = dropColumns(table, options?.excludeColumns);
-      const reindexed = rewriteEpisodeAndGlobalIndex(stripped, i, globalRow, taskPlan);
+      const reindexed = rewriteEpisodeAndGlobalIndex(
+        stripped,
+        i,
+        globalRow,
+        taskPlan,
+        resolveSubtaskIndices(options, ep.episode_index),
+      );
       globalRow += stripped.numRows;
       const chunkIdx = Math.floor(i / (info.chunks_size ?? CHUNK_SIZE_DEFAULT));
       const outPath = `data/chunk-${String(chunkIdx).padStart(3, '0')}/episode_${String(i).padStart(6, '0')}.parquet`;
@@ -292,7 +325,13 @@ async function writeV3DataFiles(
     const episode = episodes[outputEpisodeIndex];
     const sourceTable = await getValidatedEpisodeTable(dataLoader, episode);
     const stripped = dropColumns(sourceTable, options?.excludeColumns);
-    const table = rewriteEpisodeAndGlobalIndex(stripped, outputEpisodeIndex, globalRow, taskPlan);
+    const table = rewriteEpisodeAndGlobalIndex(
+      stripped,
+      outputEpisodeIndex,
+      globalRow,
+      taskPlan,
+      resolveSubtaskIndices(options, episode.episode_index),
+    );
     let candidateTables = [...fileTables, table];
     let candidateBytes = await tableToParquetBytes(concatTables(candidateTables));
 
@@ -347,7 +386,13 @@ async function splitV3ToV2(
     if (!isV3Metadata(ep)) continue;
     const table = await getValidatedEpisodeTable(dataLoader, ep);
     const stripped = dropColumns(table, options?.excludeColumns);
-    const reindexed = rewriteEpisodeAndGlobalIndex(stripped, i, globalRow, taskPlan);
+    const reindexed = rewriteEpisodeAndGlobalIndex(
+      stripped,
+      i,
+      globalRow,
+      taskPlan,
+      resolveSubtaskIndices(options, ep.episode_index),
+    );
     globalRow += stripped.numRows;
     const chunkIdx = Math.floor(i / chunksSize);
     const outPath = `data/chunk-${String(chunkIdx).padStart(3, '0')}/episode_${String(i).padStart(6, '0')}.parquet`;

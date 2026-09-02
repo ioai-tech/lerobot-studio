@@ -30,10 +30,8 @@ function assertNotAborted(signal?: AbortSignal): void {
 
 async function decodeFrameToBitmap(bytes: Uint8Array): Promise<ImageBitmap | null> {
   try {
-    const copy = new Uint8Array(bytes.length);
-    copy.set(bytes);
-    const blob = new Blob([copy]);
-    return await createImageBitmap(blob);
+    const { encodedImageToBitmap } = await import('../utils/encodedImageBlob');
+    return await encodedImageToBitmap(bytes);
   } catch (e) {
     console.warn('Failed to decode image frame', e);
     return null;

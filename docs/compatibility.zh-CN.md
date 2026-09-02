@@ -34,6 +34,8 @@ CI 覆盖 Vite 应用和纯客户端的 Next.js 集成。
 
 导出功能只在独立应用中提供，不属于 npm API。导出结果已通过 LeRobot `v0.6.1` 验证。视频布局见 [数据格式](./data-formats)。
 
+`v3.0` 子任务查看和导出已对照官方 Hub 数据集 [`lerobot/libero_10_subtask`](https://huggingface.co/datasets/lerobot/libero_10_subtask) 和 [`lerobot/pusht-subtask`](https://huggingface.co/datasets/lerobot/pusht-subtask) 验证。下载命令见 [数据格式 — 官方 Hub 示例](./data-formats#official-hub-examples)。
+
 ---
 
 ## 输入

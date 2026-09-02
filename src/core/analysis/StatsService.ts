@@ -1,5 +1,6 @@
 import type { Table } from 'apache-arrow';
 import type { EpisodeMetadata, LeRobotFeature, LeRobotInfo } from '../types/lerobot';
+import { SUBTASK_INDEX_FEATURE_KEY } from '../subtask';
 
 export interface StatsDataLoader {
   getEpisodeTableForExport(episodeIndex: number): Promise<{ table: Table }>;
@@ -85,7 +86,9 @@ function featureDim(feature: LeRobotFeature): number {
 }
 
 function visualChannels(feature: LeRobotFeature): number {
-  const names = feature.names?.map((name) => name.toLowerCase()) ?? [];
+  const names = Array.isArray(feature.names)
+    ? feature.names.map((name) => String(name).toLowerCase())
+    : [];
   const namedChannel = names.findIndex((name) => name === 'channel' || name === 'channels');
   if (namedChannel >= 0 && feature.shape[namedChannel] != null) return feature.shape[namedChannel];
   if (feature.shape.length >= 3) {
@@ -101,6 +104,7 @@ function numericRow(
   dim: number,
 ): number[] | null {
   const value = vector?.get(row);
+  if (typeof value === 'boolean') return dim === 1 ? [value ? 1 : 0] : null;
   if (typeof value === 'number') return Number.isFinite(value) && dim === 1 ? [value] : null;
   if (typeof value === 'bigint') {
     const converted = Number(value);
@@ -129,6 +133,7 @@ function numericRow(
 }
 
 function plainArray(value: unknown): StatsArray | null {
+  if (typeof value === 'boolean') return [value ? 1 : 0];
   if (typeof value === 'number') return Number.isFinite(value) ? [value] : null;
   if (ArrayBuffer.isView(value) && !(value instanceof DataView)) {
     return plainArray(Array.from(value as unknown as Iterable<number>));
@@ -189,6 +194,105 @@ function reshape(values: readonly number[], shape: readonly number[]): StatsArra
       depth === shape.length - 1 ? values[offset++] : build(depth + 1),
     );
   return build(0);
+}
+
+function channelLayout(
+  shape: readonly number[],
+  channels: number,
+): 'cube' | 'first' | 'last' | null {
+  if (shape.length === 1 && shape[0] === channels) return 'cube';
+  if (shape.length === 3 && shape[0] === channels && shape[1] === 1 && shape[2] === 1)
+    return 'cube';
+  if (shape[0] === channels) return 'first';
+  if (shape[shape.length - 1] === channels) return 'last';
+  return null;
+}
+
+function reduceToChannels(
+  values: readonly number[],
+  shape: readonly number[],
+  channels: number,
+  reduce: 'min' | 'max' | 'mean' | 'std',
+): number[] {
+  const layout = channelLayout(shape, channels);
+  if (!layout) {
+    throw new Error(
+      `Cannot map visual stats shape [${shape.join(',')}] onto ${channels} channel(s)`,
+    );
+  }
+  if (layout === 'cube' || values.length === channels) return Array.from(values.slice(0, channels));
+  const buckets = Array.from({ length: channels }, () => [] as number[]);
+  if (layout === 'last') {
+    for (let index = 0; index < values.length; index++) {
+      buckets[index % channels].push(values[index]);
+    }
+  } else {
+    const spatial = values.length / channels;
+    for (let channel = 0; channel < channels; channel++) {
+      for (let index = 0; index < spatial; index++) {
+        buckets[channel].push(values[channel * spatial + index]);
+      }
+    }
+  }
+  return buckets.map((bucket) => {
+    if (reduce === 'min') return Math.min(...bucket);
+    if (reduce === 'max') return Math.max(...bucket);
+    const mean = bucket.reduce((sum, value) => sum + value, 0) / bucket.length;
+    if (reduce === 'mean') return mean;
+    return Math.sqrt(bucket.reduce((sum, value) => sum + (value - mean) ** 2, 0) / bucket.length);
+  });
+}
+
+function visualChannelCube(values: readonly number[]): StatsArray {
+  return values.map((value) => [[value]]);
+}
+
+/** Official datasets may persist spatial image stats and omit quantile keys. */
+function coerceVisualStats(
+  raw: Record<string, unknown>,
+  featureKey: string,
+  channels: number,
+): FeatureStats {
+  const count = plainArray(raw.count);
+  if (!count || count.length !== 1 || typeof count[0] !== 'number' || count[0] <= 0) {
+    throw new Error(
+      `Cannot compute training-ready stats: invalid count for feature "${featureKey}"`,
+    );
+  }
+  const required = ['min', 'max', 'mean', 'std'] as const;
+  const arrays = {} as Record<(typeof required)[number], StatsArray>;
+  for (const key of required) {
+    const value = plainArray(raw[key]);
+    if (!value) {
+      throw new Error(
+        `Cannot compute training-ready stats: missing or invalid "${key}" for feature "${featureKey}"`,
+      );
+    }
+    arrays[key] = value;
+  }
+  const shape = shapeOf(arrays.mean);
+  for (const key of required) {
+    if (JSON.stringify(shapeOf(arrays[key])) !== JSON.stringify(shape)) {
+      throw new Error(
+        `Cannot compute training-ready stats: inconsistent shape for "${featureKey}"`,
+      );
+    }
+  }
+  const mean = reduceToChannels(flatten(arrays.mean), shape, channels, 'mean');
+  const result = {
+    min: visualChannelCube(reduceToChannels(flatten(arrays.min), shape, channels, 'min')),
+    max: visualChannelCube(reduceToChannels(flatten(arrays.max), shape, channels, 'max')),
+    mean: visualChannelCube(mean),
+    std: visualChannelCube(reduceToChannels(flatten(arrays.std), shape, channels, 'std')),
+    count: [count[0]],
+  } as FeatureStats;
+  for (const [key] of QUANTILES) {
+    const value = plainArray(raw[key]);
+    result[key] = value
+      ? visualChannelCube(reduceToChannels(flatten(value), shapeOf(value), channels, 'mean'))
+      : visualChannelCube(mean);
+  }
+  return result;
 }
 
 function validateStats(
@@ -434,7 +538,7 @@ export async function computeDatasetStats(
         );
       }
       const channels = visualChannels(feature);
-      const stats = validateStats(raw as Record<string, unknown>, featureKey, [channels, 1, 1]);
+      const stats = coerceVisualStats(raw as Record<string, unknown>, featureKey, channels);
       const list = perFeature.get(featureKey) ?? [];
       list.push(stats);
       perFeature.set(featureKey, list);
@@ -456,14 +560,16 @@ export async function computeDatasetStats(
       for (const featureKey of numericKeys) {
         const vector = table.getChild(featureKey);
         if (!vector) {
-          throw new Error(
-            `Cannot compute training-ready stats: episode ${episode.episode_index} ` +
-              `is missing feature "${featureKey}"`,
-          );
+          if (featureKey !== SUBTASK_INDEX_FEATURE_KEY || !options?.resolveNumericRow) {
+            throw new Error(
+              `Cannot compute training-ready stats: episode ${episode.episode_index} ` +
+                `is missing feature "${featureKey}"`,
+            );
+          }
         }
         const dim = featureDim(info.features[featureKey]);
         const readRow = (row: number): number[] => {
-          const sourceValues = numericRow(vector, row, dim);
+          const sourceValues = vector ? numericRow(vector, row, dim) : [];
           if (!sourceValues) {
             throw new Error(
               `Cannot compute training-ready stats: feature "${featureKey}" has an invalid row`,

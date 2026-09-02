@@ -7,8 +7,10 @@ import { EpisodeSidebar } from '../../src/react/components/Sidebar/EpisodeSideba
 import {
   LeRobotDataContext,
   LeRobotSelectionContext,
+  LeRobotSubtaskContext,
   type LeRobotDataContextType,
   type LeRobotSelectionContextType,
+  type LeRobotSubtaskContextType,
 } from '../../src/react/contexts/LeRobotContext';
 import {
   assertEpisodeMutationAllowed,
@@ -89,6 +91,23 @@ describe('read-only future dataset episodes', () => {
       deleteEpisode: vi.fn(),
       restoreEpisode: vi.fn(),
     } as unknown as LeRobotSelectionContextType;
+    const subtaskValue = {
+      canAnnotate: false,
+      overlay: new Map(),
+      currentSegments: [],
+      knownLabels: [],
+      coverage: { labeledFrames: 0, totalFrames: 0, gaps: [], complete: false },
+      pendingStart: null,
+      pendingRange: null,
+      labelAtFrame: () => null,
+      markStart: vi.fn(),
+      markEnd: vi.fn(() => false),
+      cancelPending: vi.fn(),
+      commitPending: vi.fn(),
+      updateSegment: vi.fn(),
+      removeSegment: vi.fn(),
+      jumpToFrame: vi.fn(),
+    } as unknown as LeRobotSubtaskContextType;
 
     const container = document.createElement('div');
     container.style.width = '320px';
@@ -101,7 +120,9 @@ describe('read-only future dataset episodes', () => {
         <I18nProvider forcedLanguage="en">
           <LeRobotDataContext.Provider value={dataValue}>
             <LeRobotSelectionContext.Provider value={selectionValue}>
-              <EpisodeSidebar />
+              <LeRobotSubtaskContext.Provider value={subtaskValue}>
+                <EpisodeSidebar />
+              </LeRobotSubtaskContext.Provider>
             </LeRobotSelectionContext.Provider>
           </LeRobotDataContext.Provider>
         </I18nProvider>,

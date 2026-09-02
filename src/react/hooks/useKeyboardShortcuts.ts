@@ -3,6 +3,8 @@ import {
   useLeRobotData,
   useLeRobotPlayback,
   useLeRobotSelection,
+  useLeRobotSubtask,
+  useLeRobotUi,
 } from '../contexts/LeRobotContext';
 import { usePortalContainer } from '@/ui';
 
@@ -15,6 +17,8 @@ export const useKeyboardShortcuts = (enabled: boolean = true) => {
   const { episodes, getFrameIndex, isLoading } = useLeRobotData();
   const { selectedEpisodeIndex, selectEpisode } = useLeRobotSelection();
   const { setFrameIndex, togglePlay, currentFrames } = useLeRobotPlayback();
+  const { canAnnotate, markStart, markEnd } = useLeRobotSubtask();
+  const { setSubtaskDialogOpen } = useLeRobotUi();
 
   // 使用ref存储，避免闭包问题
   const enabledRef = useRef(enabled);
@@ -22,6 +26,10 @@ export const useKeyboardShortcuts = (enabled: boolean = true) => {
   const selectedEpisodeIndexRef = useRef(selectedEpisodeIndex);
   const currentFramesRef = useRef(currentFrames);
   const isLoadingRef = useRef(isLoading);
+  const canAnnotateRef = useRef(canAnnotate);
+  const markStartRef = useRef(markStart);
+  const markEndRef = useRef(markEnd);
+  const setSubtaskDialogOpenRef = useRef(setSubtaskDialogOpen);
 
   useEffect(() => {
     enabledRef.current = enabled;
@@ -42,6 +50,22 @@ export const useKeyboardShortcuts = (enabled: boolean = true) => {
   useEffect(() => {
     isLoadingRef.current = isLoading;
   }, [isLoading]);
+
+  useEffect(() => {
+    canAnnotateRef.current = canAnnotate;
+  }, [canAnnotate]);
+
+  useEffect(() => {
+    markStartRef.current = markStart;
+  }, [markStart]);
+
+  useEffect(() => {
+    markEndRef.current = markEnd;
+  }, [markEnd]);
+
+  useEffect(() => {
+    setSubtaskDialogOpenRef.current = setSubtaskDialogOpen;
+  }, [setSubtaskDialogOpen]);
 
   const handleKeyDown = useCallback(
     (e: KeyboardEvent) => {
@@ -186,6 +210,24 @@ export const useKeyboardShortcuts = (enabled: boolean = true) => {
           // End键：跳转到最后一帧
           if (totalFrames > 0) {
             setFrameIndex(totalFrames - 1);
+          }
+          break;
+        }
+
+        case 'q':
+        case 'Q': {
+          if (!canAnnotateRef.current || totalFrames === 0) return;
+          e.preventDefault();
+          markStartRef.current(currentFrameIndex);
+          break;
+        }
+
+        case 'r':
+        case 'R': {
+          if (!canAnnotateRef.current || totalFrames === 0) return;
+          e.preventDefault();
+          if (markEndRef.current(currentFrameIndex)) {
+            setSubtaskDialogOpenRef.current(true);
           }
           break;
         }

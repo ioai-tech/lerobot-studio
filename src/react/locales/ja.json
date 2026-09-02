@@ -24,6 +24,7 @@
     "dark": "ダーク",
     "system": "システム",
     "cancel": "キャンセル",
+    "delete": "削除",
     "retry": "再試行",
     "back": "戻る",
     "error": "エラーが発生しました",
@@ -96,6 +97,26 @@
       "version": "バージョン"
     },
     "speed": "再生速度"
+  },
+  "subtask": {
+    "listTitle": "サブタスク",
+    "empty": "このエピソードにはラベル付きサブタスクがありません",
+    "coverage": "{{labeled}}/{{total}} フレームがラベル済み",
+    "coverageIncomplete": "未ラベルのフレームが残っています。v3.0 のエクスポートは全フレームのラベルが必要です。公式の -1 は未ラベルとして扱います。",
+    "current": "サブタスク",
+    "unlabeled": "未アノテーション",
+    "start": "開始 (Q)",
+    "startShort": "開始",
+    "startHint": "サブタスク開始を記録 (Q)",
+    "end": "終了 (R)",
+    "endShort": "終了",
+    "endHint": "サブタスク終了を記録 (R)",
+    "dialogTitle": "サブタスクを記述",
+    "dialogRange": "フレーム {{start}}–{{end}}",
+    "label": "サブタスクの説明",
+    "labelPlaceholder": "例: Grasp the apple",
+    "labelRequired": "サブタスクの説明を入力してください",
+    "save": "サブタスクを保存"
   },
   "health": {
     "noData": "データセットを読み込むとヘルスチェックを表示します",
@@ -583,6 +604,14 @@
       "lastFrame": {
         "action": "最終フレーム",
         "key": "End"
+      },
+      "subtaskStart": {
+        "action": "サブタスク開始を記録",
+        "key": "Q"
+      },
+      "subtaskEnd": {
+        "action": "サブタスク終了を記録",
+        "key": "R"
       }
     },
     "welcome": {
@@ -681,6 +710,9 @@
     "changesSummary": "変更概要",
     "modifiedCount": "変更済み",
     "deletedCount": "削除済み",
+    "subtaskEpisodes": "サブタスク注釈済みエピソード",
+    "subtaskCoverageHint": "サブタスク付きの v3.0 エクスポートでは、書き出す各エピソードの全フレームにラベルが必要です。公式の未ラベル値（-1）はエクスポートを阻止します。Studio は -1 を書き込みません。",
+    "subtaskCoverageIncomplete": "エピソード {{index}} に未ラベルのフレームがあります（{{labeled}}/{{total}}）。v3.0 を書き出す前に全フレームをラベルしてください。Studio は subtask_index = -1 を書き込みません。",
     "totalEpisodes": "エピソード総数",
     "metadataOnlyHint": "現在のエクスポートはメタデータのみ（info, episodes, tasks）です。",
     "export": "エクスポート",
