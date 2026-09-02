@@ -54,7 +54,7 @@ Studio maps official LeRobot `subtask_index` only.
 - `k1000dai/libero-subtaskid-segments` stores `subtask_id`, not `subtask_index`, so segments are not shown.
 - `v2.1` can display existing indices but cannot add labels.
 
-Download commands: [Data formats — Official Hub examples](./data-formats.md#official-hub-examples). Export to `v3.0` fails until every exported frame is labeled; the app does not write `-1`.
+Download commands: [Data formats — Official Hub examples](./data-formats.md#official-hub-examples). With **Include subtasks** checked, export to `v3.0` fails until every exported frame is labeled; the app does not write `-1`.
 
 ---
 

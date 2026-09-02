@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useMemo, useRef } from 'react';
+import React, { useState, useCallback, useMemo, useRef, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   Dialog,
@@ -32,7 +32,7 @@ export const ExportDialog: React.FC<ExportDialogProps> = ({ open, onOpenChange }
   const { episodesForExport, modifiedEpisodes, deletedEpisodes } = useLeRobotSelection();
   const { overlay } = useLeRobotSubtask();
 
-  const capabilities = React.useMemo(() => detectPlatformCapabilities(), []);
+  const capabilities = useMemo(() => detectPlatformCapabilities(), []);
   const versionCapability = dataLoader?.getVersionCapability() ?? null;
 
   const defaultTargetVersion = useMemo((): 'v2.1' | 'v3.0' => {
@@ -42,13 +42,20 @@ export const ExportDialog: React.FC<ExportDialogProps> = ({ open, onOpenChange }
 
   const [format, setFormat] = useState<ExportFormat>('zip');
   const [targetVersion, setTargetVersion] = useState<'v2.1' | 'v3.0'>(defaultTargetVersion);
+  const [includeSubtasks, setIncludeSubtasks] = useState(false);
   const [progress, setProgress] = useState<ExportProgress | null>(null);
   const [exportError, setExportError] = useState<string | null>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
 
-  React.useEffect(() => {
+  useEffect(() => {
     setTargetVersion(defaultTargetVersion);
   }, [defaultTargetVersion]);
+
+  useEffect(() => {
+    if (!open) return;
+    setIncludeSubtasks(false);
+    setExportError(null);
+  }, [open]);
 
   const handleExport = useCallback(async () => {
     if (!dataLoader || !info) {
@@ -119,6 +126,7 @@ export const ExportDialog: React.FC<ExportDialogProps> = ({ open, onOpenChange }
           onProgress: safeSetProgress,
           includeData: true,
           includeVideos: true,
+          includeSubtasks: targetVersion === 'v3.0' && includeSubtasks,
           signal,
           subtaskOverlay: overlay,
           sourceSubtasks: subtasks,
@@ -143,15 +151,19 @@ export const ExportDialog: React.FC<ExportDialogProps> = ({ open, onOpenChange }
           setExportError(t('export.cancelled', 'Export cancelled.'));
         } else if (e instanceof SubtaskCoverageError) {
           setExportError(
-            t(
-              'export.subtaskCoverageIncomplete',
-              'Episode {{index}} is {{labeled}}/{{total}} labeled.',
-              {
-                index: e.episodeIndex,
-                labeled: e.coverage.labeledFrames,
-                total: e.coverage.totalFrames,
-              },
-            ),
+            e.coverage.labeledFrames === 0
+              ? t('export.subtaskCoverageMissing', 'Episode #{{index}} has no subtask labels.', {
+                  index: e.episodeIndex,
+                })
+              : t(
+                  'export.subtaskCoverageIncomplete',
+                  'Episode #{{index}} is missing labels ({{labeled}}/{{total}}).',
+                  {
+                    index: e.episodeIndex,
+                    labeled: e.coverage.labeledFrames,
+                    total: e.coverage.totalFrames,
+                  },
+                ),
           );
         } else {
           const msg =
@@ -177,6 +189,7 @@ export const ExportDialog: React.FC<ExportDialogProps> = ({ open, onOpenChange }
     overlay,
     format,
     targetVersion,
+    includeSubtasks,
     onOpenChange,
     t,
   ]);
@@ -247,7 +260,10 @@ export const ExportDialog: React.FC<ExportDialogProps> = ({ open, onOpenChange }
                 <Button
                   variant={targetVersion === 'v2.1' ? 'default' : 'outline'}
                   size="sm"
-                  onClick={() => setTargetVersion('v2.1')}
+                  onClick={() => {
+                    setTargetVersion('v2.1');
+                    setIncludeSubtasks(false);
+                  }}
                 >
                   v2.1
                 </Button>
@@ -260,6 +276,17 @@ export const ExportDialog: React.FC<ExportDialogProps> = ({ open, onOpenChange }
                 </Button>
               </div>
             </div>
+            {targetVersion === 'v3.0' ? (
+              <label className="flex items-start gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  className="mt-0.5 h-3.5 w-3.5 shrink-0 accent-primary"
+                  checked={includeSubtasks}
+                  onChange={(event) => setIncludeSubtasks(event.target.checked)}
+                />
+                <span>{t('export.includeSubtasks', 'Include subtasks')}</span>
+              </label>
+            ) : null}
             <div className="rounded-lg border bg-muted/30 p-3 text-sm">
               <div className="font-medium mb-1">
                 {t('export.changesSummary', 'Changes Summary')}
@@ -278,9 +305,9 @@ export const ExportDialog: React.FC<ExportDialogProps> = ({ open, onOpenChange }
                   {t('export.totalEpisodes', 'Total episodes')}: {episodesForExport.length}
                 </li>
               </ul>
-              {targetVersion === 'v3.0' ? (
+              {targetVersion === 'v3.0' && includeSubtasks ? (
                 <p className="mt-2 text-xs text-muted-foreground">
-                  {t('export.subtaskCoverageHint', 'v3.0 export needs every frame labeled.')}
+                  {t('export.subtaskCoverageHint', 'Every exported episode must be fully labeled.')}
                 </p>
               ) : null}
             </div>

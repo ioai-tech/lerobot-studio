@@ -685,6 +685,7 @@
   },
   "export": {
     "title": "Export Dataset",
+    "a11yDescription": "Choose export format and target dataset version, then export to a file or folder.",
     "format": "Export Format",
     "directory": "Local Directory",
     "targetVersion": "Target Version",
@@ -693,8 +694,10 @@
     "modifiedCount": "Modified",
     "deletedCount": "Deleted",
     "subtaskEpisodes": "Subtask episodes",
-    "subtaskCoverageHint": "v3.0 export needs every frame labeled.",
-    "subtaskCoverageIncomplete": "Episode {{index}} is {{labeled}}/{{total}} labeled.",
+    "includeSubtasks": "Include subtasks",
+    "subtaskCoverageHint": "Every exported episode must be fully labeled.",
+    "subtaskCoverageMissing": "Episode #{{index}} has no subtask labels.",
+    "subtaskCoverageIncomplete": "Episode #{{index}} is missing labels ({{labeled}}/{{total}}).",
     "totalEpisodes": "Total episodes",
     "metadataOnlyHint": "Current export includes metadata only (info, episodes, tasks).",
     "export": "Export",
@@ -708,7 +711,8 @@
     "percentDone": "{{percent}}%",
     "errorUnknown": "Export failed",
     "cancelled": "Export cancelled.",
-    "cancelExport": "Cancel export"
+    "cancelExport": "Cancel export",
+    "versionReadOnly": "This dataset version is not supported for export and can only be viewed."
   },
   "dialogs": {
     "remoteArchive": {

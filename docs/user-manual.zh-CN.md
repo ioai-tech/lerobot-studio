@@ -79,7 +79,7 @@
 
 只要存在子任务，时间轴就会显示彩色区间，不必打开编辑。官方未标注帧（`subtask_index = -1`）保持空白。缺少 `meta/subtasks.parquet` 时显示为 `Subtask N`。
 
-`v3.0` 导出要求每个被导出帧都已标注，且不会写入 `-1`。额外的官方列（如 `task_index_high_level`）会保留。
+`v3.0` 导出仅在勾选 **包含子任务** 时写入子任务。勾选后要求每个被导出帧都已标注，且不会写入 `-1`。额外的官方列（如 `task_index_high_level`）会保留。
 
 已验证的 Hub 示例和下载命令见 [数据格式 — 官方 Hub 示例](./data-formats#official-hub-examples)。
 
@@ -92,6 +92,7 @@
 - **ZIP** 导出适用于支持的浏览器。
 - **文件夹**导出需要浏览器提供文件夹选择功能，通常在 Chromium 浏览器中可用。
 - 可以导出为 LeRobot `v2.1` 或 `v3.0`。
+- `v3.0` 有 **包含子任务** 选项，默认关闭。勾选后才会写入 `subtask_index` 和 `meta/subtasks.parquet`，并要求每个导出的 episode 都已完整标注。
 
 导出的数据集会包含当前的 Episode 修改。React npm 包不包含导出引擎。
 

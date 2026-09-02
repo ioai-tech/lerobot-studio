@@ -79,7 +79,7 @@ Writable `v3.0` can be labeled in **Edit**. `v2.1` can show existing `subtask_in
 
 Colored ranges show whenever subtasks exist, including outside Edit. Official unlabeled frames (`subtask_index = -1`) stay empty. Missing `meta/subtasks.parquet` falls back to `Subtask N`.
 
-`v3.0` export requires every exported frame labeled and never writes `-1`. Extra official columns such as `task_index_high_level` are kept.
+`v3.0` export includes subtasks only when **Include subtasks** is checked. That option requires every exported frame labeled and never writes `-1`. Extra official columns such as `task_index_high_level` are kept.
 
 Verified Hub examples and download commands: [Data formats — Official Hub examples](./data-formats.md#official-hub-examples).
 
@@ -92,6 +92,7 @@ Export is available in the standalone app for supported `v2.1` and `v3.0` datase
 - **ZIP** works in supported browsers.
 - **Folder** export requires the browser folder picker, which is usually available in Chromium-based browsers.
 - You can export as LeRobot `v2.1` or `v3.0`.
+- `v3.0` has an **Include subtasks** option, off by default. Turn it on to write `subtask_index` and `meta/subtasks.parquet`; every exported episode must then be fully labeled.
 
 The exported dataset includes your current episode edits. The React npm package does not include the export engine.
 

@@ -687,6 +687,7 @@
   },
   "export": {
     "title": "データセットをエクスポート",
+    "a11yDescription": "エクスポート形式と対象データセットバージョンを選び、ファイルまたはフォルダに書き出します。",
     "format": "エクスポート形式",
     "directory": "ローカルディレクトリ",
     "targetVersion": "対象バージョン",
@@ -695,8 +696,10 @@
     "modifiedCount": "変更済み",
     "deletedCount": "削除済み",
     "subtaskEpisodes": "サブタスク付きエピソード",
-    "subtaskCoverageHint": "v3.0 エクスポートは全フレームのラベルが必要です。",
-    "subtaskCoverageIncomplete": "エピソード {{index}} は {{labeled}}/{{total}} ラベル済み。",
+    "includeSubtasks": "サブタスクを含める",
+    "subtaskCoverageHint": "書き出す各エピソードはサブタスクをすべてラベルする必要があります。",
+    "subtaskCoverageMissing": "エピソード #{{index}} にはサブタスクのラベルがありません。",
+    "subtaskCoverageIncomplete": "エピソード #{{index}} のラベルが不完全です（{{labeled}}/{{total}}）。",
     "totalEpisodes": "エピソード総数",
     "metadataOnlyHint": "現在のエクスポートはメタデータのみ（info, episodes, tasks）です。",
     "export": "エクスポート",
@@ -710,7 +713,8 @@
     "percentDone": "{{percent}}%",
     "errorUnknown": "エクスポートに失敗しました",
     "cancelled": "エクスポートをキャンセルしました。",
-    "cancelExport": "エクスポートをキャンセル"
+    "cancelExport": "エクスポートをキャンセル",
+    "versionReadOnly": "このデータセットバージョンはエクスポートに対応しておらず、閲覧のみです。"
   },
   "dialogs": {
     "remoteArchive": {

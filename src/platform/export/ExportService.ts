@@ -111,6 +111,7 @@ export class ExportService {
       | 'onProgress'
       | 'includeData'
       | 'includeVideos'
+      | 'includeSubtasks'
       | 'signal'
       | 'splitsConfig'
       | 'subtaskOverlay'
@@ -152,16 +153,17 @@ export class ExportService {
       imageFeatureKeys.length > 0 ? rewriteFeaturesForImageToVideo(info, imageFeatureKeys) : info;
     const columnsToExclude = new Set<string>(imageFeatureKeys);
 
-    const subtaskPlan = options.includeData
-      ? await buildExportSubtaskPlan({
-          dataLoader: this.dataLoader,
-          info: infoForExport,
-          episodes: episodesForMeta,
-          overlay: options.subtaskOverlay ?? new Map(),
-          sourceTable: options.sourceSubtasks ?? this.dataLoader.getSubtasks?.() ?? {},
-          targetVersion,
-        })
-      : null;
+    const subtaskPlan =
+      options.includeData && options.includeSubtasks !== false
+        ? await buildExportSubtaskPlan({
+            dataLoader: this.dataLoader,
+            info: infoForExport,
+            episodes: episodesForMeta,
+            overlay: options.subtaskOverlay ?? new Map(),
+            sourceTable: options.sourceSubtasks ?? this.dataLoader.getSubtasks?.() ?? {},
+            targetVersion,
+          })
+        : null;
     const subtaskFeatures = applySubtaskFeaturesForExport(
       infoForExport,
       targetVersion,
