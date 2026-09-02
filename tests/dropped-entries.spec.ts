@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { resolveDroppedItem, toDirectoryFiles } from '../src/platform/utils/droppedEntries';
 
 interface MockEntry {
@@ -96,6 +96,33 @@ describe('dropped directory entries', () => {
       kind: 'file',
       file: archive,
     });
+  });
+
+  it('skips File System Access handles on an insecure origin', async () => {
+    vi.stubGlobal('window', { isSecureContext: false, showDirectoryPicker: vi.fn() });
+    const getAsFileSystemHandle = vi.fn(async () => {
+      throw new Error('must not call File System Access on an insecure origin');
+    });
+    const nested = directoryEntry('meta', [[fileEntry('info.json', '{}')], []]);
+    const root = directoryEntry('dataset', [[nested], []]);
+    const dataTransfer = {
+      items: [
+        {
+          kind: 'file',
+          getAsFileSystemHandle,
+          webkitGetAsEntry: () => root,
+          getAsFile: () => null,
+        },
+      ],
+      files: [],
+    } as unknown as DataTransfer;
+
+    await expect(resolveDroppedItem(dataTransfer)).resolves.toMatchObject({
+      kind: 'directory-files',
+      files: [{ path: 'dataset/meta/info.json' }],
+    });
+    expect(getAsFileSystemHandle).not.toHaveBeenCalled();
+    vi.unstubAllGlobals();
   });
 
   it('creates explicit directory entries from picker files', () => {

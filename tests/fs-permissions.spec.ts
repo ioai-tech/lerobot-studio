@@ -1,9 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
-import { supportsHandlePersistence, verifyPermission } from '@/platform';
+import { canUseFileSystemAccess, supportsHandlePersistence, verifyPermission } from '@/platform';
 
 describe('fsPermissions', () => {
   it('detects handle persistence support in Chromium-like environments', () => {
-    vi.stubGlobal('window', { showDirectoryPicker: vi.fn() });
+    vi.stubGlobal('window', { isSecureContext: true, showDirectoryPicker: vi.fn() });
     vi.stubGlobal('indexedDB', {});
 
     expect(supportsHandlePersistence()).toBe(true);
@@ -12,9 +12,20 @@ describe('fsPermissions', () => {
   });
 
   it('returns false when File System Access API is unavailable', () => {
-    vi.stubGlobal('window', {});
+    vi.stubGlobal('window', { isSecureContext: true });
     vi.stubGlobal('indexedDB', {});
 
+    expect(supportsHandlePersistence()).toBe(false);
+    expect(canUseFileSystemAccess()).toBe(false);
+
+    vi.unstubAllGlobals();
+  });
+
+  it('does not treat File System Access as usable on an insecure origin', () => {
+    vi.stubGlobal('window', { isSecureContext: false, showDirectoryPicker: vi.fn() });
+    vi.stubGlobal('indexedDB', {});
+
+    expect(canUseFileSystemAccess()).toBe(false);
     expect(supportsHandlePersistence()).toBe(false);
 
     vi.unstubAllGlobals();

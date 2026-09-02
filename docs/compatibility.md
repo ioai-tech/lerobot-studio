@@ -40,12 +40,12 @@ Export is available in the standalone application, not in the npm API. Its outpu
 
 ## Inputs
 
-| Input          | Expectation                                                                             |
-| -------------- | --------------------------------------------------------------------------------------- |
-| Local archive  | `.zip` / `.tar` / `.tar.gz` / `.tgz`                                                    |
-| Local folder   | Drag or select a folder; non-File-System-Access browsers cannot restore it after reload |
-| Remote archive | CORS + Range for big files — [CORS](./cors.md)                                          |
-| Samples        | Optional; only if you set sample env vars at build time                                 |
+| Input          | Expectation                                                                                                                                                   |
+| -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Local archive  | `.zip` / `.tar` / `.tar.gz` / `.tgz`                                                                                                                          |
+| Local folder   | Drag or select a folder. File System Access needs HTTPS or localhost; on HTTP LAN origins Studio uses the file picker and cannot restore handles after reload |
+| Remote archive | CORS + Range for big files — [CORS](./cors.md)                                                                                                                |
+| Samples        | Optional; only if you set sample env vars at build time                                                                                                       |
 
 Authentication, signed URLs, and proxies are configured by the embedding application or deployment.
 

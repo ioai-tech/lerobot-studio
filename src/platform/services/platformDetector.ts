@@ -1,3 +1,5 @@
+import { canUseFileSystemAccess } from '../utils/fsPermissions';
+
 /**
  * Platform capability detection for export and video processing.
  * Used to show/hide format options (e.g. directory export) and warn when WebCodecs is unavailable.
@@ -24,8 +26,7 @@ export function detectPlatformCapabilities(): PlatformCapabilities {
     '__RN__' in window &&
     (window as Window & { __RN__?: boolean }).__RN__ === true;
 
-  const supportsFileSystemAccess =
-    !isRN && typeof window !== 'undefined' && 'showDirectoryPicker' in window;
+  const supportsFileSystemAccess = !isRN && canUseFileSystemAccess();
 
   const supportsWebCodecs =
     !isRN && typeof window !== 'undefined' && 'VideoDecoder' in window && 'VideoEncoder' in window;

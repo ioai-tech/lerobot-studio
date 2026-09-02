@@ -29,4 +29,6 @@ Render in the browser. No SSR, RSC, Node, or CommonJS.
 
 If File System Access or WebCodecs is unavailable, the related feature is disabled. Other supported panels remain available. Unsupported media shows an error without affecting the rest of the viewer.
 
+File System Access requires a [secure context](https://developer.mozilla.org/en-US/docs/Web/Security/Secure_Contexts) (`https:` or `http://localhost` / `http://127.0.0.1`). On plain HTTP LAN origins such as `http://192.168.x.x`, Chrome still exposes the API but calling it terminates the tab. Studio never invokes those APIs there and falls back to `<input type="file" webkitdirectory>` and `webkitGetAsEntry`.
+
 See also [Compatibility](./compatibility.md).

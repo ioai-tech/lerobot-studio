@@ -29,4 +29,6 @@ Chromium 运行完整的浏览器测试套件。Firefox 和 WebKit 运行冒烟�
 
 缺少 File System Access 或 WebCodecs 时，对应功能会被禁用；其余可用面板仍可正常显示。不支持的媒体应显示明确错误，而不会影响整个界面。
 
+File System Access 需要[安全上下文](https://developer.mozilla.org/zh-CN/docs/Web/Security/Secure_Contexts)（`https:` 或 `http://localhost` / `http://127.0.0.1`）。在 `http://192.168.x.x` 这类明文 HTTP 局域网源上，Chrome 仍会暴露该 API，但一调用就会终止标签页。Studio 在这种源上不会调用这些 API，而是回退到 `<input type="file" webkitdirectory>` 与 `webkitGetAsEntry`。
+
 另见 [兼容性](./compatibility)。
