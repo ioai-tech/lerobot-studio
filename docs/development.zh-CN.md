@@ -60,7 +60,7 @@ npm run check:bundle-size
 
 门禁测量稳定库入口、库与初始 Web CSS、Web entry/modulepreload chunk、懒加载 DataLoader 与 Dockview chunk、Worker/WASM 制品，以及打包 npm tarball 的原始与 gzip 大小。还会在缺少必需制品、意外 JavaScript chunk 超过 per-chunk 上限，或完整 npm tarball 超过 packed/unpacked 预算时失败。哈希文件名从构建输出与 `dist/index.html` 发现，而非在脚本中写死。
 
-硬限制约为测量基线的 5% 上方。约 26 MB 的库 Worker chunk 是已知基线，仍需优化，并非理想或已优化目标。通过此门禁仅表示 bundle 大小未出现显著回退。
+硬限制为当前制品之上的整齐整数上限。库 Worker chunk 体积较大，仍需优化，并非理想目标。通过此门禁仅表示 bundle 大小未出现显著回退。
 
 本地负向测试可在不改变入库限制的情况下降低所有预算：
 
