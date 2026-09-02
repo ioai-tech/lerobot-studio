@@ -264,6 +264,92 @@ describe('data source resource and download behavior', () => {
     await expect(source.exists('meta/info.json')).resolves.toBe(true);
   });
 
+  it('reads, invalidates, and clears buffered tar.gz archives', async () => {
+    const gzipBytes = gzipSync(makeTar('root/meta/info.json', '{"codebase_version":"v3.0"}'));
+    const source = new TarGzDataSourceLocal(new File([gzipBytes], 'dataset.tar.gz'));
+    vi.spyOn(URL, 'createObjectURL')
+      .mockReturnValueOnce('blob:targz')
+      .mockReturnValueOnce('blob:targz-2');
+    const revokeObjectURL = vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => undefined);
+
+    await expect(source.readText('meta/info.json')).resolves.toContain('v3.0');
+    await expect(source.readBytes('meta/info.json')).resolves.toEqual(
+      new TextEncoder().encode('{"codebase_version":"v3.0"}'),
+    );
+    await expect(source.getObjectUrl('meta/info.json', 'application/json')).resolves.toBe(
+      'blob:targz',
+    );
+    await source.invalidateObjectUrl('meta/info.json');
+    expect(revokeObjectURL).toHaveBeenCalledWith('blob:targz');
+    await expect(source.getObjectUrl('meta/info.json', 'application/json')).resolves.toBe(
+      'blob:targz-2',
+    );
+    source.clear();
+    await expect(source.exists('meta/info.json')).resolves.toBe(true);
+  });
+
+  it('stops remote TAR downloads that exceed the in-memory size limit', async () => {
+    let cancelled = false;
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new Uint8Array(3));
+        controller.enqueue(new Uint8Array(3));
+      },
+      cancel() {
+        cancelled = true;
+      },
+    });
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(
+        async () =>
+          new Response(body, {
+            status: 200,
+          }),
+      ),
+    );
+    const source = new TarDataSourceHttp('https://example.test/data.tar', undefined, {
+      maxMaterializedBytes: 4,
+    });
+
+    await expect(source.exists('meta/info.json')).rejects.toSatisfy(
+      (error) =>
+        error instanceof DataSourceSafetyError &&
+        error.code === 'MATERIALIZED_SIZE_LIMIT' &&
+        error.details.loaded === 6 &&
+        error.details.limit === 4,
+    );
+    expect(cancelled).toBe(true);
+  });
+
+  it('rejects failed remote TAR and TAR.GZ fetches', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url.includes('missing-body')) {
+          return {
+            ok: true,
+            status: 200,
+            headers: new Headers(),
+            body: null,
+          } as unknown as Response;
+        }
+        return new Response('nope', { status: 503 });
+      }),
+    );
+
+    await expect(
+      new TarDataSourceHttp('https://example.test/data.tar').exists('meta/info.json'),
+    ).rejects.toThrow(/503/);
+    await expect(
+      new TarGzDataSourceHttp('https://example.test/data.tar.gz').exists('meta/info.json'),
+    ).rejects.toThrow(/503/);
+    await expect(
+      new TarDataSourceHttp('https://example.test/missing-body.tar').exists('meta/info.json'),
+    ).rejects.toThrow(/not readable/);
+  });
+
   it('downloads a small full ZIP once, delegates reads, and releases it on clear', async () => {
     const bytes = await makeZip({ 'root/meta/info.json': '{"codebase_version":"v3.0"}' });
     const fetchMock = vi.fn(async () => new Response(bytes, { status: 200 }));

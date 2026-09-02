@@ -5,6 +5,7 @@
 ### 次要变更
 
 - 增加官方 LeRobot v3.0 子任务查看、标注与导出，以及 16 位 TIFF 深度图播放。
+- 将传递依赖 `browserslist` 升级到 4.28.8，修复 GHSA-c83g-rgw3-j3cx 与 GHSA-73wf-gq98-2v4g。
 
 ## 1.1.0
 

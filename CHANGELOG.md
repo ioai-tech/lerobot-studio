@@ -5,6 +5,7 @@
 ### Minor Changes
 
 - Add official LeRobot v3.0 subtask viewing, annotation, and export, plus 16-bit TIFF depth-map playback.
+- Bump transitive `browserslist` to 4.28.8 to fix GHSA-c83g-rgw3-j3cx and GHSA-73wf-gq98-2v4g.
 
 ## 1.1.0
 
