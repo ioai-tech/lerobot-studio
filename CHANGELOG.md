@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.2.1
+
+### Patch Changes
+
+- Label subtasks from the playback timeline in Edit.
+- Skip File System Access on insecure origins.
+- Make v3.0 subtask export opt-in. Unlabeled episodes report `Episode #N has no subtask labels.`
+
 ## 1.2.0
 
 ### Minor Changes
