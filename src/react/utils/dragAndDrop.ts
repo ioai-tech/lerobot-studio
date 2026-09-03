@@ -1,13 +1,17 @@
 import { useEffect, useState, useRef } from 'react';
-import { resolveDroppedItem, type DirectoryFile } from '@/platform';
+import { resolveDroppedItem, type DirectoryFile } from '../../platform/utils/droppedEntries';
 
-interface DragAndDropCallbacks {
+export type { DirectoryFile };
+
+/** Callbacks for window-level file and folder drop (and file paste). */
+export interface DragAndDropCallbacks {
   onFile: (file: File) => void;
   onDirectoryHandle?: (handle: FileSystemDirectoryHandle) => void;
   onDirectoryFiles?: (files: DirectoryFile[]) => void;
   onUnresolvedDirectory?: (name: string) => void;
 }
 
+/** Window-level drag-and-drop (and file paste) for local archives and directories. */
 export function useDragAndDrop(callbacks: DragAndDropCallbacks) {
   const [isDragging, setIsDragging] = useState(false);
   const callbacksRef = useRef(callbacks);

@@ -28,6 +28,10 @@ integration stay in `src/platform`. The public npm API is
 The stable 1.0 library is viewer-only, ESM/CSR-only, browser-only, and targets
 React `^19.0.0`. Do not add editing or export services to the stable public API,
 SSR/RSC paths, CommonJS output, telemetry, or undocumented network calls.
+Documented welcome-page UI (provider, viewer content, source picker, sample
+card, pagination, directory data-source factory, drag-and-drop) may be added to
+the public API when an embedding app needs a custom welcome page without the
+export engine.
 
 ## Compatibility and data integrity
 

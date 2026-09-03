@@ -6,7 +6,8 @@ import type { ParsedSourceUrl } from '../utils/sourceUrlTypes';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/ui';
 import { Button } from '@/ui';
 
-interface DatasetSourceSelectorProps {
+/** Picker for a local directory, local archive, or remote archive URL. */
+export interface DatasetSourceSelectorProps {
   onOpenDirectory: () => void;
   onOpenLocalArchive: () => void;
   onOpenRemoteArchive: (url?: string) => void;
@@ -16,6 +17,7 @@ interface DatasetSourceSelectorProps {
   className?: string;
 }
 
+/** Tabbed picker for local directory, local archive, or remote archive URL. */
 export const DatasetSourceSelector: React.FC<DatasetSourceSelectorProps> = ({
   onOpenDirectory,
   onOpenLocalArchive,

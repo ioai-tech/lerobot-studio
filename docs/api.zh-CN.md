@@ -2,7 +2,7 @@
 
 > **Language / 语言：** [English](/api) | [简体中文](./api)
 
-本页说明 `@ioai/lerobot-studio` 的公开 API。这个包提供查看器、归档辅助函数及其类型；不包含独立应用中的导出引擎。
+本页说明 `@ioai/lerobot-studio` 的公开 API。这个包提供查看器、自定义欢迎页组件、归档与目录数据源工厂及其类型；不包含独立应用中的导出引擎。
 
 文末自动生成的报告是完整 API 参考。修改源码后运行 `npm run api:report`，不要直接编辑生成的报告。
 
@@ -22,6 +22,9 @@ import '@ioai/lerobot-studio/style.css';
 - `createArchiveDataSourceFromFile` — 本地 ZIP / TAR / TAR.GZ
 - `createArchiveDataSourceFromUrl` — 要复用的远程归档
 - `createRemoteManifestDataSource` — 宿主已签名的逐文件 HTTP(S) URL 清单
+- `createDirectoryDataSource` — File System Access 目录句柄
+
+自定义欢迎页时，使用 `LeRobotStudioProvider`，再搭配 `LeRobotViewerContent`、`DatasetSourceSelector`、`SampleDatasetCard`、`Pagination` 与 `useDragAndDrop`。见 [嵌入](./embedding)。
 
 数据集支持时，查看器可以在当前会话中修改 Episode。`onExport` 只是宿主 UI 的回调，不会自行导出数据。
 

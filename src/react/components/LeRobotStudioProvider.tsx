@@ -12,7 +12,7 @@ export interface LeRobotStudioProviderProps {
   language?: string;
   className?: string;
   children: React.ReactNode;
-  /** When true, render the shared Sonner toaster inside the studio root. @default true */
+  /** When true, render the shared Sonner toaster inside the studio root. @defaultValue true */
   showToaster?: boolean;
   /**
    * When true (default), wrap children in a scoped root for CSS and portals.
@@ -51,8 +51,7 @@ function StudioTree({
 }
 
 /**
- * Public composition root for embedding LeRobot Studio.
- * Wraps i18n, theme, loading, dataset context, toast, tooltip, and portal container.
+ * Shared theme, language, and dataset context for the viewer and a custom welcome page.
  */
 export const LeRobotStudioProvider: React.FC<LeRobotStudioProviderProps> = ({
   theme,

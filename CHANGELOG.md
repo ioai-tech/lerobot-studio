@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.3.0
+
+### Minor Changes
+
+- Add public APIs for a custom welcome page: `LeRobotStudioProvider`, `LeRobotViewerContent`, `DatasetSourceSelector`, `SampleDatasetCard`, `Pagination`, `createDirectoryDataSource`, and `useDragAndDrop`. The npm package still does not include the standalone export dialog. Raise the library entry bundle budget to cover the extra welcome-page modules.
+
 ## 1.2.1
 
 ### Patch Changes

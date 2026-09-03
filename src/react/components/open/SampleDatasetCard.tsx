@@ -1,15 +1,17 @@
 import React from 'react';
 import { AspectRatio } from '@/ui';
 import { Play } from 'lucide-react';
-import type { SampleDataset } from '@/platform';
+import type { SampleDataset } from '../../../platform/datasource/sampleDatasets';
 import { useTranslation } from 'react-i18next';
 
-interface SampleDatasetCardProps {
+/** Cover card for a sample dataset or similar list entry. */
+export interface SampleDatasetCardProps {
   sample: SampleDataset;
   onSelect: (sample: SampleDataset) => void | Promise<void>;
   fallbackImageUrl?: string;
 }
 
+/** Cover card for a sample dataset or similar list entry. */
 export const SampleDatasetCard: React.FC<SampleDatasetCardProps> = ({
   sample,
   onSelect,

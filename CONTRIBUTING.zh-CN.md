@@ -19,7 +19,7 @@ npm run dev
 
 本仓库只有一个可发布包。保持依赖方向为 `web → react → platform → core`；UI 由 React 与应用共享。`core` 不得依赖 React 与浏览器 API；WASM、Worker 与文件系统集成留在 `src/platform`。公开 npm API 为 `src/react/index.ts`。
 
-稳定 1.0 库仅提供查看能力、仅 ESM/CSR、仅浏览器，目标 React `^19.0.0`。请勿向稳定公开 API 添加编辑或导出服务、SSR/RSC 路径、CommonJS 输出、遥测或未记录的网络调用。
+稳定 1.0 库仅提供查看能力、仅 ESM/CSR、仅浏览器，目标 React `^19.0.0`。请勿向稳定公开 API 添加编辑或导出服务、SSR/RSC 路径、CommonJS 输出、遥测或未记录的网络调用。已文档化的欢迎页 UI（Provider、查看器内容、数据源选择、样例卡片、分页、目录数据源、拖拽）可以进入公开 API，供嵌入方做自定义欢迎页；不要把导出引擎加进去。
 
 ## 兼容性与数据完整性
 

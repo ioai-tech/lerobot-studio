@@ -67,6 +67,7 @@ export interface LeRobotViewerProps {
   enableKeyboardShortcuts?: boolean;
 }
 
+/** Viewer without the provider wrapper; render inside `LeRobotStudioProvider`. */
 export function LeRobotViewerContent({
   dataSource,
   showSidebar = true,
