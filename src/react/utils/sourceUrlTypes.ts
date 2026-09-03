@@ -1,5 +1,6 @@
 export type SourceKind = 'remoteArchive' | 'localArchive' | 'directory' | 'sample' | 'unknown';
 
+/** Parsed `?url=` intent for restoring a previous local or remote source. */
 export interface ParsedSourceUrl {
   kind: SourceKind;
   /** Decoded raw ?url= value */

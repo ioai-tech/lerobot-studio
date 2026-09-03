@@ -69,7 +69,7 @@ export function LocalDatasetViewer({ file }: { file: File }) {
 }
 ```
 
-The npm viewer does not include a local file or folder picker. Use the standalone application when your application needs that flow.
+This helper does not open a file picker. Choose the file in your app, then pass it in. For a folder or archive picker on a custom welcome page, see [Custom welcome page](#custom-welcome-page).
 
 ## Show a remote file manifest
 
@@ -94,6 +94,55 @@ export function SignedManifestViewer({ files }: { files: RemoteFileEntry[] }) {
 ```
 
 Each entry needs a logical dataset path and an HTTP(S) URL. Optional `contentType` and `sizeBytes` help the viewer and the built-in safety limits.
+
+## Custom welcome page
+
+Most embeds show a landing screen first, then the viewer. Wrap the page in `LeRobotStudioProvider` so that screen and the viewer share theme, language, and styles. Render `LeRobotViewerContent` once you have a `DataSource`:
+
+```tsx
+import { useState } from 'react';
+import {
+  DatasetSourceSelector,
+  LeRobotStudioProvider,
+  LeRobotViewerContent,
+  createArchiveDataSourceFromFile,
+  createDirectoryDataSource,
+  useDragAndDrop,
+  type DataSource,
+} from '@ioai/lerobot-studio';
+import '@ioai/lerobot-studio/style.css';
+
+export function CustomWelcome({ language }: { language: string }) {
+  const [dataSource, setDataSource] = useState<DataSource | string | null>(null);
+  useDragAndDrop({
+    onFile: (file) => setDataSource(createArchiveDataSourceFromFile(file)),
+    onDirectoryHandle: (handle) => setDataSource(createDirectoryDataSource(handle)),
+  });
+
+  return (
+    <LeRobotStudioProvider theme="system" language={language}>
+      {dataSource ? (
+        <div style={{ height: 720 }}>
+          <LeRobotViewerContent dataSource={dataSource} showSidebar showPlaybackBar />
+        </div>
+      ) : (
+        <DatasetSourceSelector
+          onOpenDirectory={async () => {
+            const handle = await window.showDirectoryPicker();
+            setDataSource(createDirectoryDataSource(handle));
+          }}
+          onOpenLocalArchive={() => {
+            /* your file input → createArchiveDataSourceFromFile */
+          }}
+          onOpenRemoteArchive={(url) => url && setDataSource(url)}
+        />
+      )}
+    </LeRobotStudioProvider>
+  );
+}
+```
+
+If you show an export button, wire `onExport` yourself. This package does not include the standalone app's export dialog.
 
 ## Next.js
 
@@ -136,4 +185,4 @@ For custom `DataSource` implementations and the full type list, see [API referen
 - Give the viewer's parent an explicit height.
 - For a remote archive, check CORS and HTTP Range headers.
 - In Next.js, keep the viewer in a Client Component with `ssr: false`.
-- For editing or built-in export, use the standalone application.
+- For editing or built-in export, use the standalone application. Welcome-page helpers only help you pick data and build a local `DataSource`.

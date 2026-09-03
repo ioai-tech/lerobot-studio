@@ -1,5 +1,12 @@
 # 变更日志
 
+## 1.3.0
+
+### 次要变更
+
+- 新增自定义欢迎页公开 API：`LeRobotStudioProvider`、`LeRobotViewerContent`、`DatasetSourceSelector`、`SampleDatasetCard`、`Pagination`、`createDirectoryDataSource` 与 `useDragAndDrop`。npm 包仍不包含独立导出对话框。上调库入口包体积预算以覆盖欢迎页模块。
+- 升级传递依赖 `fast-uri` 与 `qs`，清除 `npm audit`。
+
 ## 1.2.1
 
 ### 补丁变更

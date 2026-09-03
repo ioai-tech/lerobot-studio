@@ -5,6 +5,7 @@
 ```ts
 
 import { default as React_2 } from 'react';
+import * as React_3 from 'react';
 
 // @public
 export function createArchiveDataSourceFromFile(file: File): DataSource;
@@ -13,7 +14,31 @@ export function createArchiveDataSourceFromFile(file: File): DataSource;
 export function createArchiveDataSourceFromUrl(url: string): DataSource;
 
 // @public
+export function createDirectoryDataSource(handle: FileSystemDirectoryHandle): DataSource;
+
+// @public
 export function createRemoteManifestDataSource(files: RemoteFileEntry[]): DataSource;
+
+// @public
+export const DatasetSourceSelector: React_2.FC<DatasetSourceSelectorProps>;
+
+// @public
+export interface DatasetSourceSelectorProps {
+    // (undocumented)
+    className?: string;
+    // (undocumented)
+    onOpenDirectory: () => void;
+    // (undocumented)
+    onOpenLocalArchive: () => void;
+    // (undocumented)
+    onOpenRemoteArchive: (url?: string) => void;
+    // (undocumented)
+    onRequestUrl?: (rawUrl: string | null, mode: 'push' | 'replace') => void;
+    // (undocumented)
+    onRestoreFromUrl?: (requested: ParsedSourceUrl) => void;
+    // (undocumented)
+    requested?: ParsedSourceUrl | null;
+}
 
 // @public
 export interface DataSource {
@@ -26,8 +51,54 @@ export interface DataSource {
     readText(path: string, onProgress?: ProgressHandler): Promise<string>;
 }
 
+// @public
+export interface DirectoryFile {
+    // (undocumented)
+    file: File;
+    // (undocumented)
+    path: string;
+}
+
+// @public
+export interface DragAndDropCallbacks {
+    // (undocumented)
+    onDirectoryFiles?: (files: DirectoryFile[]) => void;
+    // (undocumented)
+    onDirectoryHandle?: (handle: FileSystemDirectoryHandle) => void;
+    // (undocumented)
+    onFile: (file: File) => void;
+    // (undocumented)
+    onUnresolvedDirectory?: (name: string) => void;
+}
+
+// @public @deprecated (undocumented)
+export const LeRobotProvider: React_2.FC<LeRobotStudioProviderProps>;
+
+// @public
+export const LeRobotStudioProvider: React_2.FC<LeRobotStudioProviderProps>;
+
+// @public (undocumented)
+export interface LeRobotStudioProviderProps {
+    // (undocumented)
+    children: React_2.ReactNode;
+    // (undocumented)
+    className?: string;
+    // (undocumented)
+    language?: string;
+    showToaster?: boolean;
+    // (undocumented)
+    theme?: 'light' | 'dark' | 'system';
+    wrapRoot?: boolean;
+}
+
 // @public (undocumented)
 export const LeRobotViewer: React_2.FC<LeRobotViewerProps>;
+
+// @public
+export function LeRobotViewerContent(input: Omit<LeRobotViewerProps, 'theme' | 'language' | 'className'> & {
+    showSidebar: boolean;
+    showPlaybackBar: boolean;
+}): React_2.JSX.Element | null;
 
 // @public
 export interface LeRobotViewerError {
@@ -58,6 +129,37 @@ export interface LeRobotViewerProps {
 export type LoadingPhase = 'download' | 'index' | 'gunzip' | 'read';
 
 // @public
+export function Pagination(input: PaginationProps): React_3.JSX.Element;
+
+// @public (undocumented)
+export interface PaginationProps {
+    // (undocumented)
+    className?: string;
+    // (undocumented)
+    count: number;
+    // (undocumented)
+    onPageChange: (event: unknown, newPage: number) => void;
+    // (undocumented)
+    onRowsPerPageChange: (event: React_3.ChangeEvent<HTMLSelectElement>) => void;
+    // (undocumented)
+    page: number;
+    // (undocumented)
+    rowsPerPage: number;
+    // (undocumented)
+    rowsPerPageOptions?: number[];
+}
+
+// @public
+export interface ParsedSourceUrl {
+    hint?: string;
+    // (undocumented)
+    kind: SourceKind;
+    raw: string;
+    restorable?: boolean;
+    sampleId?: string;
+}
+
+// @public
 export type ProgressHandler = (info: ProgressInfo) => void;
 
 // @public
@@ -75,5 +177,48 @@ export interface RemoteFileEntry {
     presignedUrl: string;
     sizeBytes?: number | null;
 }
+
+// @public
+export interface SampleDataset {
+    // (undocumented)
+    archiveUrl?: string;
+    // (undocumented)
+    coverImageUrl?: string;
+    // (undocumented)
+    description: string;
+    // (undocumented)
+    id: string;
+    // (undocumented)
+    name: string;
+    // (undocumented)
+    previewVideoUrl?: string;
+    // (undocumented)
+    title?: string;
+    // (undocumented)
+    url?: string;
+    // (undocumented)
+    version?: 'v2' | 'v3';
+}
+
+// @public
+export const SampleDatasetCard: React_2.FC<SampleDatasetCardProps>;
+
+// @public
+export interface SampleDatasetCardProps {
+    // (undocumented)
+    fallbackImageUrl?: string;
+    // (undocumented)
+    onSelect: (sample: SampleDataset) => void | Promise<void>;
+    // (undocumented)
+    sample: SampleDataset;
+}
+
+// @public (undocumented)
+export type SourceKind = 'remoteArchive' | 'localArchive' | 'directory' | 'sample' | 'unknown';
+
+// @public
+export function useDragAndDrop(callbacks: DragAndDropCallbacks): {
+    isDragging: boolean;
+};
 
 ```

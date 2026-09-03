@@ -69,7 +69,7 @@ export function LocalDatasetViewer({ file }: { file: File }) {
 }
 ```
 
-npm 查看器不包含本地文件或文件夹选择器。如果应用需要该流程，请使用独立应用。
+这个辅助函数不会弹出系统文件选择框。在你自己的界面里选好文件后再传入。如果要在自定义欢迎页上提供目录或压缩包入口，见下文「自定义欢迎页」。
 
 ## 展示远程文件清单
 
@@ -94,6 +94,55 @@ export function SignedManifestViewer({ files }: { files: RemoteFileEntry[] }) {
 ```
 
 每条记录需要逻辑路径和 HTTP(S) URL。可选的 `contentType` 与 `sizeBytes` 会帮助查看器和内置安全限额。
+
+## 自定义欢迎页
+
+多数嵌入场景会先让用户选数据，再打开查看器。用 `LeRobotStudioProvider` 包一层，欢迎页和查看器就能共用主题、语言和样式。有了 `DataSource` 之后，再渲染 `LeRobotViewerContent`：
+
+```tsx
+import { useState } from 'react';
+import {
+  DatasetSourceSelector,
+  LeRobotStudioProvider,
+  LeRobotViewerContent,
+  createArchiveDataSourceFromFile,
+  createDirectoryDataSource,
+  useDragAndDrop,
+  type DataSource,
+} from '@ioai/lerobot-studio';
+import '@ioai/lerobot-studio/style.css';
+
+export function CustomWelcome({ language }: { language: string }) {
+  const [dataSource, setDataSource] = useState<DataSource | string | null>(null);
+  useDragAndDrop({
+    onFile: (file) => setDataSource(createArchiveDataSourceFromFile(file)),
+    onDirectoryHandle: (handle) => setDataSource(createDirectoryDataSource(handle)),
+  });
+
+  return (
+    <LeRobotStudioProvider theme="system" language={language}>
+      {dataSource ? (
+        <div style={{ height: 720 }}>
+          <LeRobotViewerContent dataSource={dataSource} showSidebar showPlaybackBar />
+        </div>
+      ) : (
+        <DatasetSourceSelector
+          onOpenDirectory={async () => {
+            const handle = await window.showDirectoryPicker();
+            setDataSource(createDirectoryDataSource(handle));
+          }}
+          onOpenLocalArchive={() => {
+            /* 你的 file input → createArchiveDataSourceFromFile */
+          }}
+          onOpenRemoteArchive={(url) => url && setDataSource(url)}
+        />
+      )}
+    </LeRobotStudioProvider>
+  );
+}
+```
+
+如果要显示导出按钮，自己接 `onExport`。本包不包含独立应用里的导出对话框。
 
 ## Next.js
 
@@ -136,4 +185,4 @@ const LeRobotViewer = dynamic(
 - 为查看器的父元素设置明确高度。
 - 使用远程压缩包时，请检查 CORS 和 HTTP Range 响应头。
 - 在 Next.js 中，请将查看器置于 Client Component，并使用 `ssr: false`。
-- 需要编辑或内置导出时，请使用独立应用。
+- 需要编辑或内置导出时，请使用独立应用。欢迎页组件只负责选数据和构造本地 `DataSource`。

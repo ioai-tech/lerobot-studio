@@ -1,3 +1,4 @@
+/** A sample dataset shown as a card on a welcome page. */
 export interface SampleDataset {
   id: string;
   name: string;

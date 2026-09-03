@@ -1,5 +1,6 @@
 import { canUseFileSystemAccess } from './fsPermissions';
 
+/** A dropped directory entry with a relative path. */
 export interface DirectoryFile {
   file: File;
   path: string;
