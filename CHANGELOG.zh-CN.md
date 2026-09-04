@@ -1,5 +1,11 @@
 # 变更日志
 
+## 1.3.1
+
+### 补丁变更
+
+- 修复嵌入宿主后的折线图颜色：将设计 token 同时绑定到 `.lerobot-root` / `.lerobot-root.dark`，避免宿主 `:root` 抢占变量；并把 oklch / 嵌套 `var()` 解析为 canvas 可用的 `rgb()`，供 uPlot 折线与网格使用。
+
 ## 1.3.0
 
 ### 次要变更

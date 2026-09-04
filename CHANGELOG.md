@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.3.1
+
+### Patch Changes
+
+- Fix embedded chart colors: bind design tokens to `.lerobot-root` / `.lerobot-root.dark` so host `:root` tokens no longer win, and resolve CSS colors (oklch / nested `var()`) to canvas-safe `rgb()` for uPlot strokes and grids.
+
 ## 1.3.0
 
 ### Minor Changes
