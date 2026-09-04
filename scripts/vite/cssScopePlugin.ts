@@ -18,9 +18,7 @@ const DEFAULT_ROOT_CLASS = 'lerobot-root';
  */
 function bindRootTokenSelectors(css: string, rootClass: string): string {
   // Idempotent: skip if already bound.
-  const rootBound = new RegExp(
-    `:root\\s*,\\s*\\.${rootClass}\\s*\\{\\s*--background\\s*:`,
-  );
+  const rootBound = new RegExp(`:root\\s*,\\s*\\.${rootClass}\\s*\\{\\s*--background\\s*:`);
   const darkBound = new RegExp(
     `\\.dark\\s*,\\s*\\.${rootClass}\\.dark\\s*\\{\\s*--background\\s*:`,
   );
