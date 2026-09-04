@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.3.2
+
+### Patch Changes
+
+- Ensure embedded host token binding survives the full Vite CSS asset: bind `:root` / `.dark` tokens onto `.lerobot-root` with a string pass after Lightning CSS scoping (Rule visitors fail to deserialize on the packaged stylesheet).
+
 ## 1.3.1
 
 ### Patch Changes

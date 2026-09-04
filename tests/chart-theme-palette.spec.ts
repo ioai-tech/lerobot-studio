@@ -4,8 +4,14 @@ import { describe, expect, it } from 'vitest';
 const css = readFileSync(new URL('../src/ui/globals.css', import.meta.url), 'utf8');
 
 function chartColors(themeSelector: ':root' | '.dark'): string[] {
-  const selector = themeSelector.replace('.', '\\.');
-  const block = css.match(new RegExp(`${selector}\\s*\\{([\\s\\S]*?)\\n\\}`))?.[1] ?? '';
+  // Source binds tokens onto .lerobot-root for embedded hosts:
+  //   :root, .lerobot-root { ... }
+  //   .dark, .lerobot-root.dark { ... }
+  const blockPattern =
+    themeSelector === ':root'
+      ? /:root\s*,\s*\.lerobot-root\s*\{([\s\S]*?)\n\}/
+      : /\.dark\s*,\s*\.lerobot-root\.dark\s*\{([\s\S]*?)\n\}/;
+  const block = css.match(blockPattern)?.[1] ?? '';
   return Array.from(block.matchAll(/--chart-[1-5]:\s*(oklch\([^)]+\))/g), ([, color]) => color);
 }
 
