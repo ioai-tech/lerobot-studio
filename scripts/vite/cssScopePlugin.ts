@@ -1,4 +1,4 @@
-import { transform, type Selector } from 'lightningcss';
+import { transform, type Selector, type Rule } from 'lightningcss';
 import type { Plugin } from 'vite';
 
 export type CssScopePluginOptions = {
@@ -23,6 +23,41 @@ function createScopeCss(rootClass: string) {
 
   function isAlreadyScoped(selector: Selector): boolean {
     return selector[0]?.type === 'class' && selector[0].name === rootClass;
+  }
+
+  function isOnlyRoot(selector: Selector): boolean {
+    const only = selector.length === 1 ? selector[0] : null;
+    return only?.type === 'pseudo-class' && only.kind === 'root';
+  }
+
+  function isOnlyDark(selector: Selector): boolean {
+    const only = selector.length === 1 ? selector[0] : null;
+    return only?.type === 'class' && only.name === 'dark';
+  }
+
+  /**
+   * Duplicate :root / .dark token blocks onto .<rootClass> / .<rootClass>.dark so
+   * embedded hosts that already own :root shadcn/MUI tokens still resolve Studio
+   * chart and theme vars from the viewer root (closer cascade).
+   */
+  function withRootBoundTokens(rule: Extract<Rule, { type: 'style' }>): Rule | void {
+    const selectors = rule.value.selectors;
+    const extras: Selector[] = [];
+    for (const selector of selectors) {
+      if (isOnlyRoot(selector)) {
+        extras.push([scopeToken]);
+      } else if (isOnlyDark(selector)) {
+        extras.push([scopeToken, { type: 'class', name: 'dark' }]);
+      }
+    }
+    if (!extras.length) return;
+    return {
+      type: 'style',
+      value: {
+        ...rule.value,
+        selectors: [...selectors, ...extras],
+      },
+    };
   }
 
   /**
@@ -54,6 +89,10 @@ function createScopeCss(rootClass: string) {
       filename,
       code: Buffer.from(css),
       visitor: {
+        Rule(rule) {
+          if (rule.type !== 'style') return;
+          return withRootBoundTokens(rule);
+        },
         Selector(selector) {
           return scopeSelector(selector);
         },

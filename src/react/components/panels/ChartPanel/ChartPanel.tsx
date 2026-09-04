@@ -54,7 +54,13 @@ const withAlpha = (color: string, alpha: number): string => {
     }
   }
   if (color.startsWith('rgb(')) {
-    return color.replace(/^rgb\((.+)\)$/, `rgba($1, ${a})`);
+    const inner = color.slice(4, -1).trim();
+    if (inner.includes(',')) {
+      return `rgba(${inner}, ${a})`;
+    }
+    // CSS Color 4: rgb(220 38 38) or rgb(220 38 38 / 1)
+    const [rgbPart] = inner.split('/');
+    return `rgba(${rgbPart!.trim().replace(/\s+/g, ', ')}, ${a})`;
   }
   if (color.startsWith('rgba(')) return color;
   if (color.startsWith('hsl(')) {
