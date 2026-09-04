@@ -1,5 +1,11 @@
 # 变更日志
 
+## 1.3.2
+
+### 补丁变更
+
+- 确保嵌入宿主的 token 绑定在完整 Vite CSS 产物上仍然生效：在 Lightning CSS 作用域处理之后，用字符串替换把 `:root` / `.dark` token 绑到 `.lerobot-root`（Rule visitor 在打包后的样式表上会反序列化失败）。
+
 ## 1.3.1
 
 ### 补丁变更

@@ -1,4 +1,4 @@
-import { transform, type Selector, type Rule } from 'lightningcss';
+import { transform, type Selector } from 'lightningcss';
 import type { Plugin } from 'vite';
 
 export type CssScopePluginOptions = {
@@ -7,6 +7,34 @@ export type CssScopePluginOptions = {
 };
 
 const DEFAULT_ROOT_CLASS = 'lerobot-root';
+
+/**
+ * Duplicate shadcn token blocks onto .<rootClass> so embedded hosts that already
+ * own :root variables still resolve Studio tokens from the viewer root.
+ *
+ * Uses a string pass (not a Rule visitor return): returning modified rules from
+ * lightningcss fails to deserialize on the full Vite/Tailwind CSS asset
+ * (`Specifier` / `:host` null selectors).
+ */
+function bindRootTokenSelectors(css: string, rootClass: string): string {
+  // Idempotent: skip if already bound.
+  const rootBound = new RegExp(
+    `:root\\s*,\\s*\\.${rootClass}\\s*\\{\\s*--background\\s*:`,
+  );
+  const darkBound = new RegExp(
+    `\\.dark\\s*,\\s*\\.${rootClass}\\.dark\\s*\\{\\s*--background\\s*:`,
+  );
+  let out = css;
+  if (!rootBound.test(out)) {
+    out = out.replace(/:root\{--background:/g, `:root,.${rootClass}{--background:`);
+    out = out.replace(/:root \{\s*--background:/g, `:root, .${rootClass} { --background:`);
+  }
+  if (!darkBound.test(out)) {
+    out = out.replace(/\.dark\{--background:/g, `.dark,.${rootClass}.dark{--background:`);
+    out = out.replace(/\.dark \{\s*--background:/g, `.dark, .${rootClass}.dark { --background:`);
+  }
+  return out;
+}
 
 /**
  * npm package 模式专用：用 Lightning CSS visitor 把选择器限制在 .<rootClass> 下，
@@ -23,41 +51,6 @@ function createScopeCss(rootClass: string) {
 
   function isAlreadyScoped(selector: Selector): boolean {
     return selector[0]?.type === 'class' && selector[0].name === rootClass;
-  }
-
-  function isOnlyRoot(selector: Selector): boolean {
-    const only = selector.length === 1 ? selector[0] : null;
-    return only?.type === 'pseudo-class' && only.kind === 'root';
-  }
-
-  function isOnlyDark(selector: Selector): boolean {
-    const only = selector.length === 1 ? selector[0] : null;
-    return only?.type === 'class' && only.name === 'dark';
-  }
-
-  /**
-   * Duplicate :root / .dark token blocks onto .<rootClass> / .<rootClass>.dark so
-   * embedded hosts that already own :root shadcn/MUI tokens still resolve Studio
-   * chart and theme vars from the viewer root (closer cascade).
-   */
-  function withRootBoundTokens(rule: Extract<Rule, { type: 'style' }>): Rule | void {
-    const selectors = rule.value.selectors;
-    const extras: Selector[] = [];
-    for (const selector of selectors) {
-      if (isOnlyRoot(selector)) {
-        extras.push([scopeToken]);
-      } else if (isOnlyDark(selector)) {
-        extras.push([scopeToken, { type: 'class', name: 'dark' }]);
-      }
-    }
-    if (!extras.length) return;
-    return {
-      type: 'style',
-      value: {
-        ...rule.value,
-        selectors: [...selectors, ...extras],
-      },
-    };
   }
 
   /**
@@ -89,10 +82,6 @@ function createScopeCss(rootClass: string) {
       filename,
       code: Buffer.from(css),
       visitor: {
-        Rule(rule) {
-          if (rule.type !== 'style') return;
-          return withRootBoundTokens(rule);
-        },
         Selector(selector) {
           return scopeSelector(selector);
         },
@@ -100,7 +89,7 @@ function createScopeCss(rootClass: string) {
       // 保持可读性；最终 minify 仍由 Vite / Lightning CSS 构建管线负责
       minify: false,
     });
-    return code.toString();
+    return bindRootTokenSelectors(code.toString(), rootClass);
   };
 }
 
@@ -137,11 +126,22 @@ export function cssScopePlugin(options?: CssScopePluginOptions): Plugin {
         try {
           item.source = scopeCss(item.source, item.fileName);
         } catch (err) {
-          this.warn(
-            `css-scope: failed to scope asset ${item.fileName}: ${
-              err instanceof Error ? err.message : String(err)
-            }`,
-          );
+          // Last-resort: still bind tokens even if selector scoping fails on the
+          // fully-minified asset (lightningcss Rule returns can throw Specifier).
+          try {
+            item.source = bindRootTokenSelectors(item.source, rootClass);
+            this.warn(
+              `css-scope: selector scope failed for ${item.fileName}; applied token bind only: ${
+                err instanceof Error ? err.message : String(err)
+              }`,
+            );
+          } catch (bindErr) {
+            this.warn(
+              `css-scope: failed to scope asset ${item.fileName}: ${
+                bindErr instanceof Error ? bindErr.message : String(bindErr)
+              }`,
+            );
+          }
         }
       }
     },
