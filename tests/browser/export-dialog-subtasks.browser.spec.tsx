@@ -100,6 +100,13 @@ describe('browser: export dialog subtasks option', () => {
     const checkbox = dialog.querySelector<HTMLInputElement>('input[type="checkbox"]')!;
     expect(checkbox).toBeTruthy();
     expect(checkbox.checked).toBe(false);
+    const compact = dialog.querySelectorAll<HTMLInputElement>('input[type="checkbox"]')[1];
+    expect(compact.checked).toBe(false);
+    expect(dialog.textContent).toContain('their footage may remain in shared files');
+    await act(async () => {
+      compact.click();
+    });
+    expect(compact.checked).toBe(true);
     expect(dialog.textContent).not.toContain('Every exported episode must be fully labeled.');
 
     await act(async () => {

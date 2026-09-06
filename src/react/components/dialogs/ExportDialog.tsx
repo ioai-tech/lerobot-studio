@@ -43,6 +43,7 @@ export const ExportDialog: React.FC<ExportDialogProps> = ({ open, onOpenChange }
   const [format, setFormat] = useState<ExportFormat>('zip');
   const [targetVersion, setTargetVersion] = useState<'v2.1' | 'v3.0'>(defaultTargetVersion);
   const [includeSubtasks, setIncludeSubtasks] = useState(false);
+  const [compactVideos, setCompactVideos] = useState(false);
   const [progress, setProgress] = useState<ExportProgress | null>(null);
   const [exportError, setExportError] = useState<string | null>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
@@ -126,6 +127,7 @@ export const ExportDialog: React.FC<ExportDialogProps> = ({ open, onOpenChange }
           onProgress: safeSetProgress,
           includeData: true,
           includeVideos: true,
+          compactVideos,
           includeSubtasks: targetVersion === 'v3.0' && includeSubtasks,
           signal,
           subtaskOverlay: overlay,
@@ -190,6 +192,7 @@ export const ExportDialog: React.FC<ExportDialogProps> = ({ open, onOpenChange }
     format,
     targetVersion,
     includeSubtasks,
+    compactVideos,
     onOpenChange,
     t,
   ]);
@@ -286,6 +289,25 @@ export const ExportDialog: React.FC<ExportDialogProps> = ({ open, onOpenChange }
                 />
                 <span>{t('export.includeSubtasks', 'Include subtasks')}</span>
               </label>
+            ) : null}
+            {targetVersion === 'v3.0' && versionCapability?.adapterVersion === 'v3.0' ? (
+              <div className="space-y-1 text-sm">
+                <label className="flex items-start gap-2">
+                  <input
+                    type="checkbox"
+                    className="mt-0.5 accent-primary"
+                    checked={compactVideos}
+                    onChange={(event) => setCompactVideos(event.target.checked)}
+                  />
+                  <span>{t('export.compactVideos', 'Remove unused video segments (slower)')}</span>
+                </label>
+                <p className="text-xs text-muted-foreground">
+                  {t(
+                    'export.sharedVideoHint',
+                    'Fast export copies shared videos without re-encoding. Deleted episodes are excluded from the dataset, but their footage may remain in shared files. Enable this option to physically remove unused segments.',
+                  )}
+                </p>
+              </div>
             ) : null}
             <div className="rounded-lg border bg-muted/30 p-3 text-sm">
               <div className="font-medium mb-1">

@@ -111,6 +111,7 @@ export class ExportService {
       | 'onProgress'
       | 'includeData'
       | 'includeVideos'
+      | 'compactVideos'
       | 'includeSubtasks'
       | 'signal'
       | 'splitsConfig'
@@ -142,7 +143,7 @@ export class ExportService {
     const episodesForMeta = episodes;
     let videoOffsets: EpisodeVideoOffsets | null = null;
     let dataLayout: V3DataLayout | undefined;
-    const videoOptions = { signal };
+    const videoOptions = { signal, compactVideos: options.compactVideos };
 
     // If source has dtype: 'image' features, re-encode them into MP4 videos
     // and rewrite the exported `info.features[key].dtype` to 'video'.

@@ -7,7 +7,66 @@ import type { ExportProgress, EpisodeVideoOffsets, TargetVersion } from '@/core'
 const CHUNK_SIZE_DEFAULT = 1000;
 const VIDEO_FILE_SIZE_MB_DEFAULT = 200;
 
-export type VideoExportOptions = { signal?: AbortSignal };
+export type VideoExportOptions = { signal?: AbortSignal; compactVideos?: boolean };
+
+/** Keep v3 shared files and timestamps; unreferenced files are omitted entirely. */
+async function exportSharedV3Videos(
+  dataLoader: LeRobotDataLoader,
+  info: LeRobotInfo,
+  episodes: EpisodeMetadata[],
+  adapter: ExportAdapter,
+  onProgress?: (p: ExportProgress) => void,
+  signal?: AbortSignal,
+): Promise<EpisodeVideoOffsets> {
+  const keys = Object.keys(info.features).filter((key) => info.features[key]?.dtype === 'video');
+  const chunksSize = info.chunks_size ?? CHUNK_SIZE_DEFAULT;
+  if (!Number.isSafeInteger(chunksSize) || chunksSize <= 0) {
+    throw new Error('chunks_size must be a positive integer');
+  }
+  const offsets: EpisodeVideoOffsets = new Map();
+  let done = 0;
+  for (const key of keys) {
+    const files = new Map<string, { chunk_index: number; file_index: number }>();
+    for (const episode of episodes) {
+      assertNotAborted(signal);
+      const source = dataLoader.getEpisodeVideoPath(episode.episode_index, key);
+      if (!source || !hasMeaningfulTrim(source) || Number(source.fromSec ?? 0) < 0) {
+        throw new Error(
+          `Missing or invalid video range for episode ${episode.episode_index}, feature "${key}"`,
+        );
+      }
+      let location = files.get(source.path);
+      if (!location) {
+        const number = files.size;
+        location = {
+          chunk_index: Math.floor(number / chunksSize),
+          file_index: number % chunksSize,
+        };
+        const outPath = `videos/${key}/chunk-${String(location.chunk_index).padStart(3, '0')}/file-${String(location.file_index).padStart(3, '0')}.mp4`;
+        const bytes = await dataLoader.readFileBytes(source.path);
+        assertNotAborted(signal);
+        if (!looksLikeMp4(bytes)) throw new Error(`Invalid source MP4: ${source.path}`);
+        await ensureParentDir(adapter, outPath);
+        await adapter.writeFile(outPath, bytes);
+        files.set(source.path, location);
+      }
+      if (!offsets.has(episode.episode_index)) offsets.set(episode.episode_index, {});
+      offsets.get(episode.episode_index)![key] = {
+        ...location,
+        from_timestamp: source.fromSec ?? 0,
+        to_timestamp: source.toSec!,
+      };
+      onProgress?.({
+        phase: 'videos',
+        current: ++done,
+        total: episodes.length * keys.length,
+        message: `Copying shared video: ${source.path}`,
+        cancelable: true,
+      });
+    }
+  }
+  return offsets;
+}
 
 /** Optional trim for Conversion (v3 segment export). */
 export type ConvertSegmentTrim = { fromSec?: number; toSec?: number };
@@ -164,7 +223,7 @@ async function exportVideosCopy(
 }
 
 /**
- * Transcode path: v3 target. One file per episode per (chunk, key).
+ * Per-episode path: v2→v3 or explicit compact v3 export.
  *
  * Optimization: when the source is already an MP4 that covers exactly one
  * episode (v2 → v3 on an existing MP4 with fromSec/toSec unset), we byte-copy
@@ -172,10 +231,7 @@ async function exportVideosCopy(
  * (which also handles the trim case needed for v3 → v3 where a single file
  * holds multiple episodes).
  *
- * Stability changes:
- * - Failures no longer write a 0-byte `.mp4`.  The error is logged, the
- *   episode is skipped (no video offset entry), and the caller can decide.
- * - Abort propagates into Conversion.cancel via convertSegmentWithMediabunny.
+ * Conversion failures abort export; cancellation propagates to Conversion.cancel.
  */
 async function exportVideosTranscodeToV3(
   dataLoader: LeRobotDataLoader,
@@ -300,10 +356,7 @@ async function exportVideosTranscodeToV3(
 /**
  * Transcode path: v2.1 target with v3 source. One file per episode per key.
  *
- * Stability changes:
- * - Removed the WebM-labelled-as-mp4 fallback that corrupted datasets when
- *   Mediabunny Conversion failed.  If MP4 conversion isn't possible for this
- *   segment, we skip the file and log; the surrounding dataset remains valid.
+ * Conversion failures abort export rather than writing an invalid MP4.
  */
 async function exportVideosTranscodeToV2FromV3(
   dataLoader: LeRobotDataLoader,
@@ -391,7 +444,7 @@ async function ensureParentDir(adapter: ExportAdapter, filePath: string): Promis
 }
 
 /**
- * Dispatcher: Copy (v2 source → v2.1 only) vs Transcode (v2→v3, v3→v3, v3→v2.1).
+ * Copy same-version videos; convert cross-version or explicitly compacted videos.
  */
 export async function exportVideosByTarget(
   dataLoader: LeRobotDataLoader,
@@ -408,6 +461,9 @@ export async function exportVideosByTarget(
   }
 
   if (targetVersion === 'v3.0') {
+    if (isV3Info(info) && !options?.compactVideos) {
+      return exportSharedV3Videos(dataLoader, info, episodes, adapter, onProgress, options?.signal);
+    }
     return exportVideosTranscodeToV3(
       dataLoader,
       info,

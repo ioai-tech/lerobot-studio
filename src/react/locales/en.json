@@ -695,6 +695,8 @@
     "deletedCount": "Deleted",
     "subtaskEpisodes": "Subtask episodes",
     "includeSubtasks": "Include subtasks",
+    "compactVideos": "Remove unused video segments (slower)",
+    "sharedVideoHint": "Fast export copies shared videos without re-encoding. Deleted episodes are excluded from the dataset, but their footage may remain in shared files. Enable this option to physically remove unused segments.",
     "subtaskCoverageHint": "Every exported episode must be fully labeled.",
     "subtaskCoverageMissing": "Episode #{{index}} has no subtask labels.",
     "subtaskCoverageIncomplete": "Episode #{{index}} is missing labels ({{labeled}}/{{total}}).",

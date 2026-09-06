@@ -692,6 +692,8 @@
     "deletedCount": "已删除",
     "subtaskEpisodes": "含子任务的 episode",
     "includeSubtasks": "包含子任务",
+    "compactVideos": "移除视频文件中的未使用片段（较慢）",
+    "sharedVideoHint": "默认直接复制共享视频，不重新编码。已删除的 Episode 不再参与数据集读取，但其画面可能仍保留在共享文件内。勾选此项可实际裁去未使用片段。",
     "subtaskCoverageHint": "每个导出的 episode 都必须完整标注子任务。",
     "subtaskCoverageMissing": "Episode #{{index}} 还没有标注子任务。",
     "subtaskCoverageIncomplete": "Episode #{{index}} 标注不完整（{{labeled}}/{{total}}）。",

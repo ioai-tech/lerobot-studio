@@ -28,6 +28,8 @@ export interface ExportOptions {
   format: ExportFormat;
   targetVersion?: TargetVersion;
   includeVideos: boolean;
+  /** v3→v3: copy shared MP4s once by default. True physically trims unused footage (slower). */
+  compactVideos?: boolean;
   includeData: boolean;
   /**
    * UI passes true only when "Include subtasks" is checked.

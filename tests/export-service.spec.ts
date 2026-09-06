@@ -108,12 +108,14 @@ describe('ExportService', () => {
         targetVersion: 'v3.0',
         includeData: true,
         includeVideos: true,
+        compactVideos: true,
         onProgress: progress,
         splitsConfig: { train: 1 } as any,
       },
     );
 
     expect(mocks.exportImageFeaturesAsVideo).toHaveBeenCalledOnce();
+    expect(mocks.exportVideosByTarget.mock.calls[0][6]).toMatchObject({ compactVideos: true });
     expect(mocks.exportVideosByTarget).toHaveBeenCalledWith(
       expect.anything(),
       info,
@@ -121,7 +123,7 @@ describe('ExportService', () => {
       'v3.0',
       target,
       expect.any(Function),
-      { signal: undefined },
+      { signal: undefined, compactVideos: true },
     );
     expect(mocks.computeDatasetStats).toHaveBeenCalledOnce();
     expect(mocks.computeDatasetStats).toHaveBeenCalledWith(

@@ -697,6 +697,8 @@
     "deletedCount": "削除済み",
     "subtaskEpisodes": "サブタスク付きエピソード",
     "includeSubtasks": "サブタスクを含める",
+    "compactVideos": "未使用の動画区間を除去する（低速）",
+    "sharedVideoHint": "高速エクスポートは共有動画を再エンコードせずにコピーします。削除したエピソードはデータセットから除外されますが、映像は共有ファイルに残る場合があります。このオプションで未使用の区間を実際に除去できます。",
     "subtaskCoverageHint": "書き出す各エピソードはサブタスクをすべてラベルする必要があります。",
     "subtaskCoverageMissing": "エピソード #{{index}} にはサブタスクのラベルがありません。",
     "subtaskCoverageIncomplete": "エピソード #{{index}} のラベルが不完全です（{{labeled}}/{{total}}）。",

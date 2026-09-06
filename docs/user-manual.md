@@ -96,6 +96,8 @@ Export is available in the standalone app for supported `v2.1` and `v3.0` datase
 
 The exported dataset includes your current episode edits. The React npm package does not include the export engine.
 
+For `v3.0` → `v3.0`, export copies each referenced shared MP4 once and preserves its episode timestamps. It rewrites the retained Parquet rows and split ranges without re-encoding videos. Deleted episodes are no longer read by the dataset, but their footage can remain inside a shared video file; files with no remaining references are omitted. Enable **Remove unused video segments (slower)** to physically trim unused footage. Trimming may re-encode video and increase output size; deleting an episode does not guarantee a smaller ZIP.
+
 ## Language and theme
 
 Use the controls in the top bar to switch between English, Simplified Chinese, and Japanese, or choose light, dark, and system theme modes.
