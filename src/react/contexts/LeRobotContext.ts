@@ -5,6 +5,7 @@ import type {
   FrameData,
   PlaybackMode,
   LeRobotVersionCapability,
+  EpisodeTrimRange,
 } from '@/core';
 import type { LeRobotDataLoader } from '@/platform';
 import type { NumericalColumnMap } from '@/platform';
@@ -42,6 +43,8 @@ export interface LeRobotDataContextType {
 
 /** Episode / export selection — changes shouldn't re-render video panels */
 export interface LeRobotSelectionContextType {
+  trimRanges: ReadonlyMap<number, EpisodeTrimRange>;
+  trimEpisode: (episodeIndex: number, range: EpisodeTrimRange | null) => void;
   selectedEpisodeIndex: number | null;
   selectedEpisodeIndices: Set<number>;
   toggleEpisodeSelection: (index: number) => void;
@@ -94,6 +97,10 @@ export interface LeRobotSubtaskContextType {
 
 /** Presentation-only UI state (dialogs), kept out of domain contexts */
 export interface LeRobotUiContextType {
+  trimEditMode: boolean;
+  setTrimEditMode: (enabled: boolean) => void;
+  previewTrim: boolean;
+  setPreviewTrim: (enabled: boolean) => void;
   healthDialogOpen: boolean;
   setHealthDialogOpen: (open: boolean) => void;
   subtaskDialogOpen: boolean;

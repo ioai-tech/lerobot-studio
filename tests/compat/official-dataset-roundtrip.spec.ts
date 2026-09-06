@@ -51,6 +51,58 @@ afterEach(async () => {
 
 describe.skipIf(!python)('official LeRobot dataset compatibility', () => {
   it(
+    'reads trimmed episodes with reset timestamps and padded action windows',
+    async () => {
+      const root = await mkdtemp(path.join(os.tmpdir(), 'lerobot-studio-trim-'));
+      tempDirs.push(root);
+      const loader = new LeRobotDataLoader(new LocalFsDataSource(fixturesRoot));
+      try {
+        const sourceInfo = await loader.initialize();
+        const info = {
+          ...sourceInfo,
+          total_videos: 0,
+          features: Object.fromEntries(
+            Object.entries(sourceInfo.features).filter(([, feature]) => feature.dtype !== 'video'),
+          ),
+        };
+        const episodes = loader.getEpisodes();
+        await new ExportService(loader, new DirectoryExportAdapter(root)).exportWithData(
+          info,
+          episodes,
+          loader.getTasks(),
+          {
+            format: 'directory',
+            targetVersion: 'v3.0',
+            includeData: true,
+            includeVideos: false,
+            trimRanges: new Map([[episodes[1].episode_index, { startFrame: 1, endFrame: 2 }]]),
+          },
+        );
+        const script = [
+          'import sys',
+          'from lerobot.datasets.lerobot_dataset import LeRobotDataset',
+          'd = LeRobotDataset("local/trim", root=sys.argv[1], download_videos=False, delta_timestamps={"action": [-0.1, 0, 0.1]})',
+          'assert len(d) == 5',
+          'assert int(d[3]["frame_index"]) == 0',
+          'assert abs(float(d[3]["timestamp"])) < 1e-6',
+          'assert abs(float(d[4]["timestamp"]) - 0.1) < 1e-6',
+          'assert d[3]["action_is_pad"].tolist() == [True, False, False]',
+          'assert d[4]["action_is_pad"].tolist() == [False, False, True]',
+          'assert (d[3]["action"][0] == d[3]["action"][1]).all()',
+          'print("trim roundtrip passed")',
+        ].join('\n');
+        const { stdout } = await execFileAsync(python!, ['-c', script, root], {
+          env: { ...process.env, HF_HUB_OFFLINE: '1' },
+        });
+        expect(stdout).toContain('trim roundtrip passed');
+      } finally {
+        await loader.dispose();
+      }
+    },
+    OFFICIAL_READER_TIMEOUT_MS,
+  );
+
+  it(
     'loads a Studio v2-to-v3 numeric export with LeRobotDataset',
     async () => {
       const root = await mkdtemp(path.join(os.tmpdir(), 'lerobot-studio-dataset-'));

@@ -85,6 +85,14 @@ Verified Hub examples and download commands: [Data formats — Official Hub exam
 
 Newer minor versions in the `v2` and `v3` families may open in read-only mode. `v2.0`, other major versions, and datasets without a version are not opened.
 
+### Trim an episode
+
+In **Edit episodes**, choose **Trim episode** in the playback bar. Each episode can retain one continuous range. Drag either boundary, enter frame numbers, or use **Set start here** / **Set end here** at the playhead. Frame numbers start at zero and both endpoints are included. **Play retained range only** stops at the selected end; **Reset trim** restores the full episode.
+
+Trims stay in the current browser session, including when switching episodes. Export writes only retained data rows, resets episode frame indices and timestamps, and clips subtask labels to the same range. Subtask coverage is checked only on retained frames. Numeric statistics are recomputed; RGB/grayscale visual statistics are sampled from at most 100 evenly spaced retained frames per camera, including both endpoints. The original files remain unchanged.
+
+For `v3.0` → `v3.0`, leave **Remove unused video segments (slower)** unchecked for a fast export: shared MP4s are copied and their references point to the retained range. Check it to physically trim the video too. Other version combinations physically trim edited episodes. Re-encoding needs browser codec support and can change image quality or file size. The first version supports constant-frame-rate RGB/grayscale datasets; incompatible timestamps, raw depth/TIFF statistics, missing frames, or failed codecs produce an export error instead of an incomplete dataset.
+
 ## Export a dataset
 
 Export is available in the standalone app for supported `v2.1` and `v3.0` datasets.

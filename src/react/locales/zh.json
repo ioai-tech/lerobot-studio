@@ -216,7 +216,10 @@
           "message": "total_tasks 必须为非负整数",
           "suggestion": "设置正确的任务总数（可为 0）"
         },
-        "FPS_INVALID": { "message": "fps 必须为正数", "suggestion": "设置正确的帧率，例如 30" },
+        "FPS_INVALID": {
+          "message": "fps 必须为正数",
+          "suggestion": "设置正确的帧率，例如 30"
+        },
         "CHUNKS_SIZE_MISSING": {
           "message": "chunks_size 缺失，将使用默认值 1000",
           "suggestion": "添加 chunks_size 字段，推荐 1000"
@@ -337,9 +340,18 @@
           "message": "info.video_path 与默认模板不一致",
           "suggestion": "使用默认 video 路径模板"
         },
-        "TASKS_PRESENT": { "message": "已检测到任务元数据", "suggestion": "" },
-        "EPISODE_COUNT": { "message": "解析到 {{count}} 个剧集", "suggestion": "" },
-        "TASK_COUNT": { "message": "解析到 {{count}} 条任务", "suggestion": "" },
+        "TASKS_PRESENT": {
+          "message": "已检测到任务元数据",
+          "suggestion": ""
+        },
+        "EPISODE_COUNT": {
+          "message": "解析到 {{count}} 个剧集",
+          "suggestion": ""
+        },
+        "TASK_COUNT": {
+          "message": "解析到 {{count}} 条任务",
+          "suggestion": ""
+        },
         "SPLITS_MISSING_TRAIN": {
           "message": "splits 必须包含 \"train\"",
           "suggestion": "在 splits 中至少包含 \"train\" 键"
@@ -693,7 +705,7 @@
     "subtaskEpisodes": "含子任务的 episode",
     "includeSubtasks": "包含子任务",
     "compactVideos": "移除视频文件中的未使用片段（较慢）",
-    "sharedVideoHint": "默认直接复制共享视频，不重新编码。已删除的 Episode 不再参与数据集读取，但其画面可能仍保留在共享文件内。勾选此项可实际裁去未使用片段。",
+    "sharedVideoHint": "快速导出直接复制共享视频，不重新编码。删除的片段和裁掉的帧会从导出数据中移除，但对应画面可能仍保留在共享视频文件里。勾选此项可物理移除未使用的画面。",
     "subtaskCoverageHint": "每个导出的 episode 都必须完整标注子任务。",
     "subtaskCoverageMissing": "Episode #{{index}} 还没有标注子任务。",
     "subtaskCoverageIncomplete": "Episode #{{index}} 标注不完整（{{labeled}}/{{total}}）。",
@@ -757,5 +769,18 @@
     "range": "{{from}}-{{to}} 共 {{count}}",
     "prevAriaLabel": "上一页",
     "nextAriaLabel": "下一页"
+  },
+  "trim": {
+    "title": "裁剪片段",
+    "start": "起始帧",
+    "end": "结束帧",
+    "setStart": "设为起点",
+    "setEnd": "设为终点",
+    "reset": "重置裁剪",
+    "preview": "仅播放保留区间",
+    "startHandle": "裁剪起点边界",
+    "endHandle": "裁剪终点边界",
+    "summary": "{{original}} → {{kept}} 帧 · 保留 {{start}}–{{end}} 秒",
+    "exportSummary": "应用裁剪：{{original}} → {{kept}} 帧。原始文件不变。"
   }
 }

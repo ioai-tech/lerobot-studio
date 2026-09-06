@@ -29,7 +29,8 @@ export interface ExportDialogProps {
 export const ExportDialog: React.FC<ExportDialogProps> = ({ open, onOpenChange }) => {
   const { t } = useTranslation();
   const { dataLoader, info, tasks, subtasks } = useLeRobotData();
-  const { episodesForExport, modifiedEpisodes, deletedEpisodes } = useLeRobotSelection();
+  const { episodesForExport, modifiedEpisodes, deletedEpisodes, trimRanges } =
+    useLeRobotSelection();
   const { overlay } = useLeRobotSubtask();
 
   const capabilities = useMemo(() => detectPlatformCapabilities(), []);
@@ -128,6 +129,7 @@ export const ExportDialog: React.FC<ExportDialogProps> = ({ open, onOpenChange }
           includeData: true,
           includeVideos: true,
           compactVideos,
+          trimRanges,
           includeSubtasks: targetVersion === 'v3.0' && includeSubtasks,
           signal,
           subtaskOverlay: overlay,
@@ -193,6 +195,7 @@ export const ExportDialog: React.FC<ExportDialogProps> = ({ open, onOpenChange }
     targetVersion,
     includeSubtasks,
     compactVideos,
+    trimRanges,
     onOpenChange,
     t,
   ]);
@@ -304,7 +307,7 @@ export const ExportDialog: React.FC<ExportDialogProps> = ({ open, onOpenChange }
                 <p className="text-xs text-muted-foreground">
                   {t(
                     'export.sharedVideoHint',
-                    'Fast export copies shared videos without re-encoding. Deleted episodes are excluded from the dataset, but their footage may remain in shared files. Enable this option to physically remove unused segments.',
+                    'Fast export copies shared videos without re-encoding. Deleted episodes and trimmed frames are excluded from the exported data, but their footage may remain in shared files. Enable this option to physically remove unused segments.',
                   )}
                 </p>
               </div>
@@ -333,6 +336,17 @@ export const ExportDialog: React.FC<ExportDialogProps> = ({ open, onOpenChange }
                 </p>
               ) : null}
             </div>
+            {episodesForExport.some((episode) => trimRanges?.has(episode.episode_index)) ? (
+              <p className="text-xs text-muted-foreground" role="status">
+                {t('trim.exportSummary', {
+                  original: episodesForExport.reduce((sum, episode) => sum + episode.length, 0),
+                  kept: episodesForExport.reduce((sum, episode) => {
+                    const range = trimRanges?.get(episode.episode_index);
+                    return sum + (range ? range.endFrame - range.startFrame + 1 : episode.length);
+                  }, 0),
+                })}
+              </p>
+            ) : null}
             {exportError && <p className="text-sm text-destructive">{exportError}</p>}
             {versionCapability && versionCapability.status !== 'supported' && !exportError && (
               <p className="text-sm text-muted-foreground">

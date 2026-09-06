@@ -3,10 +3,13 @@ import type { LeRobotInfo, EpisodeMetadata } from '@/core';
 import type { ExportAdapter } from '@/core';
 import type { ExportProgress, EpisodeVideoOffsets, TargetVersion } from '@/core';
 
+import type { ExportTrim } from './TrimExportPlan';
+
 const CHUNK_SIZE_DEFAULT = 1000;
 
 export type ImageVideoEncodingOptions = {
   /** H.264 is the safest default for MP4 in browsers. VP9 is available for WebM. */
+  trimRanges?: ReadonlyMap<number, ExportTrim>;
   codec?: 'avc' | 'vp9';
   /** Target bitrate in bits per second. Defaults to ~quality 'medium'. */
   bitrate?: number;
@@ -89,8 +92,7 @@ async function encodeFramesToMp4(
       }
       const bitmap = currentBitmap;
       if (!bitmap) {
-        console.warn(`Skipping undecodable frame ${i}`);
-        continue;
+        throw new Error(`Undecodable image at frame ${i}`);
       }
       ctx.clearRect(0, 0, width, height);
       ctx.drawImage(bitmap, 0, 0, width, height);
@@ -121,9 +123,11 @@ async function readFramesForEpisode(
   dataLoader: LeRobotDataLoader,
   episodeIndex: number,
   key: string,
+  range?: ExportTrim,
 ): Promise<Uint8Array[]> {
   const data = await dataLoader.loadFeatureData(episodeIndex, [key]);
-  const rows = data[key] ?? [];
+  const sourceRows = data[key] ?? [];
+  const rows = range ? sourceRows.slice(range.startFrame, range.endFrame + 1) : sourceRows;
   const frames: Uint8Array[] = [];
   for (const row of rows) {
     if (isUint8ArrayLike(row)) {
@@ -133,6 +137,10 @@ async function readFramesForEpisode(
       if (isUint8ArrayLike(bytes)) frames.push(bytes);
     }
   }
+  if (frames.length !== rows.length)
+    throw new Error(`Invalid image bytes for episode=${episodeIndex} key=${key}`);
+  if (range && frames.length !== range.endFrame - range.startFrame + 1)
+    throw new Error('Incomplete trimmed image sequence');
   return frames;
 }
 
@@ -188,7 +196,12 @@ export async function exportImageFeaturesAsVideo(
       await ensureParentDir(adapter, outPath);
 
       try {
-        const frames = await readFramesForEpisode(dataLoader, ep.episode_index, key);
+        const frames = await readFramesForEpisode(
+          dataLoader,
+          ep.episode_index,
+          key,
+          encoding?.trimRanges?.get(ep.episode_index),
+        );
         if (frames.length === 0) {
           throw new Error(`No image frames for episode=${ep.episode_index} key=${key}`);
         }

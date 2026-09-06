@@ -226,6 +226,7 @@ export async function writeMetadata(
   splits?: Record<string, string>,
   dataLayout?: V3DataLayout,
   subtasks?: SubtaskTable,
+  episodeStats?: ReadonlyMap<number, DatasetStats>,
 ): Promise<void> {
   if (signal?.aborted) throw new DOMException('Export cancelled', 'AbortError');
   const isTargetV3 = targetVersion !== undefined ? targetVersion === 'v3.0' : isV3Info(info);
@@ -262,7 +263,11 @@ export async function writeMetadata(
           data_path: V3_DATA_PATH,
           video_path: V3_VIDEO_PATH,
         }
-      : {}),
+      : {
+          data_path: 'data/chunk-{episode_chunk:03d}/episode_{episode_index:06d}.parquet',
+          video_path:
+            'videos/chunk-{episode_chunk:03d}/{video_key}/episode_{episode_index:06d}.mp4',
+        }),
     total_episodes: episodes.length,
     total_frames: episodes.reduce((total, episode) => total + episode.length, 0),
     total_tasks: Object.keys(taskPlan.tasks).length,
@@ -294,6 +299,17 @@ export async function writeMetadata(
   } else {
     writeV2Episodes(episodes, taskPlan, adapter);
     writeV2Tasks(taskPlan.tasks, adapter);
+    if (episodeStats) {
+      const lines = episodes
+        .map((episode, index) =>
+          JSON.stringify({
+            episode_index: index,
+            stats: episodeStats.get(episode.episode_index),
+          }),
+        )
+        .join('\n');
+      await adapter.writeFile('meta/episodes_stats.jsonl', TEXT_ENCODER.encode(lines));
+    }
   }
 
   if (stats != null && Object.keys(stats).length > 0) {

@@ -4,10 +4,34 @@ import { isV2Info, isV3Info } from '@/core';
 import type { ExportAdapter } from '@/core';
 import type { ExportProgress, EpisodeVideoOffsets, TargetVersion } from '@/core';
 
+import type { ExportTrim } from './TrimExportPlan';
+
 const CHUNK_SIZE_DEFAULT = 1000;
 const VIDEO_FILE_SIZE_MB_DEFAULT = 200;
 
-export type VideoExportOptions = { signal?: AbortSignal; compactVideos?: boolean };
+export type VideoExportOptions = {
+  signal?: AbortSignal;
+  compactVideos?: boolean;
+  trimRanges?: ReadonlyMap<number, ExportTrim>;
+};
+
+function episodeVideoRange(
+  loader: LeRobotDataLoader,
+  episodeIndex: number,
+  key: string,
+  ranges?: ReadonlyMap<number, ExportTrim>,
+) {
+  const source = loader.getEpisodeVideoPath(episodeIndex, key);
+  const range = ranges?.get(episodeIndex);
+  if (!source || !range) return source;
+  const base = source.fromSec ?? 0;
+  const fromSec = base + range.fromSec;
+  const toSec = base + range.toSec;
+  if (!Number.isFinite(base) || base < 0 || (source.toSec && toSec > source.toSec + 1e-4)) {
+    throw new Error(`Trim exceeds video range for episode ${episodeIndex}, feature "${key}"`);
+  }
+  return { ...source, fromSec, toSec };
+}
 
 /** Keep v3 shared files and timestamps; unreferenced files are omitted entirely. */
 async function exportSharedV3Videos(
@@ -17,6 +41,7 @@ async function exportSharedV3Videos(
   adapter: ExportAdapter,
   onProgress?: (p: ExportProgress) => void,
   signal?: AbortSignal,
+  trimRanges?: ReadonlyMap<number, ExportTrim>,
 ): Promise<EpisodeVideoOffsets> {
   const keys = Object.keys(info.features).filter((key) => info.features[key]?.dtype === 'video');
   const chunksSize = info.chunks_size ?? CHUNK_SIZE_DEFAULT;
@@ -29,7 +54,7 @@ async function exportSharedV3Videos(
     const files = new Map<string, { chunk_index: number; file_index: number }>();
     for (const episode of episodes) {
       assertNotAborted(signal);
-      const source = dataLoader.getEpisodeVideoPath(episode.episode_index, key);
+      const source = episodeVideoRange(dataLoader, episode.episode_index, key, trimRanges);
       if (!source || !hasMeaningfulTrim(source) || Number(source.fromSec ?? 0) < 0) {
         throw new Error(
           `Missing or invalid video range for episode ${episode.episode_index}, feature "${key}"`,
@@ -126,51 +151,58 @@ async function convertSegmentWithMediabunny(
   const blob = new Blob([copy], { type: 'application/octet-stream' });
   const source = new BlobSource(blob);
   const input = new Input({ source, formats: ALL_FORMATS });
-  const fullDuration = await input.computeDuration();
-  if (!Number.isFinite(fullDuration) || fullDuration <= 0) return null;
-  const rawStart = trim?.fromSec ?? 0;
-  const rawEnd = trim?.toSec ?? fullDuration;
-  // Defensive: sentinel `{fromSec:0, toSec:0}` or reversed ranges mean "whole
-  // file". Passing `start>=end` to Mediabunny throws, so collapse those cases.
-  const useTrim =
-    trim != null &&
-    Number.isFinite(rawStart) &&
-    Number.isFinite(rawEnd) &&
-    rawEnd > rawStart &&
-    (rawStart > 0 || rawEnd < fullDuration);
-  const start = useTrim ? rawStart : 0;
-  const end = useTrim ? rawEnd : fullDuration;
-  const duration = Math.max(0, end - start);
-  const target = new BufferTarget();
-  const output = new Output({
-    format: new Mp4OutputFormat(),
-    target,
-  });
-  const conversion = await Conversion.init({
-    input,
-    output,
-    ...(useTrim ? { trim: { start, end } } : {}),
-  });
-  if (!conversion.isValid) return null;
-
-  const onAbort = () => {
-    conversion.cancel().catch(() => undefined);
-  };
-  if (signal) {
-    if (signal.aborted) {
-      onAbort();
-      return null;
-    }
-    signal.addEventListener('abort', onAbort, { once: true });
-  }
   try {
-    await conversion.execute();
+    const fullDuration = await input.computeDuration();
+    if (!Number.isFinite(fullDuration) || fullDuration <= 0) return null;
+    const rawStart = trim?.fromSec ?? 0;
+    const rawEnd = trim?.toSec ?? fullDuration;
+    if (rawEnd > fullDuration + 1e-4) {
+      throw new Error('Requested video range exceeds the source duration');
+    }
+    // Defensive: sentinel `{fromSec:0, toSec:0}` or reversed ranges mean "whole
+    // file". Passing `start>=end` to Mediabunny throws, so collapse those cases.
+    const useTrim =
+      trim != null &&
+      Number.isFinite(rawStart) &&
+      Number.isFinite(rawEnd) &&
+      rawEnd > rawStart &&
+      (rawStart > 0 || rawEnd < fullDuration);
+    const start = useTrim ? rawStart : 0;
+    const end = useTrim ? rawEnd : fullDuration;
+    const duration = Math.max(0, end - start);
+    const target = new BufferTarget();
+    const output = new Output({
+      format: new Mp4OutputFormat(),
+      target,
+    });
+    const conversion = await Conversion.init({
+      input,
+      output,
+      ...(useTrim ? { trim: { start, end } } : {}),
+    });
+    if (!conversion.isValid) return null;
+
+    const onAbort = () => {
+      conversion.cancel().catch(() => undefined);
+    };
+    if (signal) {
+      if (signal.aborted) {
+        onAbort();
+        return null;
+      }
+      signal.addEventListener('abort', onAbort, { once: true });
+    }
+    try {
+      await conversion.execute();
+    } finally {
+      if (signal) signal.removeEventListener('abort', onAbort);
+    }
+    const buffer = target.buffer;
+    if (!buffer) return null;
+    return { buffer, duration };
   } finally {
-    if (signal) signal.removeEventListener('abort', onAbort);
+    input.dispose();
   }
-  const buffer = target.buffer;
-  if (!buffer) return null;
-  return { buffer, duration };
 }
 
 /**
@@ -183,6 +215,7 @@ async function exportVideosCopy(
   adapter: ExportAdapter,
   onProgress?: (p: ExportProgress) => void,
   signal?: AbortSignal,
+  trimRanges?: ReadonlyMap<number, ExportTrim>,
 ): Promise<void> {
   const videoKeys = Object.entries(info.features)
     .filter(([, f]) => f?.dtype === 'video')
@@ -200,14 +233,22 @@ async function exportVideosCopy(
       assertNotAborted(signal);
       const chunkIdx = Math.floor(i / chunksSize);
       const path = `videos/chunk-${String(chunkIdx).padStart(3, '0')}/${key}/episode_${String(i).padStart(6, '0')}.mp4`;
-      const pathResult = dataLoader.getEpisodeVideoPath(ep.episode_index, key);
+      const pathResult = episodeVideoRange(dataLoader, ep.episode_index, key, trimRanges);
       if (!pathResult) {
         throw new Error(`Missing source video for episode ${ep.episode_index}, feature "${key}"`);
       }
       try {
         const bytes = await dataLoader.readFileBytes(pathResult.path);
         await ensureParentDir(adapter, path);
-        await adapter.writeFile(path, bytes);
+        const range = trimRanges?.get(ep.episode_index);
+        if (range) {
+          const converted = await convertSegmentWithMediabunny(bytes, pathResult, signal);
+          if (!converted) throw new Error(`Video conversion produced no output: ${path}`);
+          await assertTrimmedVideo(converted.buffer, range, info.fps, signal);
+          await adapter.writeFile(path, new Uint8Array(converted.buffer));
+        } else {
+          await adapter.writeFile(path, bytes);
+        }
       } catch (e) {
         throw new Error(
           `Failed to export video "${path}": ${e instanceof Error ? e.message : String(e)}`,
@@ -240,6 +281,7 @@ async function exportVideosTranscodeToV3(
   adapter: ExportAdapter,
   onProgress?: (p: ExportProgress) => void,
   signal?: AbortSignal,
+  trimRanges?: ReadonlyMap<number, ExportTrim>,
 ): Promise<EpisodeVideoOffsets> {
   const videoKeys = Object.entries(info.features)
     .filter(([, f]) => f?.dtype === 'video')
@@ -279,7 +321,7 @@ async function exportVideosTranscodeToV3(
     for (let newIdx = 0; newIdx < episodes.length; newIdx++) {
       assertNotAborted(signal);
       const ep = episodes[newIdx];
-      const pathResult = dataLoader.getEpisodeVideoPath(ep.episode_index, key);
+      const pathResult = episodeVideoRange(dataLoader, ep.episode_index, key, trimRanges);
       const outPath = `videos/${key}/chunk-${String(chunkIdx).padStart(3, '0')}/file-${String(fileIdx).padStart(3, '0')}.mp4`;
 
       if (!pathResult) {
@@ -314,6 +356,8 @@ async function exportVideosTranscodeToV3(
             throw new Error(`Video conversion produced no MP4 output: ${outPath}`);
           } else {
             await ensureParentDir(adapter, outPath);
+            const range = trimRanges?.get(ep.episode_index);
+            if (range) await assertTrimmedVideo(result.buffer, range, info.fps, signal);
             await adapter.writeFile(outPath, new Uint8Array(result.buffer));
             if (!offsets.has(ep.episode_index)) offsets.set(ep.episode_index, {});
             offsets.get(ep.episode_index)![key] = {
@@ -365,6 +409,7 @@ async function exportVideosTranscodeToV2FromV3(
   adapter: ExportAdapter,
   onProgress?: (p: ExportProgress) => void,
   signal?: AbortSignal,
+  trimRanges?: ReadonlyMap<number, ExportTrim>,
 ): Promise<void> {
   const videoKeys = Object.entries(info.features)
     .filter(([, f]) => f?.dtype === 'video')
@@ -380,7 +425,7 @@ async function exportVideosTranscodeToV2FromV3(
     const ep = episodes[i];
     for (const key of videoKeys) {
       assertNotAborted(signal);
-      const pathResult = dataLoader.getEpisodeVideoPath(ep.episode_index, key);
+      const pathResult = episodeVideoRange(dataLoader, ep.episode_index, key, trimRanges);
       if (!pathResult) {
         throw new Error(`Missing source video for episode ${ep.episode_index}, feature "${key}"`);
       }
@@ -395,6 +440,8 @@ async function exportVideosTranscodeToV2FromV3(
           throw new Error(`Video conversion produced no MP4 output: ${outPath}`);
         } else {
           await ensureParentDir(adapter, outPath);
+          const range = trimRanges?.get(ep.episode_index);
+          if (range) await assertTrimmedVideo(result.buffer, range, info.fps, signal);
           await adapter.writeFile(outPath, new Uint8Array(result.buffer));
         }
       } catch (e) {
@@ -456,13 +503,29 @@ export async function exportVideosByTarget(
   options?: VideoExportOptions,
 ): Promise<EpisodeVideoOffsets | null> {
   if (targetVersion === 'v2.1' && isV2Info(info)) {
-    await exportVideosCopy(dataLoader, info, episodes, adapter, onProgress, options?.signal);
+    await exportVideosCopy(
+      dataLoader,
+      info,
+      episodes,
+      adapter,
+      onProgress,
+      options?.signal,
+      options?.trimRanges,
+    );
     return null;
   }
 
   if (targetVersion === 'v3.0') {
     if (isV3Info(info) && !options?.compactVideos) {
-      return exportSharedV3Videos(dataLoader, info, episodes, adapter, onProgress, options?.signal);
+      return exportSharedV3Videos(
+        dataLoader,
+        info,
+        episodes,
+        adapter,
+        onProgress,
+        options?.signal,
+        options?.trimRanges,
+      );
     }
     return exportVideosTranscodeToV3(
       dataLoader,
@@ -471,6 +534,7 @@ export async function exportVideosByTarget(
       adapter,
       onProgress,
       options?.signal,
+      options?.trimRanges,
     );
   }
 
@@ -482,9 +546,33 @@ export async function exportVideosByTarget(
       adapter,
       onProgress,
       options?.signal,
+      options?.trimRanges,
     );
     return null;
   }
 
   return null;
+}
+
+/** Check the actual encoded output rather than trusting the requested duration. */
+async function assertTrimmedVideo(
+  buffer: ArrayBuffer,
+  range: ExportTrim,
+  fps: number,
+  signal?: AbortSignal,
+): Promise<void> {
+  const { Input, BlobSource, ALL_FORMATS } = await import('mediabunny');
+  const input = new Input({ source: new BlobSource(new Blob([buffer])), formats: ALL_FORMATS });
+  try {
+    signal?.throwIfAborted();
+    const track = await input.getPrimaryVideoTrack();
+    const count = (await track?.computePacketStats())?.packetCount;
+    const expected = range.endFrame - range.startFrame + 1;
+    if (count !== expected || Math.abs((await input.computeDuration()) - expected / fps) > 1e-4) {
+      throw new Error(`Trimmed video does not match its ${expected} data frames`);
+    }
+    signal?.throwIfAborted();
+  } finally {
+    input.dispose();
+  }
 }

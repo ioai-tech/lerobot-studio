@@ -66,3 +66,4 @@ export type { ChartSeriesKind, ChartDimensionMeta } from './panels/chartTypes';
 export type { ParquetWorkerAPI, ParquetImageWorkerAPI } from './workers/types';
 
 export * from './subtask';
+export * from './export/trim';

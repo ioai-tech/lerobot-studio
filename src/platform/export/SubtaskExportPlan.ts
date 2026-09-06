@@ -1,6 +1,8 @@
 import type { EpisodeMetadata, LeRobotInfo } from '@/core';
 import {
   SUBTASK_INDEX_FEATURE,
+  trimSubtaskSegments,
+  type EpisodeTrimRange,
   SUBTASK_INDEX_FEATURE_KEY,
   assertExportCoverage,
   assignNewSubtaskLabels,
@@ -26,6 +28,7 @@ export async function buildExportSubtaskPlan(options: {
   overlay: ReadonlyMap<number, SubtaskSegment[]>;
   sourceTable: SubtaskTable;
   targetVersion: TargetVersion;
+  trimRanges?: ReadonlyMap<number, EpisodeTrimRange>;
 }): Promise<ExportSubtaskPlan | null> {
   if (options.targetVersion !== 'v3.0') return null;
 
@@ -55,7 +58,9 @@ export async function buildExportSubtaskPlan(options: {
 
   const framesBySourceEpisode = new Map<number, number[]>();
   for (const episode of options.episodes) {
-    const segments = episodeSegments.get(episode.episode_index) ?? [];
+    const sourceSegments = episodeSegments.get(episode.episode_index) ?? [];
+    const range = options.trimRanges?.get(episode.episode_index);
+    const segments = range ? trimSubtaskSegments(sourceSegments, range) : sourceSegments;
     assertExportCoverage(episode.episode_index, episode.length, segments);
     const frames = frameIndicesFromSegments(episode.length, segments, table);
     const resolved = frames.map((value, row) => {

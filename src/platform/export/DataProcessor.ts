@@ -55,6 +55,16 @@ function rewriteEpisodeAndGlobalIndex(
   if (table.schema.fields.some((f) => f.name === 'index')) {
     overrides.index = arrow.vectorFromArray(index, new arrow.Int64());
   }
+  const sourceFrameIndex = table.getChild('frame_index');
+  if (sourceFrameIndex) {
+    // Trimmed and untouched episodes must share a schema when concatenated.
+    overrides.frame_index = arrow.vectorFromArray(
+      Array.from({ length: n }, (_, row) =>
+        BigInt(toSafeInteger(sourceFrameIndex.get(row), 'frame_index')),
+      ),
+      new arrow.Int64(),
+    );
+  }
   const sourceTaskIndex = table.getChild('task_index');
   if (sourceTaskIndex) {
     const rewritten = new Array<bigint>(n);
@@ -93,7 +103,7 @@ function rewriteEpisodeAndGlobalIndex(
 }
 
 async function getValidatedEpisodeTable(
-  dataLoader: LeRobotDataLoader,
+  dataLoader: Pick<LeRobotDataLoader, 'getEpisodeTableForExport'>,
   episode: EpisodeMetadata,
 ): Promise<Table> {
   const { table } = await dataLoader.getEpisodeTableForExport(episode.episode_index);
@@ -125,7 +135,7 @@ export interface ExportDataOptions {
  * Exports data Parquet files: filter deleted, or convert v2<->v3.
  */
 export async function exportDataFiles(
-  dataLoader: LeRobotDataLoader,
+  dataLoader: Pick<LeRobotDataLoader, 'getEpisodeTableForExport'>,
   info: LeRobotInfo,
   episodes: EpisodeMetadata[],
   targetVersion: 'v2.1' | 'v3.0' | undefined,
@@ -176,7 +186,7 @@ function dropColumns(table: Table, drop?: Set<string>): Table {
 }
 
 async function filterAndWriteSameVersion(
-  dataLoader: LeRobotDataLoader,
+  dataLoader: Pick<LeRobotDataLoader, 'getEpisodeTableForExport'>,
   info: LeRobotInfo,
   episodes: EpisodeMetadata[],
   adapter: ExportAdapter,
@@ -230,7 +240,7 @@ async function filterAndWriteSameVersion(
 }
 
 async function mergeV2ToV3(
-  dataLoader: LeRobotDataLoader,
+  dataLoader: Pick<LeRobotDataLoader, 'getEpisodeTableForExport'>,
   info: LeRobotInfo,
   episodes: EpisodeMetadata[],
   adapter: ExportAdapter,
@@ -275,7 +285,7 @@ function positiveNumberOrDefault(value: unknown, fallback: number, field: string
  * splitting episodes. An individual oversized episode stays in one file.
  */
 async function writeV3DataFiles(
-  dataLoader: LeRobotDataLoader,
+  dataLoader: Pick<LeRobotDataLoader, 'getEpisodeTableForExport'>,
   info: LeRobotInfo,
   episodes: EpisodeMetadata[],
   adapter: ExportAdapter,
@@ -383,7 +393,7 @@ async function writeV3DataFiles(
 }
 
 async function splitV3ToV2(
-  dataLoader: LeRobotDataLoader,
+  dataLoader: Pick<LeRobotDataLoader, 'getEpisodeTableForExport'>,
   episodes: EpisodeMetadata[],
   adapter: ExportAdapter,
   taskPlan: ExportTaskPlan,

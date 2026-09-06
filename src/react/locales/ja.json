@@ -340,9 +340,18 @@
           "message": "info.video_path がデフォルトテンプレートと一致しません",
           "suggestion": "デフォルトの動画パステンプレートを使用してください"
         },
-        "TASKS_PRESENT": { "message": "タスクメタデータを検出しました", "suggestion": "" },
-        "EPISODE_COUNT": { "message": "{{count}} 件のエピソードを解析しました", "suggestion": "" },
-        "TASK_COUNT": { "message": "{{count}} 件のタスクを解析しました", "suggestion": "" },
+        "TASKS_PRESENT": {
+          "message": "タスクメタデータを検出しました",
+          "suggestion": ""
+        },
+        "EPISODE_COUNT": {
+          "message": "{{count}} 件のエピソードを解析しました",
+          "suggestion": ""
+        },
+        "TASK_COUNT": {
+          "message": "{{count}} 件のタスクを解析しました",
+          "suggestion": ""
+        },
         "SPLITS_MISSING_TRAIN": {
           "message": "splits に \"train\" が必要です",
           "suggestion": "splits に少なくとも \"train\" キーを追加してください"
@@ -698,7 +707,7 @@
     "subtaskEpisodes": "サブタスク付きエピソード",
     "includeSubtasks": "サブタスクを含める",
     "compactVideos": "未使用の動画区間を除去する（低速）",
-    "sharedVideoHint": "高速エクスポートは共有動画を再エンコードせずにコピーします。削除したエピソードはデータセットから除外されますが、映像は共有ファイルに残る場合があります。このオプションで未使用の区間を実際に除去できます。",
+    "sharedVideoHint": "高速エクスポートは共有動画を再エンコードせずコピーします。削除したエピソードやフレームは出力データから除外されますが、映像は共有ファイルに残る場合があります。有効にすると不要な映像も物理的に削除します。",
     "subtaskCoverageHint": "書き出す各エピソードはサブタスクをすべてラベルする必要があります。",
     "subtaskCoverageMissing": "エピソード #{{index}} にはサブタスクのラベルがありません。",
     "subtaskCoverageIncomplete": "エピソード #{{index}} のラベルが不完全です（{{labeled}}/{{total}}）。",
@@ -762,5 +771,18 @@
     "range": "{{from}}-{{to}} / {{count}}",
     "prevAriaLabel": "前のページへ",
     "nextAriaLabel": "次のページへ"
+  },
+  "trim": {
+    "title": "エピソードをトリミング",
+    "start": "開始フレーム",
+    "end": "終了フレーム",
+    "setStart": "ここを開始点に",
+    "setEnd": "ここを終了点に",
+    "reset": "トリミングをリセット",
+    "preview": "保持範囲のみ再生",
+    "startHandle": "トリミング開始境界",
+    "endHandle": "トリミング終了境界",
+    "summary": "{{original}} → {{kept}} フレーム · {{start}}–{{end}} 秒を保持",
+    "exportSummary": "トリミング適用：{{original}} → {{kept}} フレーム。元のファイルは変更されません。"
   }
 }

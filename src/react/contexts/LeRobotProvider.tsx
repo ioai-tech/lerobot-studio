@@ -89,6 +89,8 @@ export const LeRobotDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
   const [sourceSubtasks, setSourceSubtasks] = useState<SubtaskTable>({});
   const [sourceSubtaskIndices, setSourceSubtaskIndices] = useState<Array<number | null>>([]);
   const [subtaskDialogOpen, setSubtaskDialogOpen] = useState(false);
+  const [trimEditMode, setTrimEditMode] = useState(false);
+  const [previewTrim, setPreviewTrim] = useState(false);
   const [episodeEditMode, setEpisodeEditMode] = useState(false);
   const [selectedEpisodeIndex, setSelectedEpisodeIndex] = useState<number | null>(null);
   const [currentFrames, setCurrentFrames] = useState<FrameData[]>([]);
@@ -116,6 +118,9 @@ export const LeRobotDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
   const versionCapability = dataLoader?.getVersionCapability() ?? null;
   const isReadOnly = versionCapability?.status === 'read-only';
   const {
+    trimRanges,
+    setTrimRanges,
+    trimEpisode,
     modifiedEpisodes,
     setModifiedEpisodes,
     deletedEpisodes,
@@ -158,7 +163,7 @@ export const LeRobotDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
   const onNaturalEndRef = useRef<() => void>(() => undefined);
   shouldHoldAtEpisodeEndRef.current = () => subtask.canAnnotate && episodeEditMode;
   onNaturalEndRef.current = () => {
-    if (!(subtask.canAnnotate && episodeEditMode)) return;
+    if (!(subtask.canAnnotate && episodeEditMode) || trimEditMode) return;
     const gap = lastUnlabeledGap(subtask.currentSegments, currentFrames.length);
     if (!gap) return;
     if (subtask.beginPendingRange(gap.startFrame, gap.endFrame)) {
@@ -247,6 +252,10 @@ export const LeRobotDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
     selectEpisodeRef,
     shouldHoldAtEpisodeEndRef,
     onNaturalEndRef,
+    previewRange:
+      previewTrim && selectedEpisodeIndex != null
+        ? trimRanges.get(selectedEpisodeIndex)
+        : undefined,
   });
 
   const reset = useCallback(async () => {
@@ -279,6 +288,9 @@ export const LeRobotDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
     setSourceSubtaskIndices([]);
     setSubtaskDialogOpen(false);
     setEpisodeEditMode(false);
+    setTrimEditMode(false);
+    setPreviewTrim(false);
+    setTrimRanges(new Map());
     resetSubtasks();
     setModifiedEpisodes(new Map());
     setDeletedEpisodes(new Set());
@@ -306,6 +318,7 @@ export const LeRobotDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
     setCurrentFrameIndex,
     setIsPlaying,
     resetSubtasks,
+    setTrimRanges,
   ]);
 
   const initialize = useCallback(
@@ -348,6 +361,9 @@ export const LeRobotDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
         setSourceSubtaskIndices([]);
         setSubtaskDialogOpen(false);
         setEpisodeEditMode(false);
+        setTrimEditMode(false);
+        setPreviewTrim(false);
+        setTrimRanges(new Map());
         resetSubtasks();
         setModifiedEpisodes(new Map());
         setDeletedEpisodes(new Set());
@@ -428,6 +444,7 @@ export const LeRobotDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
       setCurrentFrameIndex,
       setIsPlaying,
       resetSubtasks,
+      setTrimRanges,
     ],
   );
 
@@ -667,6 +684,8 @@ export const LeRobotDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
 
   const selectionValue = useMemo(
     () => ({
+      trimRanges,
+      trimEpisode,
       selectedEpisodeIndex,
       selectedEpisodeIndices,
       toggleEpisodeSelection,
@@ -684,6 +703,8 @@ export const LeRobotDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
       selectEpisode,
     }),
     [
+      trimRanges,
+      trimEpisode,
       selectedEpisodeIndex,
       selectedEpisodeIndices,
       toggleEpisodeSelection,
@@ -733,6 +754,10 @@ export const LeRobotDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
 
   const uiValue = useMemo(
     () => ({
+      trimEditMode,
+      setTrimEditMode,
+      previewTrim,
+      setPreviewTrim,
       healthDialogOpen,
       setHealthDialogOpen,
       subtaskDialogOpen,
@@ -740,7 +765,7 @@ export const LeRobotDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
       episodeEditMode,
       setEpisodeEditMode,
     }),
-    [healthDialogOpen, subtaskDialogOpen, episodeEditMode],
+    [healthDialogOpen, subtaskDialogOpen, episodeEditMode, trimEditMode, previewTrim],
   );
 
   const subtaskValue = useMemo(

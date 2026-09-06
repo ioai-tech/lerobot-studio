@@ -1,5 +1,6 @@
 import { useCallback, useMemo, useState } from 'react';
 import type { EpisodeMetadata, LeRobotVersionCapability } from '@/core';
+import { validateEpisodeTrim, type EpisodeTrimRange } from '@/core';
 import { assertEpisodeMutationAllowed, createEpisodeTaskEdit } from './versionMutationPolicy';
 
 export function getEffectiveEpisode(
@@ -41,6 +42,23 @@ type UseEpisodeViewOptions = {
 };
 
 export function useEpisodeView({ episodes, versionCapability }: UseEpisodeViewOptions) {
+  const [trimRanges, setTrimRanges] = useState<Map<number, EpisodeTrimRange>>(() => new Map());
+  const trimEpisode = useCallback(
+    (episodeIndex: number, range: EpisodeTrimRange | null) => {
+      assertEpisodeMutationAllowed(versionCapability);
+      const episode = episodes.find((item) => item.episode_index === episodeIndex);
+      if (!episode) throw new Error(`Unknown episode ${episodeIndex}`);
+      if (range) validateEpisodeTrim(range, episode.length);
+      setTrimRanges((previous) => {
+        const next = new Map(previous);
+        if (!range || (range.startFrame === 0 && range.endFrame === episode.length - 1))
+          next.delete(episodeIndex);
+        else next.set(episodeIndex, { ...range });
+        return next;
+      });
+    },
+    [episodes, versionCapability],
+  );
   const [modifiedEpisodes, setModifiedEpisodes] = useState<Map<number, Partial<EpisodeMetadata>>>(
     () => new Map(),
   );
@@ -110,6 +128,9 @@ export function useEpisodeView({ episodes, versionCapability }: UseEpisodeViewOp
   }, []);
 
   return {
+    trimRanges,
+    setTrimRanges,
+    trimEpisode,
     modifiedEpisodes,
     setModifiedEpisodes,
     deletedEpisodes,
