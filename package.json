@@ -45,7 +45,7 @@
     "@types/react-dom": "^19.2.4",
     "@vitejs/plugin-react": "^6.0.4",
     "@vitest/browser": "^4.1.10",
-    "@vitest/browser-playwright": "^4.1.10",
+    "@vitest/browser-playwright": "^5.0.0",
     "@vitest/coverage-v8": "^4.1.10",
     "axe-core": "^4.12.1",
     "eslint": "^10.8.0",
