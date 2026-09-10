@@ -116,7 +116,10 @@
     "access": "public"
   },
   "overrides": {
-    "browserslist": "^4.28.8"
+    "browserslist": "^4.28.8",
+    "hono": "4.13.7",
+    "js-yaml@3": "3.15.2",
+    "js-yaml@4": "4.3.2"
   },
   "dependencies": {
     "@base-ui/react": "^1.7.0",
