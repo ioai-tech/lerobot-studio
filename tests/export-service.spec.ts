@@ -11,6 +11,8 @@ const mocks = vi.hoisted(() => ({
   computeDatasetStats: vi.fn(),
   computeSplits: vi.fn(),
   splitsIndicesToInfoSplits: vi.fn(),
+  buildTrimExportPlan: vi.fn(),
+  computeTrimVisualStats: vi.fn(),
 }));
 
 vi.mock('../src/platform/export/MetadataExporter', () => ({
@@ -27,6 +29,12 @@ vi.mock('../src/platform/export/ImageVideoExporter', () => ({
   exportImageFeaturesAsVideo: mocks.exportImageFeaturesAsVideo,
   getImageFeatureKeys: mocks.getImageFeatureKeys,
   rewriteFeaturesForImageToVideo: mocks.rewriteFeaturesForImageToVideo,
+}));
+vi.mock('../src/platform/export/TrimExportPlan', () => ({
+  buildTrimExportPlan: mocks.buildTrimExportPlan,
+}));
+vi.mock('../src/platform/export/TrimVisualStats', () => ({
+  computeTrimVisualStats: mocks.computeTrimVisualStats,
 }));
 vi.mock('@/core', async (importOriginal) => {
   const original = await importOriginal<typeof import('@/core')>();
@@ -61,6 +69,11 @@ beforeEach(() => {
   mocks.computeDatasetStats.mockResolvedValue({ stats: true });
   mocks.computeSplits.mockReturnValue({ train: [0] });
   mocks.splitsIndicesToInfoSplits.mockReturnValue({ train: '0:1' });
+  mocks.buildTrimExportPlan.mockImplementation(async (dataLoader, sourceEpisodes) => ({
+    ranges: new Map(),
+    episodes: sourceEpisodes,
+    dataLoader,
+  }));
 });
 
 describe('ExportService', () => {
@@ -371,6 +384,13 @@ describe('ExportService', () => {
     expect(resolveNumericRow?.('index', context)).toBe(12);
     expect(resolveNumericRow?.('episode_index', context)).toBe(0);
     expect(resolveNumericRow?.('timestamp', context)).toBeUndefined();
+    expect(() =>
+      resolveNumericRow?.('subtask_index', {
+        ...context,
+        episode: multiTaskEpisodes[0],
+        rowIndex: 0,
+      }),
+    ).toThrow(/cannot map frame subtask_index/i);
     expect(resolveNumericRow?.('task_index', context)).toBe(1);
     expect(() => resolveNumericRow?.('task_index', { ...context, sourceValues: [1.5] })).toThrow(
       /non-integer frame task_index/i,
@@ -455,6 +475,89 @@ describe('ExportService', () => {
       ),
     ).rejects.toThrow(/loaded LeRobot v3\.1 \(read-only\)/);
     expect(target.clear).not.toHaveBeenCalled();
+  });
+
+  it('refuses to trim without exporting frame data', async () => {
+    mocks.buildTrimExportPlan.mockResolvedValueOnce({
+      ranges: new Map([
+        [0, { startFrame: 1, endFrame: 1, fromSec: 0.1, toSec: 0.2, sourceLength: 2 }],
+      ]),
+      episodes,
+      dataLoader: loader(),
+    });
+    const target = adapter();
+    await expect(
+      new ExportService(loader(), target).exportWithData(
+        info,
+        episodes,
+        { 0: 'pick' },
+        {
+          format: 'zip',
+          targetVersion: 'v3.0',
+          includeData: false,
+          includeVideos: false,
+          trimRanges: new Map([[0, { startFrame: 1, endFrame: 1 }]]),
+        },
+      ),
+    ).rejects.toThrow(/trimming requires exporting frame data/i);
+    expect(target.clear).not.toHaveBeenCalled();
+  });
+
+  it('recomputes visual stats only for trimmed episodes and stamps them onto metadata', async () => {
+    const trimmed = {
+      episode_index: 0,
+      length: 1,
+      tasks: ['pick'],
+      stats: { stale: true },
+      'stats/camera/mean': [9],
+    };
+    const untouched = { episode_index: 1, length: 2, tasks: ['pick'] };
+    const range = { startFrame: 1, endFrame: 1, fromSec: 0.1, toSec: 0.2, sourceLength: 2 };
+    const visualStats = { camera: { mean: [0.2], std: [0.1] } };
+    mocks.buildTrimExportPlan.mockResolvedValueOnce({
+      ranges: new Map([[0, range]]),
+      episodes: [trimmed, untouched],
+      dataLoader: loader(),
+    });
+    mocks.computeTrimVisualStats.mockResolvedValueOnce(visualStats);
+    mocks.computeDatasetStats.mockImplementationOnce(
+      async (_loader, _info, sourceEpisodes, options) => {
+        expect(await options.getEpisodeStats(sourceEpisodes[0])).toEqual(visualStats);
+        expect(await options.getEpisodeStats(sourceEpisodes[1])).toBeUndefined();
+        options.onEpisodeStats(sourceEpisodes[0], visualStats);
+        return { stats: true };
+      },
+    );
+
+    await new ExportService(loader(), adapter()).exportWithData(
+      info,
+      [trimmed, untouched] as any,
+      { 0: 'pick' },
+      {
+        format: 'zip',
+        targetVersion: 'v3.0',
+        includeData: true,
+        includeVideos: true,
+        trimRanges: new Map([[0, { startFrame: 1, endFrame: 1 }]]),
+      },
+    );
+
+    expect(mocks.computeTrimVisualStats).toHaveBeenCalledWith(
+      expect.anything(),
+      info,
+      0,
+      range,
+      undefined,
+    );
+    expect(trimmed).toMatchObject({
+      'stats/camera/mean': [0.2],
+      'stats/camera/std': [0.1],
+    });
+    expect(trimmed).not.toHaveProperty('stats');
+    expect(untouched).toEqual({ episode_index: 1, length: 2, tasks: ['pick'] });
+    expect(mocks.exportVideosByTarget.mock.calls[0][6]).toMatchObject({
+      trimRanges: expect.any(Map),
+    });
   });
 
   it('rejects source-info mismatches and unsupported targets before clearing', async () => {
