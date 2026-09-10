@@ -12,8 +12,7 @@ export async function computeTrimVisualStats(
 ): Promise<DatasetStats> {
   const result: DatasetStats = {};
   const length = range.endFrame - range.startFrame + 1;
-  // ponytail: sample at most 100 evenly spaced frames, including both edges;
-  // increase the cap or use full-frame sampling if distribution accuracy requires it.
+  // Sample at most 100 evenly spaced frames, including both edges.
   const count = Math.min(100, length);
   const frames = Array.from(
     { length: count },
