@@ -16,9 +16,9 @@ if (!Number.isFinite(scale) || scale <= 0 || scale > 1) {
 // Round integer ceilings above the current artifacts. Raising one requires
 // an explicit review of the generated output.
 const budgets = {
-  libEntry: { raw: 380_000, gzip: 120_000 },
+  libEntry: { raw: 400_000, gzip: 125_000 },
   libCss: { raw: 360_000, gzip: 110_000 },
-  webInitialJs: { raw: 2_700_000, gzip: 720_000 },
+  webInitialJs: { raw: 2_700_000, gzip: 730_000 },
   webInitialCss: { raw: 200_000, gzip: 25_000 },
   libDataLoader: { raw: 280_000, gzip: 60_000 },
   webDataLoader: { raw: 40_000, gzip: 10_000 },

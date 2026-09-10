@@ -4,17 +4,16 @@ import tailwindcss from '@tailwindcss/vite';
 import path from 'node:path';
 import { cssScopePlugin } from './scripts/vite/cssScopePlugin.ts';
 
-const parquetWasmModule = path.resolve(
-  import.meta.dirname,
-  './node_modules/parquet-wasm/esm/parquet_wasm.js',
-);
+const parquetWasmModule = path
+  .resolve(import.meta.dirname, './node_modules/parquet-wasm/esm/parquet_wasm.js')
+  .replace(/\\/g, '/');
 
 function explicitParquetWasmPlugin(): Plugin {
   return {
     name: 'explicit-parquet-wasm',
     enforce: 'pre' as const,
     transform(code: string, id: string) {
-      const cleanId = id.split('?', 1)[0];
+      const cleanId = id.split('?', 1)[0].replace(/\\/g, '/');
       if (cleanId === parquetWasmModule) {
         const fallback = "module_or_path = new URL('parquet_wasm_bg.wasm', import.meta.url);";
         if (!code.includes(fallback)) {
