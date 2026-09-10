@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.3.3
+
+### Patch Changes
+
+- Add episode trim in Edit and apply it on export. Same-version v3.0 export copies shared videos by default and can physically drop unused segments when requested. Raise the library entry raw bundle budget to cover the trim controls in the viewer.
+- Override transitive `js-yaml` 3.15.2 / 4.3.2 and `hono` 4.13.7 to clear `npm audit` (GHSA-2883-xcg3-v3hh and the hono 4.13.5+ security fixes). These packages are not runtime app dependencies.
+
 ## 1.3.2
 
 ### Patch Changes
