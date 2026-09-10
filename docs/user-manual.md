@@ -93,6 +93,19 @@ Trims stay in the current browser session, including when switching episodes. Ex
 
 For `v3.0` → `v3.0`, leave **Remove unused video segments (slower)** unchecked for a fast export: shared MP4s are copied and their references point to the retained range. Check it to physically trim the video too. Other version combinations physically trim edited episodes. Re-encoding needs browser codec support and can change image quality or file size. The first version supports constant-frame-rate RGB/grayscale datasets; incompatible timestamps, raw depth/TIFF statistics, missing frames, or failed codecs produce an export error instead of an incomplete dataset.
 
+### Batch trimming and motion suggestions
+
+Use **Select** in the episode sidebar, select episodes, and choose **Batch trim**. Only selected episodes in the current filtered list are included. Choose either:
+
+- **Remove fixed durations**: remove a specified number of seconds from each end of the original episode. Repeating the calculation does not accumulate removals. Episodes too short for the requested removal are skipped.
+- **Suggest retained ranges**: detect movement in a position or gripper state feature, then retain a buffer before and after it. Both buffers default to **3 seconds** and are independently adjustable. Select the feature, sensitivity, and participating dimensions; existing trims are skipped unless you enable overwriting.
+
+Calculate the ranges and review each episode's proposed interval, removed duration, and status. Click a range to preview it in the player and adjust its frame boundaries. **Return to batch trim** keeps those adjustments in the proposal; only **Apply selected ranges** changes the export selection. **Undo this batch** restores the previous trims while this dialog remains open, without overwriting subsequent edits. Changing calculation settings or starting another calculation clears that undo history. Closing without applying discards the proposals.
+
+The detector uses short windows of numeric state data, with a noise threshold and conservative boundary padding. It keeps pauses between movements and does not analyze video or identify task semantics. Low-frequency sensor drift, very slow movements, and robot return-to-home movements may be indistinguishable from useful actions; sensitivity and dimension selection need checking on your recordings. All-static, missing, invalid, or insufficient signals produce no reliable suggestion. Continuous movement retains the entire episode. Cancellation discards pending proposals; an in-flight data read may finish in the background.
+
+Batch ranges use the same export path as manual trimming, including subtask clipping, recomputed statistics, and **Remove unused video segments (slower)**.
+
 ## Export a dataset
 
 Export is available in the standalone app for supported `v2.1` and `v3.0` datasets.

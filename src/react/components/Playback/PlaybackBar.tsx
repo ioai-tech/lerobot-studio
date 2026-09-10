@@ -58,13 +58,18 @@ export const PlaybackBar: React.FC = () => {
     episodeEditMode,
     trimEditMode,
     setTrimEditMode,
+    trimSuggestion,
+    setTrimSuggestion,
     previewTrim,
     setPreviewTrim,
   } = useLeRobotUi();
-  const trimming = episodeEditMode && trimEditMode && versionCapability?.status === 'supported';
+  const suggestion = trimSuggestion?.episodeIndex === selectedEpisodeIndex ? trimSuggestion : null;
+  const trimming =
+    !!suggestion || (episodeEditMode && trimEditMode && versionCapability?.status === 'supported');
   const annotationEnabled = canAnnotate && episodeEditMode && !trimming;
   const trimRange =
-    selectedEpisodeIndex != null ? trimRanges?.get(selectedEpisodeIndex) : undefined;
+    suggestion?.range ??
+    (selectedEpisodeIndex != null ? trimRanges?.get(selectedEpisodeIndex) : undefined);
   const [renameIndex, setRenameIndex] = useState<number | null>(null);
 
   const { tasks } = useLoading();
@@ -347,7 +352,10 @@ export const PlaybackBar: React.FC = () => {
       <Separator orientation="vertical" className="h-8 mx-2 bg-border" />
 
       <div className="min-w-0 flex-1">
-        {episodeEditMode && versionCapability?.status === 'supported' ? (
+        {suggestion ? (
+          <p className="px-2 text-xs text-primary">{t('batchTrim.previewNotice')}</p>
+        ) : null}
+        {!suggestion && episodeEditMode && versionCapability?.status === 'supported' ? (
           <Button
             size="sm"
             variant={trimming ? 'secondary' : 'ghost'}
@@ -371,9 +379,16 @@ export const PlaybackBar: React.FC = () => {
               userPausedRef.current = true;
               setPlaying(false);
             }}
-            onChange={(range) => trimEpisode(selectedEpisodeIndex, range)}
-            preview={previewTrim}
-            onPreviewChange={setPreviewTrim}
+            onChange={(range) => {
+              if (suggestion)
+                setTrimSuggestion({
+                  ...suggestion,
+                  range: range ?? { startFrame: 0, endFrame: totalFrames - 1 },
+                });
+              else trimEpisode(selectedEpisodeIndex, range);
+            }}
+            preview={!!suggestion || previewTrim}
+            onPreviewChange={suggestion ? undefined : setPreviewTrim}
           />
         ) : null}
         {!trimming && trimRange ? (

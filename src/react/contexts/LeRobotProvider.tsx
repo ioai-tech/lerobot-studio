@@ -6,6 +6,7 @@ import type {
   LeRobotFeature,
   PlaybackMode,
   SubtaskTable,
+  EpisodeTrimRange,
 } from '@/core';
 import type { LeRobotDataLoader } from '@/platform';
 import type { NumericalColumnMap } from '@/platform';
@@ -90,6 +91,10 @@ export const LeRobotDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
   const [sourceSubtaskIndices, setSourceSubtaskIndices] = useState<Array<number | null>>([]);
   const [subtaskDialogOpen, setSubtaskDialogOpen] = useState(false);
   const [trimEditMode, setTrimEditMode] = useState(false);
+  const [trimSuggestion, setTrimSuggestion] = useState<{
+    episodeIndex: number;
+    range: EpisodeTrimRange;
+  } | null>(null);
   const [previewTrim, setPreviewTrim] = useState(false);
   const [episodeEditMode, setEpisodeEditMode] = useState(false);
   const [selectedEpisodeIndex, setSelectedEpisodeIndex] = useState<number | null>(null);
@@ -121,6 +126,7 @@ export const LeRobotDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
     trimRanges,
     setTrimRanges,
     trimEpisode,
+    trimEpisodes,
     modifiedEpisodes,
     setModifiedEpisodes,
     deletedEpisodes,
@@ -163,7 +169,7 @@ export const LeRobotDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
   const onNaturalEndRef = useRef<() => void>(() => undefined);
   shouldHoldAtEpisodeEndRef.current = () => subtask.canAnnotate && episodeEditMode;
   onNaturalEndRef.current = () => {
-    if (!(subtask.canAnnotate && episodeEditMode) || trimEditMode) return;
+    if (!(subtask.canAnnotate && episodeEditMode) || trimEditMode || trimSuggestion) return;
     const gap = lastUnlabeledGap(subtask.currentSegments, currentFrames.length);
     if (!gap) return;
     if (subtask.beginPendingRange(gap.startFrame, gap.endFrame)) {
@@ -253,9 +259,11 @@ export const LeRobotDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
     shouldHoldAtEpisodeEndRef,
     onNaturalEndRef,
     previewRange:
-      previewTrim && selectedEpisodeIndex != null
-        ? trimRanges.get(selectedEpisodeIndex)
-        : undefined,
+      trimSuggestion?.episodeIndex === selectedEpisodeIndex
+        ? trimSuggestion.range
+        : previewTrim && selectedEpisodeIndex != null
+          ? trimRanges.get(selectedEpisodeIndex)
+          : undefined,
   });
 
   const reset = useCallback(async () => {
@@ -291,6 +299,7 @@ export const LeRobotDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
     setTrimEditMode(false);
     setPreviewTrim(false);
     setTrimRanges(new Map());
+    setTrimSuggestion(null);
     resetSubtasks();
     setModifiedEpisodes(new Map());
     setDeletedEpisodes(new Set());
@@ -364,6 +373,7 @@ export const LeRobotDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
         setTrimEditMode(false);
         setPreviewTrim(false);
         setTrimRanges(new Map());
+        setTrimSuggestion(null);
         resetSubtasks();
         setModifiedEpisodes(new Map());
         setDeletedEpisodes(new Set());
@@ -686,6 +696,7 @@ export const LeRobotDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
     () => ({
       trimRanges,
       trimEpisode,
+      trimEpisodes,
       selectedEpisodeIndex,
       selectedEpisodeIndices,
       toggleEpisodeSelection,
@@ -705,6 +716,7 @@ export const LeRobotDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
     [
       trimRanges,
       trimEpisode,
+      trimEpisodes,
       selectedEpisodeIndex,
       selectedEpisodeIndices,
       toggleEpisodeSelection,
@@ -754,6 +766,8 @@ export const LeRobotDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
 
   const uiValue = useMemo(
     () => ({
+      trimSuggestion,
+      setTrimSuggestion,
       trimEditMode,
       setTrimEditMode,
       previewTrim,
@@ -765,7 +779,14 @@ export const LeRobotDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
       episodeEditMode,
       setEpisodeEditMode,
     }),
-    [healthDialogOpen, subtaskDialogOpen, episodeEditMode, trimEditMode, previewTrim],
+    [
+      healthDialogOpen,
+      subtaskDialogOpen,
+      episodeEditMode,
+      trimEditMode,
+      previewTrim,
+      trimSuggestion,
+    ],
   );
 
   const subtaskValue = useMemo(

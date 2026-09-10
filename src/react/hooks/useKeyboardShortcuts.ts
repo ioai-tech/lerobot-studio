@@ -16,7 +16,8 @@ export const useKeyboardShortcuts = (enabled: boolean = true) => {
   const { selectedEpisodeIndex, selectEpisode } = useLeRobotSelection();
   const { setFrameIndex, setPlaying, currentFrames, isPlaying } = useLeRobotPlayback();
   const { canAnnotate, endAtPlayhead, pendingRange, clearPendingAnnotation } = useLeRobotSubtask();
-  const { setSubtaskDialogOpen, episodeEditMode, subtaskDialogOpen } = useLeRobotUi();
+  const { setSubtaskDialogOpen, episodeEditMode, subtaskDialogOpen, trimEditMode, trimSuggestion } =
+    useLeRobotUi();
 
   const enabledRef = useRef(enabled);
   const episodesRef = useRef(episodes);
@@ -24,7 +25,7 @@ export const useKeyboardShortcuts = (enabled: boolean = true) => {
   const currentFramesRef = useRef(currentFrames);
   const isLoadingRef = useRef(isLoading);
   const canAnnotateRef = useRef(canAnnotate);
-  const episodeEditModeRef = useRef(episodeEditMode);
+  const episodeEditModeRef = useRef(episodeEditMode && !trimEditMode && !trimSuggestion);
   const endAtPlayheadRef = useRef(endAtPlayhead);
   const pendingRangeRef = useRef(pendingRange);
   const clearPendingAnnotationRef = useRef(clearPendingAnnotation);
@@ -58,8 +59,8 @@ export const useKeyboardShortcuts = (enabled: boolean = true) => {
   }, [canAnnotate]);
 
   useEffect(() => {
-    episodeEditModeRef.current = episodeEditMode;
-  }, [episodeEditMode]);
+    episodeEditModeRef.current = episodeEditMode && !trimEditMode && !trimSuggestion;
+  }, [episodeEditMode, trimEditMode, trimSuggestion]);
 
   useEffect(() => {
     endAtPlayheadRef.current = endAtPlayhead;

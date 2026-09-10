@@ -22,7 +22,7 @@ export function EpisodeTrimControls({
   getFrameIndex: () => number;
   onPause: () => void;
   preview: boolean;
-  onPreviewChange: (enabled: boolean) => void;
+  onPreviewChange?: (enabled: boolean) => void;
 }) {
   const { t } = useTranslation();
   const change = (startFrame: number, endFrame: number) => {
@@ -96,18 +96,20 @@ export function EpisodeTrimControls({
         >
           {t('trim.reset')}
         </Button>
-        <label className="flex items-center gap-1">
-          <input
-            type="checkbox"
-            checked={preview}
-            disabled={disabled}
-            onChange={(event) => {
-              onPause();
-              onPreviewChange(event.target.checked);
-            }}
-          />
-          {t('trim.preview')}
-        </label>
+        {onPreviewChange && (
+          <label className="flex items-center gap-1">
+            <input
+              type="checkbox"
+              checked={preview}
+              disabled={disabled}
+              onChange={(event) => {
+                onPause();
+                onPreviewChange(event.target.checked);
+              }}
+            />
+            {t('trim.preview')}
+          </label>
+        )}
       </div>
       <Slider.Root
         value={[range.startFrame, range.endFrame]}

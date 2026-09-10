@@ -1,6 +1,6 @@
 import React from 'react';
 import { useTranslation } from 'react-i18next';
-import { CheckCheck, Pencil, Trash2, Undo2, X } from 'lucide-react';
+import { CheckCheck, Scissors, Pencil, Trash2, Undo2, X } from 'lucide-react';
 import { Button, Tooltip, TooltipContent, TooltipTrigger } from '@/ui';
 
 interface EpisodeToolbarProps {
@@ -9,6 +9,7 @@ interface EpisodeToolbarProps {
   selectedNonDeletedCount: number;
   onSelectAll: () => void;
   onClearSelection: () => void;
+  onBulkTrim: () => void;
   onBulkEdit: () => void;
   onBulkDelete: () => void;
   onBulkRestore: () => void;
@@ -20,6 +21,7 @@ export const EpisodeToolbar: React.FC<EpisodeToolbarProps> = ({
   selectedNonDeletedCount,
   onSelectAll,
   onClearSelection,
+  onBulkTrim,
   onBulkEdit,
   onBulkDelete,
   onBulkRestore,
@@ -74,6 +76,23 @@ export const EpisodeToolbar: React.FC<EpisodeToolbarProps> = ({
           <Pencil className="h-3.5 w-3.5" />
         </TooltipTrigger>
         <TooltipContent side="bottom">{t('sidebar.bulkEdit')}</TooltipContent>
+      </Tooltip>
+      <Tooltip>
+        <TooltipTrigger
+          render={
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8 shrink-0"
+              aria-label={t('batchTrim.title')}
+              disabled={selectedNonDeletedCount === 0}
+              onClick={onBulkTrim}
+            />
+          }
+        >
+          <Scissors className="h-3.5 w-3.5" />
+        </TooltipTrigger>
+        <TooltipContent side="bottom">{t('batchTrim.title')}</TooltipContent>
       </Tooltip>
       {selectedNonDeletedCount > 0 && (
         <Tooltip>
