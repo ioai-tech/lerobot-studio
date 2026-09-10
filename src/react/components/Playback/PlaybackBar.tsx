@@ -7,6 +7,7 @@ import {
   useLeRobotSubtask,
   useLeRobotUi,
 } from '../../contexts/LeRobotContext';
+import { EpisodeTrimControls } from './EpisodeTrimControls';
 import { EditSubtaskDialog } from '../dialogs/EditSubtaskDialog';
 import { useLoading } from '../../contexts/LoadingContext';
 import { shouldStartAutoplay } from '@/core';
@@ -35,8 +36,9 @@ export const PlaybackBar: React.FC = () => {
     playbackSpeed,
     setPlaybackSpeed,
   } = useLeRobotPlayback();
-  const { info, subscribeFrameIndex, getFrameIndex, isLoading } = useLeRobotData();
-  const { selectedEpisodeIndex } = useLeRobotSelection();
+  const { info, versionCapability, subscribeFrameIndex, getFrameIndex, isLoading } =
+    useLeRobotData();
+  const { selectedEpisodeIndex, trimRanges, trimEpisode } = useLeRobotSelection();
   const {
     canAnnotate,
     currentSegments,
@@ -50,8 +52,19 @@ export const PlaybackBar: React.FC = () => {
     beginPendingRange,
     removeSegment,
   } = useLeRobotSubtask();
-  const { subtaskDialogOpen, setSubtaskDialogOpen, episodeEditMode } = useLeRobotUi();
-  const annotationEnabled = canAnnotate && episodeEditMode;
+  const {
+    subtaskDialogOpen,
+    setSubtaskDialogOpen,
+    episodeEditMode,
+    trimEditMode,
+    setTrimEditMode,
+    previewTrim,
+    setPreviewTrim,
+  } = useLeRobotUi();
+  const trimming = episodeEditMode && trimEditMode && versionCapability?.status === 'supported';
+  const annotationEnabled = canAnnotate && episodeEditMode && !trimming;
+  const trimRange =
+    selectedEpisodeIndex != null ? trimRanges?.get(selectedEpisodeIndex) : undefined;
   const [renameIndex, setRenameIndex] = useState<number | null>(null);
 
   const { tasks } = useLoading();
@@ -333,52 +346,94 @@ export const PlaybackBar: React.FC = () => {
 
       <Separator orientation="vertical" className="h-8 mx-2 bg-border" />
 
-      <PlaybackProgressSlider
-        currentFrames={currentFrames}
-        fps={fps}
-        totalFrames={totalFrames}
-        totalTime={totalTime}
-        initialFrameIndex={currentFrameIndex}
-        isDisabled={isLoading || !!activeTask || subtaskDialogOpen}
-        setFrameIndex={setFrameIndex}
-        getFrameIndex={getFrameIndex}
-        subscribeFrameIndex={subscribeFrameIndex}
-        segments={currentSegments}
-        pendingRange={annotationEnabled ? pendingRange : null}
-        editRanges={annotationEnabled && !subtaskDialogOpen}
-        knownLabels={knownLabels}
-        onReplaceSegments={(next) => {
-          try {
-            replaceEpisodeSegments(next);
-          } catch (error) {
-            console.warn('Could not save subtask ranges', error);
+      <div className="min-w-0 flex-1">
+        {episodeEditMode && versionCapability?.status === 'supported' ? (
+          <Button
+            size="sm"
+            variant={trimming ? 'secondary' : 'ghost'}
+            aria-pressed={trimming}
+            onClick={() => {
+              setPlaying(false);
+              setTrimEditMode(!trimming);
+            }}
+          >
+            {t('trim.title')}
+          </Button>
+        ) : null}
+        {trimming && selectedEpisodeIndex != null ? (
+          <EpisodeTrimControls
+            range={trimRange ?? { startFrame: 0, endFrame: totalFrames - 1 }}
+            totalFrames={totalFrames}
+            fps={fps}
+            disabled={isLoading || !!activeTask || subtaskDialogOpen}
+            getFrameIndex={getFrameIndex}
+            onPause={() => {
+              userPausedRef.current = true;
+              setPlaying(false);
+            }}
+            onChange={(range) => trimEpisode(selectedEpisodeIndex, range)}
+            preview={previewTrim}
+            onPreviewChange={setPreviewTrim}
+          />
+        ) : null}
+        {!trimming && trimRange ? (
+          <p className="px-2 text-xs text-muted-foreground">
+            {t('trim.summary', {
+              original: totalFrames,
+              kept: trimRange.endFrame - trimRange.startFrame + 1,
+              start: (trimRange.startFrame / fps).toFixed(2),
+              end: ((trimRange.endFrame + 1) / fps).toFixed(2),
+            })}
+          </p>
+        ) : null}
+        <PlaybackProgressSlider
+          trimRange={trimRange}
+          currentFrames={currentFrames}
+          fps={fps}
+          totalFrames={totalFrames}
+          totalTime={totalTime}
+          initialFrameIndex={currentFrameIndex}
+          isDisabled={isLoading || !!activeTask || subtaskDialogOpen}
+          setFrameIndex={setFrameIndex}
+          getFrameIndex={getFrameIndex}
+          subscribeFrameIndex={subscribeFrameIndex}
+          segments={currentSegments}
+          pendingRange={annotationEnabled ? pendingRange : null}
+          editRanges={annotationEnabled && !subtaskDialogOpen}
+          knownLabels={knownLabels}
+          onReplaceSegments={(next) => {
+            try {
+              replaceEpisodeSegments(next);
+            } catch (error) {
+              console.warn('Could not save subtask ranges', error);
+            }
+          }}
+          onDeleteSegment={removeSegment}
+          onFillGap={
+            annotationEnabled
+              ? (startFrame, endFrame) => {
+                  setRenameIndex(null);
+                  userPausedRef.current = true;
+                  setPlaying(false);
+                  if (beginPendingRange(startFrame, endFrame)) {
+                    setSubtaskDialogOpen(true);
+                  }
+                }
+              : undefined
           }
-        }}
-        onDeleteSegment={removeSegment}
-        onFillGap={
-          annotationEnabled
-            ? (startFrame, endFrame) => {
-                setRenameIndex(null);
-                userPausedRef.current = true;
-                setPlaying(false);
-                if (beginPendingRange(startFrame, endFrame)) {
+          onRenameSegment={
+            annotationEnabled
+              ? (index) => {
+                  cancelPending();
+                  setRenameIndex(index);
+                  userPausedRef.current = true;
+                  setPlaying(false);
                   setSubtaskDialogOpen(true);
                 }
-              }
-            : undefined
-        }
-        onRenameSegment={
-          annotationEnabled
-            ? (index) => {
-                cancelPending();
-                setRenameIndex(index);
-                userPausedRef.current = true;
-                setPlaying(false);
-                setSubtaskDialogOpen(true);
-              }
-            : undefined
-        }
-      />
+              : undefined
+          }
+        />
+      </div>
 
       <Separator orientation="vertical" className="h-8 mx-2 bg-border" />
 

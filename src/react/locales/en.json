@@ -340,9 +340,18 @@
           "message": "info.video_path does not match default template",
           "suggestion": "Use default video path template"
         },
-        "TASKS_PRESENT": { "message": "Task metadata detected", "suggestion": "" },
-        "EPISODE_COUNT": { "message": "Parsed {{count}} episode(s)", "suggestion": "" },
-        "TASK_COUNT": { "message": "Parsed {{count}} task(s)", "suggestion": "" },
+        "TASKS_PRESENT": {
+          "message": "Task metadata detected",
+          "suggestion": ""
+        },
+        "EPISODE_COUNT": {
+          "message": "Parsed {{count}} episode(s)",
+          "suggestion": ""
+        },
+        "TASK_COUNT": {
+          "message": "Parsed {{count}} task(s)",
+          "suggestion": ""
+        },
         "SPLITS_MISSING_TRAIN": {
           "message": "splits must contain \"train\"",
           "suggestion": "Add splits with at least \"train\" key"
@@ -695,6 +704,8 @@
     "deletedCount": "Deleted",
     "subtaskEpisodes": "Subtask episodes",
     "includeSubtasks": "Include subtasks",
+    "compactVideos": "Remove unused video segments (slower)",
+    "sharedVideoHint": "Fast export copies shared videos without re-encoding. Deleted episodes and trimmed frames are excluded from the exported data, but their footage may remain in shared files. Enable this option to physically remove unused segments.",
     "subtaskCoverageHint": "Every exported episode must be fully labeled.",
     "subtaskCoverageMissing": "Episode #{{index}} has no subtask labels.",
     "subtaskCoverageIncomplete": "Episode #{{index}} is missing labels ({{labeled}}/{{total}}).",
@@ -758,5 +769,18 @@
     "range": "{{from}}-{{to}} of {{count}}",
     "prevAriaLabel": "Go to previous page",
     "nextAriaLabel": "Go to next page"
+  },
+  "trim": {
+    "title": "Trim episode",
+    "start": "Start frame",
+    "end": "End frame",
+    "setStart": "Set start here",
+    "setEnd": "Set end here",
+    "reset": "Reset trim",
+    "preview": "Play retained range only",
+    "startHandle": "Trim start boundary",
+    "endHandle": "Trim end boundary",
+    "summary": "{{original}} → {{kept}} frames · keep {{start}}–{{end}} s",
+    "exportSummary": "Trim applied: {{original}} → {{kept}} frames. Source files remain unchanged."
   }
 }

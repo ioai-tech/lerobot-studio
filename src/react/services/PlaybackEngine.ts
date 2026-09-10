@@ -1,6 +1,7 @@
-import type { EpisodeMetadata, PlaybackMode } from '@/core';
+import type { EpisodeMetadata, PlaybackMode, EpisodeTrimRange } from '@/core';
 
 export type PlaybackEngineCallbacks = {
+  getPreviewRange?: () => EpisodeTrimRange | undefined;
   getFrameIndex: () => number;
   setFrameIndexSilent: (index: number) => void;
   notifyFrame: (index: number) => void;
@@ -39,6 +40,15 @@ export class PlaybackEngine {
   start(): void {
     if (this.running) return;
     this.running = true;
+    const range = this.callbacks.getPreviewRange?.();
+    if (
+      range &&
+      (this.callbacks.getFrameIndex() < range.startFrame ||
+        this.callbacks.getFrameIndex() >= range.endFrame)
+    ) {
+      this.callbacks.setFrameIndexSilent(range.startFrame);
+      this.callbacks.notifyFrame(range.startFrame);
+    }
     this.lastTickTime = 0;
     this.animationFrameId = requestAnimationFrame(this.tick);
   }
@@ -138,6 +148,13 @@ export class PlaybackEngine {
     if (elapsed >= effectiveInterval) {
       let newIndex = this.callbacks.getFrameIndex() + 1;
 
+      const range = this.callbacks.getPreviewRange?.();
+      if (range && newIndex > range.endFrame) {
+        this.callbacks.onStop();
+        this.stop();
+        return;
+      }
+      if (range && newIndex < range.startFrame) newIndex = range.startFrame;
       if (newIndex >= frameCount) {
         if (this.callbacks.shouldHoldAtEpisodeEnd?.()) {
           this.callbacks.onStop();

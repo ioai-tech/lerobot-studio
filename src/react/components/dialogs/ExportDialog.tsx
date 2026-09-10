@@ -29,7 +29,8 @@ export interface ExportDialogProps {
 export const ExportDialog: React.FC<ExportDialogProps> = ({ open, onOpenChange }) => {
   const { t } = useTranslation();
   const { dataLoader, info, tasks, subtasks } = useLeRobotData();
-  const { episodesForExport, modifiedEpisodes, deletedEpisodes } = useLeRobotSelection();
+  const { episodesForExport, modifiedEpisodes, deletedEpisodes, trimRanges } =
+    useLeRobotSelection();
   const { overlay } = useLeRobotSubtask();
 
   const capabilities = useMemo(() => detectPlatformCapabilities(), []);
@@ -43,6 +44,7 @@ export const ExportDialog: React.FC<ExportDialogProps> = ({ open, onOpenChange }
   const [format, setFormat] = useState<ExportFormat>('zip');
   const [targetVersion, setTargetVersion] = useState<'v2.1' | 'v3.0'>(defaultTargetVersion);
   const [includeSubtasks, setIncludeSubtasks] = useState(false);
+  const [compactVideos, setCompactVideos] = useState(false);
   const [progress, setProgress] = useState<ExportProgress | null>(null);
   const [exportError, setExportError] = useState<string | null>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
@@ -126,6 +128,8 @@ export const ExportDialog: React.FC<ExportDialogProps> = ({ open, onOpenChange }
           onProgress: safeSetProgress,
           includeData: true,
           includeVideos: true,
+          compactVideos,
+          trimRanges,
           includeSubtasks: targetVersion === 'v3.0' && includeSubtasks,
           signal,
           subtaskOverlay: overlay,
@@ -190,6 +194,8 @@ export const ExportDialog: React.FC<ExportDialogProps> = ({ open, onOpenChange }
     format,
     targetVersion,
     includeSubtasks,
+    compactVideos,
+    trimRanges,
     onOpenChange,
     t,
   ]);
@@ -287,6 +293,25 @@ export const ExportDialog: React.FC<ExportDialogProps> = ({ open, onOpenChange }
                 <span>{t('export.includeSubtasks', 'Include subtasks')}</span>
               </label>
             ) : null}
+            {targetVersion === 'v3.0' && versionCapability?.adapterVersion === 'v3.0' ? (
+              <div className="space-y-1 text-sm">
+                <label className="flex items-start gap-2">
+                  <input
+                    type="checkbox"
+                    className="mt-0.5 accent-primary"
+                    checked={compactVideos}
+                    onChange={(event) => setCompactVideos(event.target.checked)}
+                  />
+                  <span>{t('export.compactVideos', 'Remove unused video segments (slower)')}</span>
+                </label>
+                <p className="text-xs text-muted-foreground">
+                  {t(
+                    'export.sharedVideoHint',
+                    'Fast export copies shared videos without re-encoding. Deleted episodes and trimmed frames are excluded from the exported data, but their footage may remain in shared files. Enable this option to physically remove unused segments.',
+                  )}
+                </p>
+              </div>
+            ) : null}
             <div className="rounded-lg border bg-muted/30 p-3 text-sm">
               <div className="font-medium mb-1">
                 {t('export.changesSummary', 'Changes Summary')}
@@ -311,6 +336,17 @@ export const ExportDialog: React.FC<ExportDialogProps> = ({ open, onOpenChange }
                 </p>
               ) : null}
             </div>
+            {episodesForExport.some((episode) => trimRanges?.has(episode.episode_index)) ? (
+              <p className="text-xs text-muted-foreground" role="status">
+                {t('trim.exportSummary', {
+                  original: episodesForExport.reduce((sum, episode) => sum + episode.length, 0),
+                  kept: episodesForExport.reduce((sum, episode) => {
+                    const range = trimRanges?.get(episode.episode_index);
+                    return sum + (range ? range.endFrame - range.startFrame + 1 : episode.length);
+                  }, 0),
+                })}
+              </p>
+            ) : null}
             {exportError && <p className="text-sm text-destructive">{exportError}</p>}
             {versionCapability && versionCapability.status !== 'supported' && !exportError && (
               <p className="text-sm text-muted-foreground">

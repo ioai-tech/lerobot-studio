@@ -55,6 +55,16 @@ function rewriteEpisodeAndGlobalIndex(
   if (table.schema.fields.some((f) => f.name === 'index')) {
     overrides.index = arrow.vectorFromArray(index, new arrow.Int64());
   }
+  const sourceFrameIndex = table.getChild('frame_index');
+  if (sourceFrameIndex) {
+    // Trimmed and untouched episodes must share a schema when concatenated.
+    overrides.frame_index = arrow.vectorFromArray(
+      Array.from({ length: n }, (_, row) =>
+        BigInt(toSafeInteger(sourceFrameIndex.get(row), 'frame_index')),
+      ),
+      new arrow.Int64(),
+    );
+  }
   const sourceTaskIndex = table.getChild('task_index');
   if (sourceTaskIndex) {
     const rewritten = new Array<bigint>(n);
@@ -93,7 +103,7 @@ function rewriteEpisodeAndGlobalIndex(
 }
 
 async function getValidatedEpisodeTable(
-  dataLoader: LeRobotDataLoader,
+  dataLoader: Pick<LeRobotDataLoader, 'getEpisodeTableForExport'>,
   episode: EpisodeMetadata,
 ): Promise<Table> {
   const { table } = await dataLoader.getEpisodeTableForExport(episode.episode_index);
@@ -125,7 +135,7 @@ export interface ExportDataOptions {
  * Exports data Parquet files: filter deleted, or convert v2<->v3.
  */
 export async function exportDataFiles(
-  dataLoader: LeRobotDataLoader,
+  dataLoader: Pick<LeRobotDataLoader, 'getEpisodeTableForExport'>,
   info: LeRobotInfo,
   episodes: EpisodeMetadata[],
   targetVersion: 'v2.1' | 'v3.0' | undefined,
@@ -176,7 +186,7 @@ function dropColumns(table: Table, drop?: Set<string>): Table {
 }
 
 async function filterAndWriteSameVersion(
-  dataLoader: LeRobotDataLoader,
+  dataLoader: Pick<LeRobotDataLoader, 'getEpisodeTableForExport'>,
   info: LeRobotInfo,
   episodes: EpisodeMetadata[],
   adapter: ExportAdapter,
@@ -230,7 +240,7 @@ async function filterAndWriteSameVersion(
 }
 
 async function mergeV2ToV3(
-  dataLoader: LeRobotDataLoader,
+  dataLoader: Pick<LeRobotDataLoader, 'getEpisodeTableForExport'>,
   info: LeRobotInfo,
   episodes: EpisodeMetadata[],
   adapter: ExportAdapter,
@@ -270,14 +280,12 @@ function positiveNumberOrDefault(value: unknown, fallback: number, field: string
 /**
  * Write whole episodes into size-bounded v3 Parquet files.
  *
- * Official LeRobot estimates the next episode's uncompressed contribution from
- * the current file's average bytes/frame before rotating. In the browser we
- * already have the complete Arrow tables, so serializing the candidate file
- * gives a deterministic and more accurate equivalent. Episodes remain atomic;
- * an individual oversized episode is written as one oversized file.
+ * Budget batches using independently encoded episodes, then encode each batch once.
+ * Verify the actual combined size before writing; split oversized batches without
+ * splitting episodes. An individual oversized episode stays in one file.
  */
 async function writeV3DataFiles(
-  dataLoader: LeRobotDataLoader,
+  dataLoader: Pick<LeRobotDataLoader, 'getEpisodeTableForExport'>,
   info: LeRobotInfo,
   episodes: EpisodeMetadata[],
   adapter: ExportAdapter,
@@ -298,17 +306,35 @@ async function writeV3DataFiles(
   let fileIndex = 0;
   let globalRow = 0;
   let fileTables: Table[] = [];
-  let fileBytes: Uint8Array | undefined;
+  let fileEpisodeIndices: number[] = [];
+  let estimatedBytes = 0;
   let totalFiles = 0;
 
-  const flush = async (): Promise<void> => {
-    if (fileTables.length === 0 || !fileBytes) return;
+  const writeBatch = async (tables: Table[], indices: number[]): Promise<void> => {
+    if (signal?.aborted) throw new DOMException('Export cancelled', 'AbortError');
+    const bytes = await tableToParquetBytes(concatTables(tables));
+    if (tables.length > 1 && bytes.byteLength >= sizeLimitBytes) {
+      const middle = Math.ceil(tables.length / 2);
+      await writeBatch(tables.slice(0, middle), indices.slice(0, middle));
+      await writeBatch(tables.slice(middle), indices.slice(middle));
+      return;
+    }
     const outPath = `data/chunk-${String(chunkIndex).padStart(3, '0')}/file-${String(fileIndex).padStart(3, '0')}.parquet`;
     await ensureParentDir(adapter, outPath);
-    await adapter.writeFile(outPath, fileBytes);
+    await adapter.writeFile(outPath, bytes);
+    for (const index of indices) {
+      Object.assign(locations.get(index)!, { chunk_index: chunkIndex, file_index: fileIndex });
+    }
     totalFiles++;
+    advanceFile();
+  };
+
+  const flush = async (): Promise<void> => {
+    if (fileTables.length === 0) return;
+    await writeBatch(fileTables, fileEpisodeIndices);
     fileTables = [];
-    fileBytes = undefined;
+    fileEpisodeIndices = [];
+    estimatedBytes = 0;
   };
 
   const advanceFile = (): void => {
@@ -332,15 +358,11 @@ async function writeV3DataFiles(
       taskPlan,
       resolveSubtaskIndices(options, episode.episode_index),
     );
-    let candidateTables = [...fileTables, table];
-    let candidateBytes = await tableToParquetBytes(concatTables(candidateTables));
+    const episodeBytes = (await tableToParquetBytes(table)).byteLength;
 
     // Match the official >= boundary, but never emit an empty file.
-    if (fileTables.length > 0 && candidateBytes.byteLength >= sizeLimitBytes) {
+    if (fileTables.length > 0 && estimatedBytes + episodeBytes >= sizeLimitBytes) {
       await flush();
-      advanceFile();
-      candidateTables = [table];
-      candidateBytes = await tableToParquetBytes(table);
     }
 
     locations.set(episode.episode_index, {
@@ -350,8 +372,9 @@ async function writeV3DataFiles(
       dataset_to_index: globalRow + table.numRows,
     });
     globalRow += table.numRows;
-    fileTables = candidateTables;
-    fileBytes = candidateBytes;
+    fileTables.push(table);
+    fileEpisodeIndices.push(episode.episode_index);
+    estimatedBytes += episodeBytes;
     onProgress?.({
       phase: 'data',
       current: outputEpisodeIndex + 1,
@@ -365,12 +388,12 @@ async function writeV3DataFiles(
   return {
     episodes: locations,
     total_files: totalFiles,
-    total_chunks: totalFiles === 0 ? 0 : chunkIndex + 1,
+    total_chunks: Math.ceil(totalFiles / chunksSize),
   };
 }
 
 async function splitV3ToV2(
-  dataLoader: LeRobotDataLoader,
+  dataLoader: Pick<LeRobotDataLoader, 'getEpisodeTableForExport'>,
   episodes: EpisodeMetadata[],
   adapter: ExportAdapter,
   taskPlan: ExportTaskPlan,

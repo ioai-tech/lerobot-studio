@@ -9,6 +9,8 @@ import type {
   V3DataLayout,
 } from '@/core';
 import { validateMetadataForExport, writeMetadata } from './MetadataExporter';
+import { buildTrimExportPlan } from './TrimExportPlan';
+import { computeTrimVisualStats } from './TrimVisualStats';
 import { exportDataFiles } from './DataProcessor';
 import { exportVideosByTarget } from './VideoExporter';
 import {
@@ -111,6 +113,8 @@ export class ExportService {
       | 'onProgress'
       | 'includeData'
       | 'includeVideos'
+      | 'compactVideos'
+      | 'trimRanges'
       | 'includeSubtasks'
       | 'signal'
       | 'splitsConfig'
@@ -139,10 +143,22 @@ export class ExportService {
     throwIfAborted();
     this.assertExportAllowed(info, options.targetVersion);
     const targetVersion = (options.targetVersion ?? 'v2.1') as TargetVersion;
-    const episodesForMeta = episodes;
+    const trimPlan = await buildTrimExportPlan(
+      this.dataLoader,
+      episodes,
+      options.trimRanges,
+      info.fps,
+      signal,
+    );
+    if (trimPlan.ranges.size > 0 && !options.includeData) {
+      throw new Error('Trimming requires exporting frame data');
+    }
+    const episodesForMeta = trimPlan.episodes;
+    const trimmedStats = new Map<number, DatasetStats>();
     let videoOffsets: EpisodeVideoOffsets | null = null;
     let dataLayout: V3DataLayout | undefined;
-    const videoOptions = { signal };
+    const trimOptions = trimPlan.ranges.size > 0 ? { trimRanges: trimPlan.ranges } : {};
+    const videoOptions = { signal, compactVideos: options.compactVideos, ...trimOptions };
 
     // If source has dtype: 'image' features, re-encode them into MP4 videos
     // and rewrite the exported `info.features[key].dtype` to 'video'.
@@ -162,6 +178,7 @@ export class ExportService {
             overlay: options.subtaskOverlay ?? new Map(),
             sourceTable: options.sourceSubtasks ?? this.dataLoader.getSubtasks?.() ?? {},
             targetVersion,
+            ...trimOptions,
           })
         : null;
     const subtaskFeatures = applySubtaskFeaturesForExport(
@@ -183,8 +200,27 @@ export class ExportService {
     let stats: DatasetStats | undefined;
     if (options.includeData && episodesForMeta.length > 0) {
       reportPhaseStart(1, 'Validating training statistics...', 'metadata');
-      stats = await computeDatasetStats(this.dataLoader, infoForExport, episodesForMeta, {
+      stats = await computeDatasetStats(trimPlan.dataLoader, infoForExport, episodesForMeta, {
         signal,
+        ...(trimPlan.ranges.size > 0
+          ? {
+              getEpisodeStats: async (episode: EpisodeMetadata) => {
+                const range = trimPlan.ranges.get(episode.episode_index);
+                return range
+                  ? computeTrimVisualStats(
+                      this.dataLoader,
+                      info,
+                      episode.episode_index,
+                      range,
+                      signal,
+                    )
+                  : undefined;
+              },
+              onEpisodeStats: (episode: EpisodeMetadata, episodeStats: DatasetStats) => {
+                trimmedStats.set(episode.episode_index, episodeStats);
+              },
+            }
+          : {}),
         resolveNumericRow: (featureKey, context) => {
           if (featureKey === 'index') return context.outputGlobalIndex;
           if (featureKey === 'episode_index') return context.outputEpisodeIndex;
@@ -233,6 +269,18 @@ export class ExportService {
       });
       throwIfAborted();
     }
+    for (const episode of episodesForMeta) {
+      const episodeStats = trimmedStats.get(episode.episode_index);
+      if (!episodeStats) continue;
+      for (const key of Object.keys(episode)) {
+        if (key === 'stats' || key.startsWith('stats/'))
+          delete (episode as Record<string, unknown>)[key];
+      }
+      for (const [key, values] of Object.entries(episodeStats)) {
+        for (const [stat, value] of Object.entries(values))
+          (episode as Record<string, unknown>)[`stats/${key}/${stat}`] = value;
+      }
+    }
     validateMetadataForExport(infoForExport, episodesForMeta, targetVersion, splits);
     throwIfAborted();
 
@@ -250,7 +298,7 @@ export class ExportService {
         targetVersion,
         this.adapter,
         onProg ? wrap(3, 30) : undefined,
-        { signal },
+        { signal, ...trimOptions },
       );
       imageOffsets = offsets;
     }
@@ -294,7 +342,7 @@ export class ExportService {
       reportPhaseStart(53, 'Exporting data (Parquet)...', 'data');
       throwIfAborted();
       dataLayout = await exportDataFiles(
-        this.dataLoader,
+        trimPlan.dataLoader,
         infoForExport,
         episodesForMeta,
         targetVersion,
@@ -324,6 +372,7 @@ export class ExportService {
       splits,
       dataLayout,
       subtaskPlan?.table,
+      trimmedStats.size > 0 ? trimmedStats : undefined,
     );
     throwIfAborted();
     onProg?.({

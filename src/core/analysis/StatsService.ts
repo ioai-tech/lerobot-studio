@@ -35,6 +35,7 @@ export interface NumericStatsRowContext {
 
 export interface ComputeDatasetStatsOptions {
   onProgress?: (current: number, total: number) => void;
+  onEpisodeStats?: (episode: EpisodeMetadata, stats: DatasetStats) => void;
   signal?: AbortSignal;
   /**
    * Return the final exported value for a numeric feature, or undefined to use
@@ -528,6 +529,7 @@ export async function computeDatasetStats(
     }
     const episode = episodes[episodePosition];
     const supplied = await options?.getEpisodeStats?.(episode);
+    const episodeStats: DatasetStats = {};
     for (const featureKey of visualKeys) {
       const feature = info.features[featureKey];
       const raw = supplied?.[featureKey] ?? flattenedEpisodeStats(episode, featureKey);
@@ -541,6 +543,7 @@ export async function computeDatasetStats(
       const stats = coerceVisualStats(raw as Record<string, unknown>, featureKey, channels);
       const list = perFeature.get(featureKey) ?? [];
       list.push(stats);
+      episodeStats[featureKey] = stats;
       perFeature.set(featureKey, list);
     }
 
@@ -596,13 +599,16 @@ export async function computeDatasetStats(
           return values;
         };
         const list = perFeature.get(featureKey) ?? [];
-        list.push(computeNumericEpisode(table.numRows, dim, readRow));
+        const numericStats = computeNumericEpisode(table.numRows, dim, readRow);
+        list.push(numericStats);
+        episodeStats[featureKey] = numericStats;
         perFeature.set(featureKey, list);
       }
       globalRow += table.numRows;
     } else {
       globalRow += episode.length;
     }
+    options?.onEpisodeStats?.(episode, episodeStats);
     options?.onProgress?.(episodePosition + 1, episodes.length);
   }
 

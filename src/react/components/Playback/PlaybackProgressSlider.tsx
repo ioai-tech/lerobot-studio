@@ -1,6 +1,6 @@
 import React, { memo, useCallback, useEffect, useMemo, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
-import type { FrameData, SubtaskSegment } from '@/core';
+import type { FrameData, SubtaskSegment, EpisodeTrimRange } from '@/core';
 import type { PendingSubtaskRange } from '../../contexts/useSubtaskAnnotation';
 import { SubtaskRangeTrack } from './SubtaskRangeTrack';
 
@@ -20,6 +20,7 @@ function formatTime(seconds: number): string {
 }
 
 export interface PlaybackProgressSliderProps {
+  trimRange?: EpisodeTrimRange;
   currentFrames: FrameData[];
   fps: number;
   totalFrames: number;
@@ -40,6 +41,7 @@ export interface PlaybackProgressSliderProps {
 }
 
 const PlaybackProgressSliderComponent: React.FC<PlaybackProgressSliderProps> = ({
+  trimRange,
   currentFrames,
   fps,
   totalFrames,
@@ -339,6 +341,18 @@ const PlaybackProgressSliderComponent: React.FC<PlaybackProgressSliderProps> = (
         aria-valuenow={initialFrameIndex}
         aria-valuetext={initialA11yText}
       >
+        {trimRange && totalFrames > 0 ? (
+          <>
+            <div
+              className="absolute inset-y-0 left-0 z-10 bg-muted-foreground/60 pointer-events-none"
+              style={{ width: `${(trimRange.startFrame / totalFrames) * 100}%` }}
+            />
+            <div
+              className="absolute inset-y-0 right-0 z-10 bg-muted-foreground/60 pointer-events-none"
+              style={{ width: `${((totalFrames - trimRange.endFrame - 1) / totalFrames) * 100}%` }}
+            />
+          </>
+        ) : null}
         {totalFrames > 1 && pendingRange ? (
           <div
             className="absolute top-0 h-full rounded-full pointer-events-none bg-primary/30"

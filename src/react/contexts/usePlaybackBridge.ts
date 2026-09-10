@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { MutableRefObject } from 'react';
-import type { EpisodeMetadata, PlaybackMode } from '@/core';
+import type { EpisodeMetadata, PlaybackMode, EpisodeTrimRange } from '@/core';
 import { PlaybackEngine } from '../services/PlaybackEngine';
 
 export class PendingPlaybackIntent {
@@ -29,6 +29,7 @@ export class PendingPlaybackIntent {
 }
 
 type UsePlaybackBridgeOptions = {
+  previewRange?: EpisodeTrimRange;
   isBusy: boolean;
   frameCount: number;
   frameIndexRef: MutableRefObject<number>;
@@ -45,6 +46,7 @@ type UsePlaybackBridgeOptions = {
 };
 
 export function usePlaybackBridge({
+  previewRange,
   isBusy,
   frameCount,
   frameIndexRef,
@@ -59,6 +61,8 @@ export function usePlaybackBridge({
   shouldHoldAtEpisodeEndRef,
   onNaturalEndRef,
 }: UsePlaybackBridgeOptions) {
+  const previewRangeRef = useRef(previewRange);
+  previewRangeRef.current = previewRange;
   const [currentFrameIndex, setCurrentFrameIndex] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
   const pendingIntentRef = useRef(new PendingPlaybackIntent());
@@ -121,6 +125,7 @@ export function usePlaybackBridge({
       },
       notifyFrame: notifyFrameSubscribers,
       getFrameCount: () => frameCount,
+      getPreviewRange: () => previewRangeRef.current,
       getFps: () => fps || 30,
       getPlaybackSpeed: () => playbackSpeed,
       getPlaybackMode: () => playbackMode,

@@ -37,6 +37,32 @@ function callbacks(overrides: Partial<PlaybackEngineCallbacks> = {}): PlaybackEn
 }
 
 describe('PlaybackEngine', () => {
+  it('previews exactly the retained frames without advancing or opening annotation', () => {
+    let frame = 0;
+    const state = callbacks({
+      getFrameCount: () => 10,
+      getPreviewRange: () => ({ startFrame: 3, endFrame: 4 }),
+      getFrameIndex: () => frame,
+      setFrameIndexSilent: (index) => {
+        frame = index;
+      },
+      onNaturalEnd: vi.fn(),
+    });
+    const engine = new PlaybackEngine(state);
+    engine.start();
+    expect(frame).toBe(3);
+    (engine as any).tick(1);
+    (engine as any).tick(40);
+    expect(frame).toBe(4);
+    (engine as any).tick(80);
+    expect(state.onStop).toHaveBeenCalledOnce();
+    expect(state.onNaturalEnd).not.toHaveBeenCalled();
+    expect(state.onAdvanceEpisode).not.toHaveBeenCalled();
+    engine.start();
+    expect(frame).toBe(3);
+    engine.dispose();
+  });
+
   it('does not resume playback when advancing an episode fails', async () => {
     const state = callbacks({ onAdvanceEpisode: vi.fn(async () => false) });
     const engine = new PlaybackEngine(state);

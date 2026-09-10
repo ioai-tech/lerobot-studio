@@ -40,6 +40,7 @@ import type { EpisodeMetadata } from '@/core';
 import { readParquetToIPC } from './helpers/parquet';
 import { InMemoryExportAdapter } from './helpers/inMemoryExportAdapter';
 import { LocalFsDataSource } from './helpers/localFsDataSource';
+import * as parquetWriter from '../src/platform/export/ParquetWriter';
 
 const testFileDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(testFileDir, '..');
@@ -64,6 +65,85 @@ async function readParquetColumn(
 }
 
 describe('exportDataFiles (v2 -> v3)', () => {
+  it('splits an underestimated batch and records the actual shard locations', async () => {
+    const tables = [0, 1, 2, 3].map((index) =>
+      tableFromArrays({ episode_index: [index], index: [index], value: [index] }),
+    );
+    const loader = {
+      getEpisodeTableForExport: async (index: number) => ({ table: tables[index] }),
+    } as unknown as LeRobotDataLoader;
+    const episodes = tables.map((_, episode_index) => ({
+      episode_index,
+      length: 1,
+      tasks: ['pick'],
+    })) as EpisodeMetadata[];
+    const info = {
+      codebase_version: 'v3.0',
+      chunks_size: 1,
+      data_files_size_in_mb: 10 / (1024 * 1024),
+      features: {},
+    } as unknown as Awaited<ReturnType<LeRobotDataLoader['initialize']>>;
+    const writer = vi
+      .spyOn(parquetWriter, 'tableToParquetBytes')
+      .mockImplementation(
+        async (table) => new Uint8Array(table.numRows === 1 ? 1 : table.numRows === 2 ? 5 : 10),
+      );
+    try {
+      const layout = await exportDataFiles(
+        loader,
+        info,
+        episodes,
+        'v3.0',
+        new InMemoryExportAdapter(),
+      );
+      expect(layout).toMatchObject({ total_files: 2, total_chunks: 2 });
+      for (let i = 0; i < 4; i++)
+        expect(layout?.episodes.get(i)).toEqual({
+          chunk_index: Math.floor(i / 2),
+          file_index: 0,
+          dataset_from_index: i,
+          dataset_to_index: i + 1,
+        });
+    } finally {
+      writer.mockRestore();
+    }
+  });
+
+  it('encodes a batch only once instead of encoding every growing prefix', async () => {
+    const tables = Array.from({ length: 16 }, (_, index) =>
+      tableFromArrays({
+        episode_index: [index],
+        index: [index],
+        task_index: [0],
+        value: [index * 0.25],
+      }),
+    );
+    const loader = {
+      getEpisodeTableForExport: async (index: number) => ({ table: tables[index] }),
+    } as unknown as LeRobotDataLoader;
+    const episodes = tables.map((_, episode_index) => ({
+      episode_index,
+      length: 1,
+      tasks: ['pick'],
+    })) as EpisodeMetadata[];
+    const info = { codebase_version: 'v3.0', features: {} } as unknown as Awaited<
+      ReturnType<LeRobotDataLoader['initialize']>
+    >;
+    const writer = vi.spyOn(parquetWriter, 'tableToParquetBytes');
+    try {
+      const adapter = new InMemoryExportAdapter();
+      await exportDataFiles(loader, info, episodes, 'v3.0', adapter, undefined, undefined, {
+        tasks: { 0: 'pick' },
+      });
+      expect(writer.mock.calls.reduce((sum, [table]) => sum + table.numRows, 0)).toBe(32);
+      expect(await readParquetColumn(adapter, 'data/chunk-000/file-000.parquet', 'value')).toEqual(
+        episodes.map((_, index) => index * 0.25),
+      );
+    } finally {
+      writer.mockRestore();
+    }
+  });
+
   it('merges v2 per-episode parquet into v3 data/chunk-000/file-000.parquet with 0..N episode_index and contiguous global index', async () => {
     const source = new LocalFsDataSource(exampleDir('lerobotv2'));
     const loader = new LeRobotDataLoader(source);

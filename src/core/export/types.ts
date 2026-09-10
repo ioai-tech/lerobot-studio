@@ -1,6 +1,7 @@
 import type { LeRobotInfo, EpisodeMetadata } from '../types/lerobot';
 import type { SplitConfig } from '../analysis/SplitService';
 import type { SubtaskSegment, SubtaskTable } from '../subtask';
+import type { EpisodeTrimRange } from './trim';
 
 export type ExportFormat = 'zip' | 'directory';
 
@@ -28,6 +29,10 @@ export interface ExportOptions {
   format: ExportFormat;
   targetVersion?: TargetVersion;
   includeVideos: boolean;
+  /** v3→v3: copy shared MP4s once by default. True physically trims unused footage (slower). */
+  compactVideos?: boolean;
+  /** Inclusive ranges keyed by original episode_index. Missing entries keep the whole episode. */
+  trimRanges?: ReadonlyMap<number, EpisodeTrimRange>;
   includeData: boolean;
   /**
    * UI passes true only when "Include subtasks" is checked.

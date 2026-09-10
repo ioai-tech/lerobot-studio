@@ -6,6 +6,27 @@ import type { ExportProgress, EpisodeVideoOffsets, V3DataLayout } from '@/core';
 import type { DatasetStats } from '@/core';
 import { isV3Info } from '../../core/types/lerobot';
 import { buildExportTaskPlan, type ExportTaskPlan } from './TaskPlan';
+import { splitsIndicesToInfoSplits } from '../../core/analysis/SplitService';
+
+/** Map source split membership to the new contiguous episode indices. */
+function remapSourceSplits(info: LeRobotInfo, episodes: EpisodeMetadata[]): Record<string, string> {
+  const source = info.splits as Record<string, string> | undefined;
+  if (!source) return {};
+  validateV3Splits(source, info.total_episodes);
+  return splitsIndicesToInfoSplits(
+    Object.fromEntries(
+      Object.entries(source).map(([name, range]) => {
+        const [start, end] = range.split(':').map(Number);
+        return [
+          name,
+          episodes.flatMap((episode, index) =>
+            episode.episode_index >= start && episode.episode_index < end ? [index] : [],
+          ),
+        ];
+      }),
+    ),
+  );
+}
 
 const TEXT_ENCODER = new TextEncoder();
 const V3_DATA_PATH = 'data/chunk-{chunk_index:03d}/file-{file_index:03d}.parquet';
@@ -189,7 +210,7 @@ export function validateMetadataForExport(
   const isTargetV3 = targetVersion !== undefined ? targetVersion === 'v3.0' : isV3Info(info);
   if (!isTargetV3) return;
   collectPreservedV3EpisodeColumns(episodes, getV3RewrittenColumns(info));
-  validateV3Splits(splits, episodes.length);
+  validateV3Splits(splits ?? remapSourceSplits(info, episodes), episodes.length);
 }
 
 export async function writeMetadata(
@@ -205,6 +226,7 @@ export async function writeMetadata(
   splits?: Record<string, string>,
   dataLayout?: V3DataLayout,
   subtasks?: SubtaskTable,
+  episodeStats?: ReadonlyMap<number, DatasetStats>,
 ): Promise<void> {
   if (signal?.aborted) throw new DOMException('Export cancelled', 'AbortError');
   const isTargetV3 = targetVersion !== undefined ? targetVersion === 'v3.0' : isV3Info(info);
@@ -241,11 +263,15 @@ export async function writeMetadata(
           data_path: V3_DATA_PATH,
           video_path: V3_VIDEO_PATH,
         }
-      : {}),
+      : {
+          data_path: 'data/chunk-{episode_chunk:03d}/episode_{episode_index:06d}.parquet',
+          video_path:
+            'videos/chunk-{episode_chunk:03d}/{video_key}/episode_{episode_index:06d}.mp4',
+        }),
     total_episodes: episodes.length,
     total_frames: episodes.reduce((total, episode) => total + episode.length, 0),
     total_tasks: Object.keys(taskPlan.tasks).length,
-    ...(isTargetV3 && splits != null && Object.keys(splits).length > 0 ? { splits } : {}),
+    ...(isTargetV3 ? { splits: splits ?? remapSourceSplits(info, episodes) } : {}),
   } as LeRobotInfo;
 
   adapter.writeFile('meta/info.json', TEXT_ENCODER.encode(JSON.stringify(infoToWrite, null, 2)));
@@ -273,6 +299,17 @@ export async function writeMetadata(
   } else {
     writeV2Episodes(episodes, taskPlan, adapter);
     writeV2Tasks(taskPlan.tasks, adapter);
+    if (episodeStats) {
+      const lines = episodes
+        .map((episode, index) =>
+          JSON.stringify({
+            episode_index: index,
+            stats: episodeStats.get(episode.episode_index),
+          }),
+        )
+        .join('\n');
+      await adapter.writeFile('meta/episodes_stats.jsonl', TEXT_ENCODER.encode(lines));
+    }
   }
 
   if (stats != null && Object.keys(stats).length > 0) {

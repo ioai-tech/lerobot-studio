@@ -12,5 +12,8 @@ export async function tableToParquetBytes(table: Table): Promise<Uint8Array> {
   const copy = new Uint8Array(ipcBytes.length);
   copy.set(ipcBytes);
   const wasmTable = wasm.Table.fromIPCStream(copy);
-  return wasm.writeParquet(wasmTable);
+  const properties = new wasm.WriterPropertiesBuilder()
+    .setCompression(wasm.Compression.SNAPPY)
+    .build();
+  return wasm.writeParquet(wasmTable, properties);
 }

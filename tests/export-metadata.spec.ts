@@ -459,6 +459,33 @@ describe('writeMetadata - v3.0 target', () => {
     expect(parsed.splits).toEqual({ train: '0:1' });
   });
 
+  it('remaps source splits after deletion and drops empty splits', async () => {
+    const info = {
+      ...loadExampleInfo('lerobotv3'),
+      total_episodes: 61,
+      splits: { train: '0:54', val: '54:60', test: '60:61' },
+    };
+    const episodes = [52, 54, 55].map((episode_index) => ({
+      episode_index,
+      length: 1,
+      tasks: ['pick'],
+    })) as EpisodeMetadata[];
+    const adapter = new InMemoryExportAdapter();
+    await writeMetadata(info, episodes, { 0: 'pick' }, 'v3.0', adapter);
+    expect(
+      JSON.parse(new TextDecoder().decode(await adapter.readFile('meta/info.json'))).splits,
+    ).toEqual({ train: '0:1', val: '1:3' });
+    await expect(
+      writeMetadata(
+        info,
+        [episodes[1], episodes[0], episodes[2]],
+        { 0: 'pick' },
+        'v3.0',
+        new InMemoryExportAdapter(),
+      ),
+    ).rejects.toThrow(/not contiguous/);
+  });
+
   it('rejects non-official comma-separated v3 split metadata', async () => {
     const info = loadExampleInfo('lerobotv3');
     const adapter = new InMemoryExportAdapter();
