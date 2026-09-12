@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.4.0
+
+### Minor Changes
+
+- Add batch episode trim and motion-based range suggestions from Select. Calculated ranges stay in the current session until applied; export uses the same trim path as manual Edit.
+
 ## 1.3.3
 
 ### Patch Changes
