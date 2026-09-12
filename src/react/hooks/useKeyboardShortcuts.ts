@@ -16,7 +16,8 @@ export const useKeyboardShortcuts = (enabled: boolean = true) => {
   const { selectedEpisodeIndex, selectEpisode } = useLeRobotSelection();
   const { setFrameIndex, setPlaying, currentFrames, isPlaying } = useLeRobotPlayback();
   const { canAnnotate, endAtPlayhead, pendingRange, clearPendingAnnotation } = useLeRobotSubtask();
-  const { setSubtaskDialogOpen, episodeEditMode, subtaskDialogOpen } = useLeRobotUi();
+  const { setSubtaskDialogOpen, episodeEditMode, subtaskDialogOpen, trimEditMode, trimSuggestion } =
+    useLeRobotUi();
 
   const enabledRef = useRef(enabled);
   const episodesRef = useRef(episodes);
@@ -24,7 +25,7 @@ export const useKeyboardShortcuts = (enabled: boolean = true) => {
   const currentFramesRef = useRef(currentFrames);
   const isLoadingRef = useRef(isLoading);
   const canAnnotateRef = useRef(canAnnotate);
-  const episodeEditModeRef = useRef(episodeEditMode);
+  const episodeEditModeRef = useRef(episodeEditMode && !trimEditMode && !trimSuggestion);
   const endAtPlayheadRef = useRef(endAtPlayhead);
   const pendingRangeRef = useRef(pendingRange);
   const clearPendingAnnotationRef = useRef(clearPendingAnnotation);
@@ -32,6 +33,7 @@ export const useKeyboardShortcuts = (enabled: boolean = true) => {
   const setPlayingRef = useRef(setPlaying);
   const isPlayingRef = useRef(isPlaying);
   const subtaskDialogOpenRef = useRef(subtaskDialogOpen);
+  const trimSuggestionRef = useRef(trimSuggestion);
 
   useEffect(() => {
     enabledRef.current = enabled;
@@ -58,8 +60,8 @@ export const useKeyboardShortcuts = (enabled: boolean = true) => {
   }, [canAnnotate]);
 
   useEffect(() => {
-    episodeEditModeRef.current = episodeEditMode;
-  }, [episodeEditMode]);
+    episodeEditModeRef.current = episodeEditMode && !trimEditMode && !trimSuggestion;
+  }, [episodeEditMode, trimEditMode, trimSuggestion]);
 
   useEffect(() => {
     endAtPlayheadRef.current = endAtPlayhead;
@@ -89,6 +91,10 @@ export const useKeyboardShortcuts = (enabled: boolean = true) => {
     subtaskDialogOpenRef.current = subtaskDialogOpen;
   }, [subtaskDialogOpen]);
 
+  useEffect(() => {
+    trimSuggestionRef.current = trimSuggestion;
+  }, [trimSuggestion]);
+
   const handleKeyDown = useCallback(
     (e: KeyboardEvent) => {
       if (!enabledRef.current || isLoadingRef.current) return;
@@ -114,6 +120,7 @@ export const useKeyboardShortcuts = (enabled: boolean = true) => {
 
       switch (e.key) {
         case 'ArrowUp': {
+          if (trimSuggestionRef.current) return;
           if (currentEpisodes.length === 0) return;
 
           const currentEpisode = currentEpisodes.find(
@@ -139,6 +146,7 @@ export const useKeyboardShortcuts = (enabled: boolean = true) => {
         }
 
         case 'ArrowDown': {
+          if (trimSuggestionRef.current) return;
           if (currentEpisodes.length === 0) return;
 
           const currentEpisode = currentEpisodes.find(

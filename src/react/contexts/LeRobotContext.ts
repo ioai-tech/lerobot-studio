@@ -45,6 +45,7 @@ export interface LeRobotDataContextType {
 export interface LeRobotSelectionContextType {
   trimRanges: ReadonlyMap<number, EpisodeTrimRange>;
   trimEpisode: (episodeIndex: number, range: EpisodeTrimRange | null) => void;
+  trimEpisodes: (ranges: ReadonlyMap<number, EpisodeTrimRange | null>) => void;
   selectedEpisodeIndex: number | null;
   selectedEpisodeIndices: Set<number>;
   toggleEpisodeSelection: (index: number) => void;
@@ -95,8 +96,18 @@ export interface LeRobotSubtaskContextType {
   removeSegment: (index: number) => void;
 }
 
+export type TrimPreviewHandlers = {
+  returnFromPreview: () => void;
+  cancelPreview: () => void;
+};
+
 /** Presentation-only UI state (dialogs), kept out of domain contexts */
 export interface LeRobotUiContextType {
+  trimSuggestion: { episodeIndex: number; range: EpisodeTrimRange } | null;
+  setTrimSuggestion: (suggestion: { episodeIndex: number; range: EpisodeTrimRange } | null) => void;
+  returnFromTrimPreview: () => void;
+  cancelTrimPreview: () => void;
+  setTrimPreviewHandlers: (handlers: TrimPreviewHandlers | null) => void;
   trimEditMode: boolean;
   setTrimEditMode: (enabled: boolean) => void;
   previewTrim: boolean;

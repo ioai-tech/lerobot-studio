@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { Suspense, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   useLeRobotData,
@@ -17,9 +17,14 @@ import { EpisodeFilters } from './episodes/EpisodeFilters';
 import { EpisodeToolbar } from './episodes/EpisodeToolbar';
 import { EpisodeList } from './episodes/EpisodeList';
 
+const BatchTrimDialog = React.lazy(async () => {
+  const mod = await import('../dialogs/BatchTrimDialog');
+  return { default: mod.BatchTrimDialog };
+});
+
 export const EpisodeSidebar: React.FC = () => {
   const { t } = useTranslation();
-  const { episodes, tasks, isLoading, error, info, versionCapability, isReadOnly } =
+  const { episodes, tasks, isLoading, error, info, dataLoader, versionCapability, isReadOnly } =
     useLeRobotData();
   const {
     selectEpisode,
@@ -44,6 +49,10 @@ export const EpisodeSidebar: React.FC = () => {
   const [episodeToEdit, setEpisodeToEdit] = useState<EpisodeMetadata | null>(null);
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [bulkEditOpen, setBulkEditOpen] = useState(false);
+  const [batchTrimEpisodes, setBatchTrimEpisodes] = useState<EpisodeMetadata[] | null>(null);
+  useEffect(() => {
+    setBatchTrimEpisodes(null);
+  }, [dataLoader]);
   const [bulkEditText, setBulkEditText] = useState('');
   const mutationDisabled = isReadOnly || Boolean(info && versionCapability?.status !== 'supported');
   const editMode = !mutationDisabled && episodeEditMode;
@@ -224,6 +233,7 @@ export const EpisodeSidebar: React.FC = () => {
             selectedNonDeletedCount={selectedNonDeleted.length}
             onSelectAll={() => selectAllInList(filteredEpisodes.map((ep) => ep.episode_index))}
             onClearSelection={clearEpisodeSelection}
+            onBulkTrim={() => setBatchTrimEpisodes([...selectedNonDeleted])}
             onBulkEdit={() => setBulkEditOpen(true)}
             onBulkDelete={() => selectedNonDeleted.forEach((ep) => deleteEpisode(ep.episode_index))}
             onBulkRestore={() => selectedDeleted.forEach((ep) => restoreEpisode(ep.episode_index))}
@@ -251,6 +261,14 @@ export const EpisodeSidebar: React.FC = () => {
         />
       </div>
 
+      {!mutationDisabled && batchTrimEpisodes && (
+        <Suspense fallback={null}>
+          <BatchTrimDialog
+            episodes={batchTrimEpisodes}
+            onClose={() => setBatchTrimEpisodes(null)}
+          />
+        </Suspense>
+      )}
       {!mutationDisabled && (
         <EditTaskDialog
           key={episodeToEdit?.episode_index ?? 'edit-dialog'}

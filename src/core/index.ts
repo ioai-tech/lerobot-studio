@@ -67,3 +67,4 @@ export type { ParquetWorkerAPI, ParquetImageWorkerAPI } from './workers/types';
 
 export * from './subtask';
 export * from './export/trim';
+export { fixedTrim, suggestTrim } from './export/suggestTrim';
