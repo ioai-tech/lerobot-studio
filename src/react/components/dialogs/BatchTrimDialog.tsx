@@ -1,8 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import type { EpisodeMetadata, EpisodeTrimRange } from '@/core';
-import { fixedTrim, suggestTrim } from '../../../core/export/suggestTrim';
-import { getDefaultChartFeatureKeys } from '../../../core/panels/chartFeatureSelection';
+import {
+  fixedTrim,
+  getDefaultChartFeatureKeys,
+  suggestTrim,
+  type EpisodeMetadata,
+  type EpisodeTrimRange,
+} from '@/core';
 import { Pagination } from '../Pagination';
 import {
   useLeRobotData,
@@ -12,6 +16,7 @@ import {
 } from '../../contexts/LeRobotContext';
 import {
   Button,
+  cn,
   Dialog,
   DialogContent,
   DialogDescription,
@@ -20,6 +25,12 @@ import {
   DialogTitle,
   Input,
 } from '@/ui';
+
+const nativeSelectClassName = cn(
+  'h-8 max-w-full rounded-lg border border-input bg-transparent px-2.5 py-1 text-sm transition-colors',
+  'focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none',
+  'disabled:cursor-not-allowed disabled:opacity-50',
+);
 
 type Result = {
   episode: EpisodeMetadata;
@@ -39,7 +50,7 @@ export function BatchTrimDialog({
   const { info, dataLoader } = useLeRobotData();
   const { trimRanges, trimEpisodes, selectEpisode, deletedEpisodes } = useLeRobotSelection();
   const { setPlaying, setFrameIndex } = useLeRobotPlayback();
-  const { trimSuggestion, setTrimSuggestion } = useLeRobotUi();
+  const { trimSuggestion, setTrimSuggestion, setTrimPreviewHandlers } = useLeRobotUi();
   const [mode, setMode] = useState('auto');
   const [before, setBefore] = useState('3');
   const [after, setAfter] = useState('3');
@@ -97,6 +108,7 @@ export function BatchTrimDialog({
     generation.current++;
     setPlaying(false);
     setTrimSuggestion(null);
+    setPreviewing(false);
     onClose();
   };
   const calculate = async () => {
@@ -178,6 +190,17 @@ export function BatchTrimDialog({
     setTrimSuggestion(null);
     setPreviewing(false);
   };
+  const returnFromPreviewRef = useRef(returnFromPreview);
+  const closeRef = useRef(close);
+  returnFromPreviewRef.current = returnFromPreview;
+  closeRef.current = close;
+  useEffect(() => {
+    setTrimPreviewHandlers?.({
+      returnFromPreview: () => returnFromPreviewRef.current(),
+      cancelPreview: () => closeRef.current(),
+    });
+    return () => setTrimPreviewHandlers?.(null);
+  }, [setTrimPreviewHandlers]);
   const apply = () => {
     const next = new Map<number, EpisodeTrimRange>();
     const previous = new Map<number, EpisodeTrimRange | null>();
@@ -218,272 +241,286 @@ export function BatchTrimDialog({
   };
   const busy = progress !== null || previewLoading;
   return (
-    <>
-      {previewing && (
-        <div className="m-2 space-y-2 rounded border bg-muted p-3 text-xs">
-          <p>{t('batchTrim.previewNotice')}</p>
-          <Button size="sm" onClick={returnFromPreview}>
-            {t('batchTrim.return')}
-          </Button>
-          <Button size="sm" variant="ghost" onClick={close}>
-            {t('common.cancel')}
-          </Button>
-        </div>
-      )}
-      <Dialog
-        open={!previewing}
-        onOpenChange={(open) => {
-          if (!open) close();
-        }}
-      >
-        <DialogContent className="sm:max-w-3xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>{t('batchTrim.title')}</DialogTitle>
-            <DialogDescription>
-              {t('batchTrim.description', { count: episodes.length })}
-            </DialogDescription>
-          </DialogHeader>
-          <fieldset disabled={busy} className="space-y-3" onChange={invalidate}>
-            <label className="flex items-center gap-2 text-sm">
-              {t('batchTrim.mode')}
-              <select
-                className="rounded border bg-background p-2"
-                value={mode}
-                onChange={(e) => setMode(e.target.value)}
-              >
-                <option value="auto">{t('batchTrim.auto')}</option>
-                <option value="fixed">{t('batchTrim.fixed')}</option>
-              </select>
-            </label>
-            <div className="flex flex-wrap gap-4 text-sm">
-              <label>
-                {t(mode === 'auto' ? 'batchTrim.before' : 'batchTrim.head')}
-                <Input
-                  type="number"
-                  min={0}
-                  step={0.1}
-                  value={mode === 'auto' ? before : head}
-                  onChange={(e) =>
-                    mode === 'auto' ? setBefore(e.target.value) : setHead(e.target.value)
-                  }
-                />
-              </label>
-              <label>
-                {t(mode === 'auto' ? 'batchTrim.after' : 'batchTrim.tail')}
-                <Input
-                  type="number"
-                  min={0}
-                  step={0.1}
-                  value={mode === 'auto' ? after : tail}
-                  onChange={(e) =>
-                    mode === 'auto' ? setAfter(e.target.value) : setTail(e.target.value)
-                  }
-                />
-              </label>
+    <Dialog
+      open={!previewing}
+      onOpenChange={(open) => {
+        if (!open) close();
+      }}
+    >
+      <DialogContent className="sm:max-w-3xl max-h-[90vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>{t('batchTrim.title')}</DialogTitle>
+          <DialogDescription>
+            {t('batchTrim.description', { count: episodes.length })}
+          </DialogDescription>
+        </DialogHeader>
+        <fieldset disabled={busy} className="space-y-3" onChange={invalidate}>
+          <div className="space-y-2">
+            <span className="text-sm font-medium text-muted-foreground">{t('batchTrim.mode')}</span>
+            <div className="flex flex-wrap gap-2" role="group" aria-label={t('batchTrim.mode')}>
+              {(
+                [
+                  ['auto', 'batchTrim.auto'],
+                  ['fixed', 'batchTrim.fixed'],
+                ] as const
+              ).map(([value, label]) => (
+                <Button
+                  key={value}
+                  type="button"
+                  size="sm"
+                  variant={mode === value ? 'default' : 'outline'}
+                  aria-pressed={mode === value}
+                  onClick={() => {
+                    if (mode === value) return;
+                    setMode(value);
+                    invalidate();
+                  }}
+                >
+                  {t(label)}
+                </Button>
+              ))}
             </div>
-            {mode === 'auto' && (
-              <>
-                <p className="text-xs text-muted-foreground">{t('batchTrim.motionHint')}</p>
-                <label className="flex flex-wrap items-center gap-2 text-sm">
-                  {t('batchTrim.feature')}
-                  <select
-                    className="max-w-full rounded border bg-background p-2"
-                    value={feature}
-                    onChange={(e) => {
-                      setFeature(e.target.value);
-                      setExcluded([]);
-                    }}
-                  >
-                    <option value="">{t('batchTrim.chooseFeature')}</option>
-                    {features.map((key) => (
-                      <option key={key} value={key}>
-                        {key}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label className="flex items-center gap-2 text-sm">
+          </div>
+          <div className="flex flex-wrap gap-4 text-sm">
+            <label>
+              {t(mode === 'auto' ? 'batchTrim.before' : 'batchTrim.head')}
+              <Input
+                type="number"
+                min={0}
+                step={0.1}
+                value={mode === 'auto' ? before : head}
+                onChange={(e) =>
+                  mode === 'auto' ? setBefore(e.target.value) : setHead(e.target.value)
+                }
+              />
+            </label>
+            <label>
+              {t(mode === 'auto' ? 'batchTrim.after' : 'batchTrim.tail')}
+              <Input
+                type="number"
+                min={0}
+                step={0.1}
+                value={mode === 'auto' ? after : tail}
+                onChange={(e) =>
+                  mode === 'auto' ? setAfter(e.target.value) : setTail(e.target.value)
+                }
+              />
+            </label>
+          </div>
+          {mode === 'auto' && (
+            <>
+              <p className="text-xs text-muted-foreground">{t('batchTrim.motionHint')}</p>
+              <label className="flex flex-wrap items-center gap-2 text-sm">
+                {t('batchTrim.feature')}
+                <select
+                  className={nativeSelectClassName}
+                  aria-label={t('batchTrim.feature')}
+                  value={feature}
+                  onChange={(e) => {
+                    setFeature(e.target.value);
+                    setExcluded([]);
+                  }}
+                >
+                  <option value="">{t('batchTrim.chooseFeature')}</option>
+                  {features.map((key) => (
+                    <option key={key} value={key}>
+                      {key}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <div className="space-y-2">
+                <span className="text-sm font-medium text-muted-foreground">
                   {t('batchTrim.sensitivity')}
-                  <select
-                    className="rounded border bg-background p-2"
-                    value={sensitivity}
-                    onChange={(e) => setSensitivity(e.target.value as typeof sensitivity)}
-                  >
-                    {(['low', 'medium', 'high'] as const).map((value) => (
-                      <option key={value} value={value}>
-                        {t(`batchTrim.${value}`)}
-                      </option>
+                </span>
+                <div
+                  className="flex flex-wrap gap-2"
+                  role="group"
+                  aria-label={t('batchTrim.sensitivity')}
+                >
+                  {(['low', 'medium', 'high'] as const).map((value) => (
+                    <Button
+                      key={value}
+                      type="button"
+                      size="sm"
+                      variant={sensitivity === value ? 'default' : 'outline'}
+                      aria-pressed={sensitivity === value}
+                      onClick={() => {
+                        if (sensitivity === value) return;
+                        setSensitivity(value);
+                        invalidate();
+                      }}
+                    >
+                      {t(`batchTrim.${value}`)}
+                    </Button>
+                  ))}
+                </div>
+              </div>
+              {feature && (
+                <details className="text-xs">
+                  <summary className="cursor-pointer">{t('batchTrim.dimensions')}</summary>
+                  <div className="mt-2 flex max-h-32 flex-wrap gap-3 overflow-y-auto">
+                    {Array.from({ length: width }, (_, i) => (
+                      <label key={i} className="flex items-center gap-1">
+                        <input
+                          type="checkbox"
+                          checked={!excluded.includes(i)}
+                          onChange={(e) =>
+                            setExcluded((previous) =>
+                              e.target.checked ? previous.filter((d) => d !== i) : [...previous, i],
+                            )
+                          }
+                        />
+                        {info?.features[feature].names?.[i] ?? `[${i}]`}
+                      </label>
                     ))}
-                  </select>
-                </label>
-                {feature && (
-                  <details className="text-xs">
-                    <summary className="cursor-pointer">{t('batchTrim.dimensions')}</summary>
-                    <div className="mt-2 flex max-h-32 flex-wrap gap-3 overflow-y-auto">
-                      {Array.from({ length: width }, (_, i) => (
-                        <label key={i} className="flex items-center gap-1">
+                  </div>
+                </details>
+              )}
+            </>
+          )}
+          <label className="flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={overwrite}
+              onChange={(e) => setOverwrite(e.target.checked)}
+            />
+            {t('batchTrim.overwrite')}
+          </label>
+        </fieldset>
+        <div className="flex flex-wrap items-center gap-3">
+          <Button disabled={busy || !valid} onClick={() => void calculate()}>
+            {t('batchTrim.calculate')}
+          </Button>
+          {progress !== null && (
+            <>
+              <span role="status" className="text-sm">
+                {t('batchTrim.progress', { done: progress, total: episodes.length })}
+              </span>
+              <Button
+                variant="outline"
+                onClick={() => {
+                  generation.current++;
+                  setProgress(null);
+                  setNotice(t('batchTrim.cancelled'));
+                }}
+              >
+                {t('common.cancel')}
+              </Button>
+            </>
+          )}
+        </div>
+        {results.length > 0 && (
+          <div className="max-h-72 overflow-auto rounded border">
+            <table className="w-full text-left text-xs">
+              <thead className="sticky top-0 bg-muted">
+                <tr>
+                  {['episode', 'original', 'range', 'removed', 'status'].map((key) => (
+                    <th className="p-2" key={key}>
+                      {t(`batchTrim.${key}`)}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {results
+                  .slice(resultPage * rowsPerPage, (resultPage + 1) * rowsPerPage)
+                  .map((row) => (
+                    <tr key={row.episode.episode_index} className="border-t">
+                      <td className="p-2">
+                        <label className="flex items-center gap-2">
                           <input
                             type="checkbox"
-                            checked={!excluded.includes(i)}
+                            aria-label={t('batchTrim.select', {
+                              index: row.episode.episode_index,
+                            })}
+                            checked={row.checked}
+                            disabled={!row.range || busy || undo !== null}
                             onChange={(e) =>
-                              setExcluded((previous) =>
-                                e.target.checked
-                                  ? previous.filter((d) => d !== i)
-                                  : [...previous, i],
+                              setResults((previous) =>
+                                previous.map((r) =>
+                                  r.episode.episode_index === row.episode.episode_index
+                                    ? { ...r, checked: e.target.checked }
+                                    : r,
+                                ),
                               )
                             }
                           />
-                          {info?.features[feature].names?.[i] ?? `[${i}]`}
+                          #{row.episode.episode_index}
                         </label>
-                      ))}
-                    </div>
-                  </details>
-                )}
-              </>
-            )}
-            <label className="flex items-center gap-2 text-sm">
-              <input
-                type="checkbox"
-                checked={overwrite}
-                onChange={(e) => setOverwrite(e.target.checked)}
-              />
-              {t('batchTrim.overwrite')}
-            </label>
-          </fieldset>
-          <div className="flex flex-wrap items-center gap-3">
-            <Button disabled={busy || !valid} onClick={() => void calculate()}>
-              {t('batchTrim.calculate')}
-            </Button>
-            {progress !== null && (
-              <>
-                <span role="status" className="text-sm">
-                  {t('batchTrim.progress', { done: progress, total: episodes.length })}
-                </span>
-                <Button
-                  variant="outline"
-                  onClick={() => {
-                    generation.current++;
-                    setProgress(null);
-                    setNotice(t('batchTrim.cancelled'));
-                  }}
-                >
-                  {t('common.cancel')}
-                </Button>
-              </>
-            )}
+                      </td>
+                      <td className="p-2">{(row.episode.length / fps).toFixed(2)} s</td>
+                      <td className="p-2">
+                        {row.range ? (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            disabled={busy || undo !== null}
+                            aria-label={t('batchTrim.preview', {
+                              index: row.episode.episode_index,
+                            })}
+                            onClick={() => void preview(row)}
+                          >
+                            {(row.range.startFrame / fps).toFixed(2)}–
+                            {((row.range.endFrame + 1) / fps).toFixed(2)} s
+                          </Button>
+                        ) : (
+                          '—'
+                        )}
+                      </td>
+                      <td className="p-2">
+                        {row.range
+                          ? `${((row.episode.length - row.range.endFrame + row.range.startFrame - 1) / fps).toFixed(2)} s`
+                          : '—'}
+                      </td>
+                      <td className="p-2">{t(`batchTrim.${row.status}`)}</td>
+                    </tr>
+                  ))}
+              </tbody>
+            </table>
           </div>
+        )}
+        {results.length > 0 && (
+          <Pagination
+            count={results.length}
+            page={resultPage}
+            rowsPerPage={rowsPerPage}
+            onPageChange={(_, next) => setResultPage(next)}
+            onRowsPerPageChange={(event) => {
+              setRowsPerPage(Number(event.target.value));
+              setResultPage(0);
+            }}
+          />
+        )}
+        {notice && (
+          <p role="status" className="text-sm">
+            {notice}
+          </p>
+        )}
+        <DialogFooter>
           {results.length > 0 && (
-            <div className="max-h-72 overflow-auto rounded border">
-              <table className="w-full text-left text-xs">
-                <thead className="sticky top-0 bg-muted">
-                  <tr>
-                    {['episode', 'original', 'range', 'removed', 'status'].map((key) => (
-                      <th className="p-2" key={key}>
-                        {t(`batchTrim.${key}`)}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {results
-                    .slice(resultPage * rowsPerPage, (resultPage + 1) * rowsPerPage)
-                    .map((row) => (
-                      <tr key={row.episode.episode_index} className="border-t">
-                        <td className="p-2">
-                          <label className="flex items-center gap-2">
-                            <input
-                              type="checkbox"
-                              aria-label={t('batchTrim.select', {
-                                index: row.episode.episode_index,
-                              })}
-                              checked={row.checked}
-                              disabled={!row.range || busy || undo !== null}
-                              onChange={(e) =>
-                                setResults((previous) =>
-                                  previous.map((r) =>
-                                    r.episode.episode_index === row.episode.episode_index
-                                      ? { ...r, checked: e.target.checked }
-                                      : r,
-                                  ),
-                                )
-                              }
-                            />
-                            #{row.episode.episode_index}
-                          </label>
-                        </td>
-                        <td className="p-2">{(row.episode.length / fps).toFixed(2)} s</td>
-                        <td className="p-2">
-                          {row.range ? (
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              disabled={busy || undo !== null}
-                              aria-label={t('batchTrim.preview', {
-                                index: row.episode.episode_index,
-                              })}
-                              onClick={() => void preview(row)}
-                            >
-                              {(row.range.startFrame / fps).toFixed(2)}–
-                              {((row.range.endFrame + 1) / fps).toFixed(2)} s
-                            </Button>
-                          ) : (
-                            '—'
-                          )}
-                        </td>
-                        <td className="p-2">
-                          {row.range
-                            ? `${((row.episode.length - row.range.endFrame + row.range.startFrame - 1) / fps).toFixed(2)} s`
-                            : '—'}
-                        </td>
-                        <td className="p-2">{t(`batchTrim.${row.status}`)}</td>
-                      </tr>
-                    ))}
-                </tbody>
-              </table>
-            </div>
+            <span className="mr-auto self-center text-xs text-muted-foreground">
+              {t('sidebar.selectedCount', {
+                count: results.filter((row) => row.checked && row.range).length,
+              })}
+            </span>
           )}
-          {results.length > 0 && (
-            <Pagination
-              count={results.length}
-              page={resultPage}
-              rowsPerPage={rowsPerPage}
-              onPageChange={(_, next) => setResultPage(next)}
-              onRowsPerPageChange={(event) => {
-                setRowsPerPage(Number(event.target.value));
-                setResultPage(0);
-              }}
-            />
-          )}
-          {notice && (
-            <p role="status" className="text-sm">
-              {notice}
-            </p>
-          )}
-          <DialogFooter>
-            {results.length > 0 && (
-              <span className="mr-auto self-center text-xs text-muted-foreground">
-                {t('sidebar.selectedCount', {
-                  count: results.filter((row) => row.checked && row.range).length,
-                })}
-              </span>
-            )}
-            <Button variant="outline" onClick={close}>
-              {t('common.close')}
+          <Button variant="outline" onClick={close}>
+            {t('common.close')}
+          </Button>
+          {undo !== null && (
+            <Button variant="outline" onClick={undoApply}>
+              {t('batchTrim.undo')}
             </Button>
-            {undo !== null && (
-              <Button variant="outline" onClick={undoApply}>
-                {t('batchTrim.undo')}
-              </Button>
-            )}
-            <Button
-              disabled={busy || undo !== null || !results.some((row) => row.checked && row.range)}
-              onClick={apply}
-            >
-              {t('batchTrim.apply')}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-    </>
+          )}
+          <Button
+            disabled={busy || undo !== null || !results.some((row) => row.checked && row.range)}
+            onClick={apply}
+          >
+            {t('batchTrim.apply')}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }

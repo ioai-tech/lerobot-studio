@@ -60,6 +60,8 @@ export const PlaybackBar: React.FC = () => {
     setTrimEditMode,
     trimSuggestion,
     setTrimSuggestion,
+    returnFromTrimPreview,
+    cancelTrimPreview,
     previewTrim,
     setPreviewTrim,
   } = useLeRobotUi();
@@ -352,8 +354,16 @@ export const PlaybackBar: React.FC = () => {
       <Separator orientation="vertical" className="h-8 mx-2 bg-border" />
 
       <div className="min-w-0 flex-1">
-        {suggestion ? (
-          <p className="px-2 text-xs text-primary">{t('batchTrim.previewNotice')}</p>
+        {trimSuggestion ? (
+          <div className="flex min-w-0 flex-wrap items-center gap-2 px-2">
+            <p className="text-xs text-primary">{t('batchTrim.previewNotice')}</p>
+            <Button size="sm" type="button" onClick={() => returnFromTrimPreview()}>
+              {t('batchTrim.return')}
+            </Button>
+            <Button size="sm" type="button" variant="ghost" onClick={() => cancelTrimPreview()}>
+              {t('common.cancel')}
+            </Button>
+          </div>
         ) : null}
         {!suggestion && episodeEditMode && versionCapability?.status === 'supported' ? (
           <Button

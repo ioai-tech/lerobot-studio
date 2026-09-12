@@ -47,7 +47,10 @@ it('batch trims through the real sidebar, previews without applying, and preserv
         page.getByRole('button', { name: `Select Episode ${index}`, exact: true }),
       );
     await userEvent.click(page.getByRole('button', { name: 'Batch trim', exact: true }));
-    await page.getByRole('combobox', { name: 'Method', exact: true }).selectOptions('fixed');
+    await expect.element(page.getByRole('dialog')).toBeVisible();
+    await userEvent.click(
+      page.getByRole('button', { name: 'Remove fixed durations', exact: true }),
+    );
     await page.getByRole('spinbutton', { name: 'Remove from start (seconds)' }).fill('0.1');
     await userEvent.click(page.getByRole('button', { name: 'Calculate ranges' }));
     await expect.element(page.getByRole('button', { name: 'Apply selected ranges' })).toBeEnabled();
@@ -55,6 +58,9 @@ it('batch trims through the real sidebar, previews without applying, and preserv
     await expect.poll(() => host.querySelector('[data-slot="dialog-content"]')).toBeNull();
     host.querySelector<HTMLButtonElement>('[title="Edit episodes"]')!.click();
     const trimPanel = host.querySelector<HTMLElement>('[aria-label="Trim episode"]')!;
+    await expect.element(page.getByRole('button', { name: 'Return to batch trim' })).toBeVisible();
+    trimPanel.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+    expect(host.querySelector('[aria-label="Trim episode"]')).not.toBeNull();
     trimPanel.dispatchEvent(new KeyboardEvent('keydown', { key: ' ', bubbles: true }));
     await new Promise((resolve) => setTimeout(resolve, 30));
     trimPanel.dispatchEvent(new KeyboardEvent('keydown', { key: ' ', bubbles: true }));
@@ -226,7 +232,9 @@ it('analyzes each episode independently, skips existing/deleted/invalid data, an
     await expect
       .element(page.getByRole('button', { name: 'Apply selected ranges' }))
       .toBeDisabled();
-    await page.getByRole('combobox', { name: 'Method', exact: true }).selectOptions('fixed');
+    await userEvent.click(
+      page.getByRole('button', { name: 'Remove fixed durations', exact: true }),
+    );
     await page.getByRole('spinbutton', { name: 'Remove from start (seconds)' }).fill('1');
     await userEvent.click(
       page.getByRole('checkbox', { name: 'Overwrite existing trims (otherwise skip them)' }),

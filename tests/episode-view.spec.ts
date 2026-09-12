@@ -1,10 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import type { EpisodeMetadata } from '../src/core';
 import {
+  applyTrimEpisodeUpdates,
   deriveEffectiveEpisodes,
   getEffectiveEpisode,
   selectEpisodesForExport,
   toggleEpisodeIndex,
+  validateTrimEpisodeUpdates,
 } from '../src/react/contexts/useEpisodeView';
 
 const episodes: EpisodeMetadata[] = [
@@ -45,5 +47,48 @@ describe('episode view derivation', () => {
     expect(toggleEpisodeIndex(original, 1)).toEqual(new Set());
     expect(toggleEpisodeIndex(original, 2)).toEqual(new Set([1, 2]));
     expect(original).toEqual(new Set([1]));
+  });
+
+  it('validates a trim batch atomically and drops full-episode ranges', () => {
+    const lengths = new Map(episodes.map((episode) => [episode.episode_index, episode.length]));
+    expect(
+      validateTrimEpisodeUpdates(
+        new Map([
+          [0, { startFrame: 1, endFrame: 4 }],
+          [2, { startFrame: 0, endFrame: 29 }],
+        ]),
+        lengths,
+      ),
+    ).toEqual(
+      new Map([
+        [0, { startFrame: 1, endFrame: 4 }],
+        [2, null],
+      ]),
+    );
+    expect(() =>
+      validateTrimEpisodeUpdates(
+        new Map([
+          [0, { startFrame: 0, endFrame: 4 }],
+          [1, { startFrame: 4, endFrame: 900 }],
+        ]),
+        lengths,
+      ),
+    ).toThrow(/Invalid trim/);
+    expect(() =>
+      validateTrimEpisodeUpdates(new Map([[9, { startFrame: 0, endFrame: 1 }]]), lengths),
+    ).toThrow(/Unknown episode 9/);
+  });
+
+  it('applies validated trim updates without mutating the previous map', () => {
+    const previous = new Map([[1, { startFrame: 2, endFrame: 8 }]]);
+    const next = applyTrimEpisodeUpdates(
+      previous,
+      new Map([
+        [0, { startFrame: 1, endFrame: 3 }],
+        [1, null],
+      ]),
+    );
+    expect(next).toEqual(new Map([[0, { startFrame: 1, endFrame: 3 }]]));
+    expect(previous).toEqual(new Map([[1, { startFrame: 2, endFrame: 8 }]]));
   });
 });

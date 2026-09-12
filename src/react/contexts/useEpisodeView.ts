@@ -41,6 +41,36 @@ type UseEpisodeViewOptions = {
   versionCapability: LeRobotVersionCapability | null;
 };
 
+/** Validate the whole batch first so a later invalid range cannot apply earlier ones. */
+export function validateTrimEpisodeUpdates(
+  ranges: ReadonlyMap<number, EpisodeTrimRange | null>,
+  lengths: ReadonlyMap<number, number>,
+): Map<number, EpisodeTrimRange | null> {
+  const validated = new Map<number, EpisodeTrimRange | null>();
+  for (const [index, range] of ranges) {
+    const length = lengths.get(index);
+    if (length === undefined) throw new Error(`Unknown episode ${index}`);
+    if (range) validateEpisodeTrim(range, length);
+    validated.set(
+      index,
+      !range || (range.startFrame === 0 && range.endFrame === length - 1) ? null : { ...range },
+    );
+  }
+  return validated;
+}
+
+export function applyTrimEpisodeUpdates(
+  previous: ReadonlyMap<number, EpisodeTrimRange>,
+  updates: ReadonlyMap<number, EpisodeTrimRange | null>,
+): Map<number, EpisodeTrimRange> {
+  const next = new Map(previous);
+  for (const [index, range] of updates) {
+    if (range) next.set(index, range);
+    else next.delete(index);
+  }
+  return next;
+}
+
 export function useEpisodeView({ episodes, versionCapability }: UseEpisodeViewOptions) {
   const [trimRanges, setTrimRanges] = useState<Map<number, EpisodeTrimRange>>(() => new Map());
   const lengths = useMemo(
@@ -50,24 +80,8 @@ export function useEpisodeView({ episodes, versionCapability }: UseEpisodeViewOp
   const trimEpisodes = useCallback(
     (ranges: ReadonlyMap<number, EpisodeTrimRange | null>) => {
       assertEpisodeMutationAllowed(versionCapability);
-      const validated = new Map<number, EpisodeTrimRange | null>();
-      for (const [index, range] of ranges) {
-        const length = lengths.get(index);
-        if (length === undefined) throw new Error(`Unknown episode ${index}`);
-        if (range) validateEpisodeTrim(range, length);
-        validated.set(
-          index,
-          !range || (range.startFrame === 0 && range.endFrame === length - 1) ? null : { ...range },
-        );
-      }
-      setTrimRanges((previous) => {
-        const next = new Map(previous);
-        for (const [index, range] of validated) {
-          if (range) next.set(index, range);
-          else next.delete(index);
-        }
-        return next;
-      });
+      const validated = validateTrimEpisodeUpdates(ranges, lengths);
+      setTrimRanges((previous) => applyTrimEpisodeUpdates(previous, validated));
     },
     [lengths, versionCapability],
   );

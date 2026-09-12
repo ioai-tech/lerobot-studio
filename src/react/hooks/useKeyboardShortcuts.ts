@@ -33,6 +33,7 @@ export const useKeyboardShortcuts = (enabled: boolean = true) => {
   const setPlayingRef = useRef(setPlaying);
   const isPlayingRef = useRef(isPlaying);
   const subtaskDialogOpenRef = useRef(subtaskDialogOpen);
+  const trimSuggestionRef = useRef(trimSuggestion);
 
   useEffect(() => {
     enabledRef.current = enabled;
@@ -90,6 +91,10 @@ export const useKeyboardShortcuts = (enabled: boolean = true) => {
     subtaskDialogOpenRef.current = subtaskDialogOpen;
   }, [subtaskDialogOpen]);
 
+  useEffect(() => {
+    trimSuggestionRef.current = trimSuggestion;
+  }, [trimSuggestion]);
+
   const handleKeyDown = useCallback(
     (e: KeyboardEvent) => {
       if (!enabledRef.current || isLoadingRef.current) return;
@@ -115,6 +120,7 @@ export const useKeyboardShortcuts = (enabled: boolean = true) => {
 
       switch (e.key) {
         case 'ArrowUp': {
+          if (trimSuggestionRef.current) return;
           if (currentEpisodes.length === 0) return;
 
           const currentEpisode = currentEpisodes.find(
@@ -140,6 +146,7 @@ export const useKeyboardShortcuts = (enabled: boolean = true) => {
         }
 
         case 'ArrowDown': {
+          if (trimSuggestionRef.current) return;
           if (currentEpisodes.length === 0) return;
 
           const currentEpisode = currentEpisodes.find(

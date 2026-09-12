@@ -22,6 +22,7 @@ import {
   LeRobotUiContext,
   LeRobotSubtaskContext,
   type FrameIndexSubscriber,
+  type TrimPreviewHandlers,
 } from './LeRobotContext';
 import { useSubtaskAnnotation } from './useSubtaskAnnotation';
 import {
@@ -95,6 +96,22 @@ export const LeRobotDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
     episodeIndex: number;
     range: EpisodeTrimRange;
   } | null>(null);
+  const trimPreviewHandlersRef = useRef<TrimPreviewHandlers>({
+    returnFromPreview: () => setTrimSuggestion(null),
+    cancelPreview: () => setTrimSuggestion(null),
+  });
+  const setTrimPreviewHandlers = useCallback((handlers: TrimPreviewHandlers | null) => {
+    trimPreviewHandlersRef.current = handlers ?? {
+      returnFromPreview: () => setTrimSuggestion(null),
+      cancelPreview: () => setTrimSuggestion(null),
+    };
+  }, []);
+  const returnFromTrimPreview = useCallback(() => {
+    trimPreviewHandlersRef.current.returnFromPreview();
+  }, []);
+  const cancelTrimPreview = useCallback(() => {
+    trimPreviewHandlersRef.current.cancelPreview();
+  }, []);
   const [previewTrim, setPreviewTrim] = useState(false);
   const [episodeEditMode, setEpisodeEditMode] = useState(false);
   const [selectedEpisodeIndex, setSelectedEpisodeIndex] = useState<number | null>(null);
@@ -768,6 +785,9 @@ export const LeRobotDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
     () => ({
       trimSuggestion,
       setTrimSuggestion,
+      returnFromTrimPreview,
+      cancelTrimPreview,
+      setTrimPreviewHandlers,
       trimEditMode,
       setTrimEditMode,
       previewTrim,
@@ -786,6 +806,9 @@ export const LeRobotDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
       trimEditMode,
       previewTrim,
       trimSuggestion,
+      returnFromTrimPreview,
+      cancelTrimPreview,
+      setTrimPreviewHandlers,
     ],
   );
 

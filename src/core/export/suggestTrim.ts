@@ -90,7 +90,7 @@ export function suggestTrim(
       min = Math.min(min, value);
       max = Math.max(max, value);
     }
-    // ponytail: heuristic noise floor, not task segmentation; calibrate sensitivity on real recordings.
+    // Heuristic noise floor, not task segmentation; calibrate sensitivity on real recordings.
     const noise = residuals.length ? median(residuals) : 0;
     const threshold =
       factor * Math.max((4 * noise) / Math.sqrt(blockSize), (max - min) * 0.001, 1e-9);
