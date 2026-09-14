@@ -178,7 +178,14 @@ async function convertSegmentWithMediabunny(
     const conversion = await Conversion.init({
       input,
       output,
-      ...(useTrim ? { trim: { start, end } } : {}),
+      ...(useTrim
+        ? {
+            trim: { start, end },
+            // Mediabunny 1.56+ copies GOP-aligned packets for trim by default.
+            // LeRobot export must match data-frame counts, so transcode instead.
+            copy: false,
+          }
+        : {}),
     });
     if (!conversion.isValid) return null;
 
