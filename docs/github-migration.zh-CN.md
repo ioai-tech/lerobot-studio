@@ -33,7 +33,7 @@ git push -u origin main
    - 创建 `CODEOWNERS` 引用的 `@ioai-tech/maintainers` 团队，或替换为已有 write 权限的团队。
    - 在 **Settings → Code security** 中启用依赖图、Dependabot 告警与安全更新、secret scanning 与 push protection，以及私有漏洞报告。使用已检入的 CodeQL advanced-setup 工作流；不要同时启用 CodeQL default setup。
    - 验证 Dependency Review、CodeQL 与 OpenSSF Scorecard 工作流成功。Scorecard 发布会向 `api.scorecard.dev` 发送公开仓库评估数据；若不需要该发布，请在 `.github/workflows/scorecard.yml` 中禁用 `publish_results`。
-   - 在组织策略支持的情况下，将 GitHub Actions 限制为 GitHub -authored 与明确批准的第三方 actions。工作流使用 Action 主版本标签与不带 digest 的 Docker 标签；Dependabot 配置为提议 GitHub Actions 与 Docker 的版本标签更新。
+   - 在组织策略支持的情况下，将 GitHub Actions 限制为 GitHub -authored 与明确批准的第三方 actions。工作流使用 Action 版本标签（发布方提供主版本标签时用之）与不带 digest 的 Docker 标签；Dependabot 配置为提议 GitHub Actions 与 Docker 的版本标签更新。
    - 为初始 `v1.0.0` 发布添加一次性 `NPM_BOOTSTRAP_TOKEN` 仓库 secret。在 scoped 包存在之前，npm 无法配置 trusted publisher。
    - `v1.0.0` 存在后立即为 `ioai-tech/lerobot-studio` 与 `.github/workflows/release.yml` 配置 npm Trusted Publishing，然后删除 bootstrap secret。后续发布使用 GitHub OIDC，无需 npm token。
    - 为 Actions 启用 GitHub Packages / GHCR 权限。

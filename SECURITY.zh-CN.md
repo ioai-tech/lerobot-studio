@@ -42,7 +42,7 @@ major 1 的最新 minor 版本会获得安全修复。较旧的 minor 可能提�
 
 ## 供应链安全
 
-Pull Request 会经 CI、依赖审查与 CodeQL 检查。OpenSSF Scorecard 定时分析会报告仓库级供应链发现。工作流权限默认为只读；仅上传安全结果或发布 release 的作业获得所需权限。Actions 使用主版本标签（例如 `actions/checkout@v7`）而非 commit SHA，容器基础镜像使用不带 digest 的标签。Dependabot 仍跟踪 GitHub Actions 与 Docker 的版本标签更新。
+Pull Request 会经 CI、依赖审查与 CodeQL 检查。OpenSSF Scorecard 定时分析会报告仓库级供应链发现。工作流权限默认为只读；仅上传安全结果或发布 release 的作业获得所需权限。Actions 使用版本标签而非 commit SHA（发布方提供主版本标签时用 `actions/checkout@v7`，否则用完整版本标签如 `astral-sh/setup-uv@v10.1.0`）。容器基础镜像使用不带 digest 的标签。Dependabot 仍跟踪 GitHub Actions 与 Docker 的版本标签更新。
 
 仓库管理员须单独启用并验证 [docs/github-migration.zh-CN.md](./docs/github-migration.zh-CN.md) 中描述的 GitHub 安全功能与分支规则。仅检查入库的工作流并不能证明这些设置已生效。若怀疑依赖、Action、包、发布制品或维护者凭据被 compromise，请通过上述私有漏洞渠道报告。
 

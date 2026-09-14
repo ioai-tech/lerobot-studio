@@ -61,9 +61,10 @@ Pull requests are checked by CI, dependency review, and CodeQL. Scheduled
 OpenSSF Scorecard analysis reports repository-level supply-chain findings.
 Workflow permissions are read-only by default; jobs that upload security
 results or publish releases receive only their required permissions. Actions
-use major version tags (for example `actions/checkout@v7`) rather than commit
-SHAs, and container base images use tags without digest pins. Dependabot still
-tracks GitHub Actions and Docker for version-tag updates.
+use version tags rather than commit SHAs (`actions/checkout@v7` when the
+publisher provides a major tag, otherwise a full version tag such as
+`astral-sh/setup-uv@v10.1.0`). Container base images use tags without digest
+pins. Dependabot still tracks GitHub Actions and Docker for version-tag updates.
 
 Repository administrators must separately enable and verify the GitHub security
 features and branch rules described in
