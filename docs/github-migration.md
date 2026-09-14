@@ -54,9 +54,9 @@ git push -u origin main
      `api.scorecard.dev`; disable `publish_results` in
      `.github/workflows/scorecard.yml` if that publication is not desired.
    - Keep GitHub Actions restricted to GitHub-authored and explicitly approved
-     third-party actions where organization policy supports it. All non-release
-     workflows are pinned to full commit SHAs and Dependabot is configured to
-     propose GitHub Actions updates.
+     third-party actions where organization policy supports it. Workflows use
+     major Action version tags and unpinned Docker tags; Dependabot is
+     configured to propose version-tag updates for GitHub Actions and Docker.
    - Add a one-time `NPM_BOOTSTRAP_TOKEN` repository secret for the initial
      `v1.0.0` publication. npm cannot configure a trusted publisher before the
      scoped package exists.
