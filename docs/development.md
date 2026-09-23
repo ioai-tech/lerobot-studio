@@ -135,7 +135,7 @@ Changes to public behavior must follow the
 
 ## UI components
 
-UI primitives live in `src/ui` and are managed from the repository root with the shadcn CLI. Keep generated components in `src/ui/components` and use local `@/ui` or relative imports. Do not reintroduce `@radix-ui/*`; prefer Base UI composition via `render`.
+UI primitives live in `src/ui` and are managed from the repository root with the shadcn CLI. Keep generated components in `src/ui/components` and use local `@/ui` or relative imports. Do not reintroduce `@radix-ui/*`; prefer Base UI composition via `render`. The `shadcn` package stays a devDependency because `src/ui/globals.css` imports its `tailwind.css` theme layer during the build; removing it breaks `npm run build:lib`.
 
 ## Documentation i18n
 

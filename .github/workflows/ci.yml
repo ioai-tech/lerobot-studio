@@ -28,7 +28,7 @@ jobs:
       - name: Install
         run: npm ci
       - name: Audit lockfile vulnerabilities
-        run: npm audit
+        run: npm audit --audit-level=high
       - name: Generate test fixtures
         run: npm run fixtures:generate
       - name: Format check

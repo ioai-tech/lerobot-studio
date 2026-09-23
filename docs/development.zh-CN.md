@@ -112,7 +112,7 @@ React 19.2.8，检查公开 API 类型，并构建 Vite 与 Next App Router
 
 ## UI 组件
 
-UI 基元位于 `src/ui`，从仓库根目录用 shadcn CLI 管理。将生成组件保留在 `src/ui/components`，使用本地 `@/ui` 或相对导入。不要重新引入 `@radix-ui/*`；优先通过 `render` 使用 Base UI 组合。
+UI 基元位于 `src/ui`，从仓库根目录用 shadcn CLI 管理。将生成组件保留在 `src/ui/components`，使用本地 `@/ui` 或相对导入。不要重新引入 `@radix-ui/*`；优先通过 `render` 使用 Base UI 组合。`shadcn` 保持为 devDependency，因为 `src/ui/globals.css` 在构建时导入它的 `tailwind.css` 主题层；移除它会破坏 `npm run build:lib`。
 
 ## 文档国际化
 

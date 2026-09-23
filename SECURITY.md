@@ -64,7 +64,10 @@ results or publish releases receive only their required permissions. Actions
 use version tags rather than commit SHAs (`actions/checkout@v7` when the
 publisher provides a major tag, otherwise a full version tag such as
 `astral-sh/setup-uv@v10.1.0`). Container base images use tags without digest
-pins. Dependabot still tracks GitHub Actions and Docker for version-tag updates.
+pins. Dependabot tracks npm, GitHub Actions, and Docker for version and security
+updates: version updates run monthly behind a cooldown, security updates open as
+soon as an advisory is published, and each ecosystem's updates are grouped into
+single pull requests.
 
 Repository administrators must separately enable and verify the GitHub security
 features and branch rules described in
