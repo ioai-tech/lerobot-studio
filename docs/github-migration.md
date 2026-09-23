@@ -46,9 +46,10 @@ git push -u origin main
    - Create the `@ioai-tech/maintainers` team referenced by `CODEOWNERS`, or
      replace that placeholder with an existing team that has write access
    - In **Settings → Code security**, enable the dependency graph, Dependabot
-     alerts and security updates, secret scanning and push protection, and
-     private vulnerability reporting. Use the checked-in CodeQL advanced-setup
-     workflow; do not also enable CodeQL default setup.
+     alerts, Dependabot security updates, and grouped security updates, secret
+     scanning and push protection, and private vulnerability reporting. Use the
+     checked-in CodeQL advanced-setup workflow; do not also enable CodeQL
+     default setup.
    - Verify the Dependency Review, CodeQL, and OpenSSF Scorecard workflows
      succeed. Scorecard publication sends public repository assessment data to
      `api.scorecard.dev`; disable `publish_results` in
@@ -56,8 +57,11 @@ git push -u origin main
    - Keep GitHub Actions restricted to GitHub-authored and explicitly approved
      third-party actions where organization policy supports it. Workflows use
      Action version tags (major tags when the publisher provides them) and
-     Docker tags without digests; Dependabot is configured to propose
-     version-tag updates for GitHub Actions and Docker.
+     Docker tags without digests. Dependabot proposes version-tag updates for
+     GitHub Actions and Docker monthly, applies a cooldown before proposing a
+     newly published version, and groups each ecosystem's version updates and
+     security updates into single pull requests so a routine cycle costs at
+     most one review per ecosystem.
    - Add a one-time `NPM_BOOTSTRAP_TOKEN` repository secret for the initial
      `v1.0.0` publication. npm cannot configure a trusted publisher before the
      scoped package exists.
