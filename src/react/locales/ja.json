@@ -9,6 +9,7 @@
     "copy": "コピー",
     "copied": "コピーしました",
     "close": "閉じる",
+    "noFeaturesAvailable": "利用可能な特徴量がありません",
     "clearSearch": "検索をクリア",
     "loading": "読み込み中...",
     "addPanel": "パネルを追加",
@@ -51,6 +52,13 @@
       "render": "パネルを描画中...",
       "ready": "準備完了",
       "error": "読み込み失敗"
+    },
+    "message": {
+      "initLoader": "データローダーを初期化中...",
+      "readMetadata": "メタデータを読み込み中...",
+      "loadEpisode": "エピソード {{index}} を読み込み中...",
+      "fetchFrames": "エピソード {{index}} のフレームデータを取得中...",
+      "processCharts": "チャートを処理中..."
     }
   },
   "errors": {
@@ -515,6 +523,8 @@
       }
     },
     "image": {
+      "noParquetPath": "Parquet ファイルのパスを特定できません",
+      "loadFailed": "画像の読み込みに失敗しました",
       "title": "画像パネル",
       "placeholder": "画像ファイルを待機中...",
       "debug": {
@@ -610,6 +620,7 @@
       }
     },
     "welcome": {
+      "defaultCover": "デフォルトカバー",
       "title": "データを開く",
       "subtitle": "ローカルファイル/フォルダを選択するか、リモート URL を入力",
       "quickStart": "クイックスタート",

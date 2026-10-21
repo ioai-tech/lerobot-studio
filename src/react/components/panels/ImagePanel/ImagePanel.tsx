@@ -23,6 +23,8 @@ interface ImagePanelProps {
  */
 export const ImagePanel: React.FC<ImagePanelProps> = ({ params }) => {
   const { t } = useTranslation();
+  const tRef = useRef(t);
+  tRef.current = t;
   const { info, dataLoader, imageService, subscribeFrameIndex } = useLeRobotData();
   const { selectedEpisodeIndex } = useLeRobotSelection();
 
@@ -116,7 +118,7 @@ export const ImagePanel: React.FC<ImagePanelProps> = ({ params }) => {
           const pathResult = loader.getEpisodeDataPath(episode);
           if (!pathResult) {
             if (mountedRef.current) {
-              setError('Cannot determine parquet file path');
+              setError(tRef.current('panels.image.noParquetPath'));
               setIsLoading(false);
             }
             continue;
@@ -189,7 +191,7 @@ export const ImagePanel: React.FC<ImagePanelProps> = ({ params }) => {
               selectedEpisodeRef.current === episode &&
               featureKeyRef.current === key;
             if (isStillCurrent) {
-              setError(e instanceof Error ? e.message : 'Failed to load image');
+              setError(e instanceof Error ? e.message : tRef.current('panels.image.loadFailed'));
               setIsLoading(false);
             }
           } finally {

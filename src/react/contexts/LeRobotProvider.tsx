@@ -13,6 +13,7 @@ import type { NumericalColumnMap } from '@/platform';
 import type { DataSource } from '@/platform';
 import type { ValidationReport } from '@/core';
 import { DirectoryDataSource } from '@/platform';
+import { useTranslation } from '../i18n/reactI18nextCompat';
 import { useLoading } from './LoadingContext';
 import {
   LeRobotContext,
@@ -125,6 +126,10 @@ export const LeRobotDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
   const [lastValidationReport, setLastValidationReport] = useState<ValidationReport | null>(null);
   const [healthDialogOpen, setHealthDialogOpen] = useState(false);
 
+  const { t } = useTranslation();
+  // Keep t out of callback deps so a locale switch never re-triggers dataset loading.
+  const tRef = useRef(t);
+  tRef.current = t;
   const {
     upsertTask,
     completeTask,
@@ -367,7 +372,11 @@ export const LeRobotDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
       setIsLoading(true);
       setError(null);
       const taskId = 'lerobot-init';
-      upsertTask({ id: taskId, phase: 'index', message: 'Initializing data loader...' });
+      upsertTask({
+        id: taskId,
+        phase: 'index',
+        message: tRef.current('loading.message.initLoader'),
+      });
 
       let loader: LeRobotDataLoader | null = null;
       try {
@@ -420,7 +429,11 @@ export const LeRobotDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
           await import('../../platform/services/LeRobotDataLoader');
         loader = new LeRobotDataLoaderCtor(source);
 
-        upsertTask({ id: taskId, phase: 'read', message: 'Reading metadata...' });
+        upsertTask({
+          id: taskId,
+          phase: 'read',
+          message: tRef.current('loading.message.readMetadata'),
+        });
         const lerobotInfo = await loader.initialize();
         if (generation !== initGenerationRef.current) {
           await loader.dispose().catch(() => {});
@@ -482,7 +495,11 @@ export const LeRobotDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
       setIsPlaying(false);
       setError(null);
       const taskId = 'lerobot-select-episode';
-      upsertTask({ id: taskId, phase: 'read', message: `Loading episode ${index}...` });
+      upsertTask({
+        id: taskId,
+        phase: 'read',
+        message: tRef.current('loading.message.loadEpisode', { index }),
+      });
 
       setSelectedEpisodeIndex(index);
       setCurrentFrames([]);
@@ -514,13 +531,17 @@ export const LeRobotDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
         upsertTask({
           id: taskId,
           phase: 'read',
-          message: `Fetching frame data for episode ${index}...`,
+          message: tRef.current('loading.message.fetchFrames', { index }),
         });
         const numericalData = await dataLoader.loadAllNumericalData(index, eagerColumns);
 
         if (loadingEpisodeRef.current !== index) return false;
 
-        upsertTask({ id: taskId, phase: 'render', message: 'Processing charts...' });
+        upsertTask({
+          id: taskId,
+          phase: 'render',
+          message: tRef.current('loading.message.processCharts'),
+        });
         const frames = buildPlaybackFrames(numericalData, info.fps ?? 30);
         setCurrentFrames(frames);
         const subtaskSource = await dataLoader.loadEpisodeSubtaskSource(index);

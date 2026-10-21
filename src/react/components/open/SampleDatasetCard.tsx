@@ -95,7 +95,7 @@ export const SampleDatasetCard: React.FC<SampleDatasetCardProps> = ({
             {fallbackImageUrl ? (
               <img
                 src={fallbackImageUrl}
-                alt="Default Cover"
+                alt={t('panels.welcome.defaultCover')}
                 className="h-12 w-12 opacity-50 object-contain"
               />
             ) : (

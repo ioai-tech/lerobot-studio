@@ -142,7 +142,7 @@ export const PanelTitle: React.FC<IDockviewPanelHeaderProps> = (props) => {
               <DropdownMenuSubContent className="max-h-[300px] w-64 overflow-y-auto">
                 {features.length === 0 ? (
                   <div className="px-2 py-1.5 text-xs text-muted-foreground">
-                    No features available
+                    {t('common.noFeaturesAvailable')}
                   </div>
                 ) : (
                   features.map((key) => {
@@ -175,7 +175,7 @@ export const PanelTitle: React.FC<IDockviewPanelHeaderProps> = (props) => {
               <DropdownMenuSubContent className="max-h-[300px] w-64 overflow-y-auto">
                 {features.length === 0 ? (
                   <div className="px-2 py-1.5 text-xs text-muted-foreground">
-                    No features available
+                    {t('common.noFeaturesAvailable')}
                   </div>
                 ) : (
                   features.map((key) => {

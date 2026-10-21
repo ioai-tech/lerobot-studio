@@ -10,6 +10,7 @@
     "copy": "复制",
     "copied": "已复制",
     "close": "关闭",
+    "noFeaturesAvailable": "没有可用的特征",
     "clearSearch": "清空搜索",
     "loading": "加载中...",
     "addPanel": "添加面板",
@@ -51,6 +52,13 @@
       "render": "正在渲染面板...",
       "ready": "加载完成",
       "error": "加载失败"
+    },
+    "message": {
+      "initLoader": "正在初始化数据加载器...",
+      "readMetadata": "正在读取元数据...",
+      "loadEpisode": "正在加载 Episode {{index}}...",
+      "fetchFrames": "正在获取 Episode {{index}} 的帧数据...",
+      "processCharts": "正在处理图表..."
     }
   },
   "errors": {
@@ -511,6 +519,8 @@
       }
     },
     "image": {
+      "noParquetPath": "无法确定 Parquet 文件路径",
+      "loadFailed": "图像加载失败",
       "title": "图像面板",
       "placeholder": "等待加载图像文件...",
       "debug": {
@@ -608,6 +618,7 @@
       }
     },
     "welcome": {
+      "defaultCover": "默认封面",
       "title": "浏览数据",
       "subtitle": "选择本地文件、文件夹或输入远程 URL",
       "quickStart": "快速开始",
