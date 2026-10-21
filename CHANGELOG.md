@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.6.2
+
+### Patch Changes
+
+- 4636977: Localize remaining English labels in the zh locale: "全部特征", "特征" and "已复制".
+
 ## 1.6.1
 
 ### Patch Changes
