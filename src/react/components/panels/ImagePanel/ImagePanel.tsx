@@ -173,6 +173,7 @@ export const ImagePanel: React.FC<ImagePanelProps> = ({ params }) => {
             if (isStillCurrent) {
               // 将 URL 转成 ImageBitmap 并绘制
               const img = new Image();
+              img.crossOrigin = 'anonymous';
               await new Promise<void>((resolve, reject) => {
                 img.onload = () => resolve();
                 img.onerror = () => reject(new Error('Image decode failed'));

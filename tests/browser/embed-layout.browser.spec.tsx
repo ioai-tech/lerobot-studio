@@ -155,6 +155,47 @@ describe('browser: embedded layout follows the host container', () => {
     expect(separator().getAttribute('aria-valuenow')).toBe('400');
   }, 60_000);
 
+  it('stacks dockview panels in one column at 390px and keeps the desktop grid at 1100px', async () => {
+    const layout = await mount(390);
+    await waitFor(() => layout.getAttribute('data-layout') === 'stacked');
+    const dock = () =>
+      host.querySelector<HTMLElement>(
+        '[data-testid="lerobot-viewer-layout"] [data-layout]:not([data-testid])',
+      );
+    await waitFor(() => (dock()?.querySelectorAll('.dv-groupview').length ?? 0) >= 3);
+    await waitFor(() => dock()?.getAttribute('data-layout') === 'stacked');
+    const groups = Array.from(dock()!.querySelectorAll<HTMLElement>('.dv-groupview'));
+    const boxes = groups.map((g) => g.getBoundingClientRect());
+    // One column: same left edge and width, each group strictly below the previous.
+    for (const box of boxes) {
+      expect(Math.round(box.left)).toBe(Math.round(boxes[0].left));
+      expect(Math.round(box.width)).toBe(Math.round(boxes[0].width));
+    }
+    for (let i = 1; i < boxes.length; i++) {
+      expect(boxes[i].top).toBeGreaterThanOrEqual(boxes[i - 1].bottom - 1);
+    }
+    expect(boxes[0].width).toBeGreaterThan(300);
+
+    host.style.width = '1100px';
+    await waitFor(() => dock()?.getAttribute('data-layout') === 'split');
+    await waitFor(() => {
+      const tops = Array.from(dock()!.querySelectorAll<HTMLElement>('.dv-groupview')).map((g) =>
+        Math.round(g.getBoundingClientRect().top),
+      );
+      return tops.length >= 3 && new Set(tops).size < tops.length;
+    });
+  }, 60_000);
+
+  it('loads every video element with crossOrigin="anonymous"', async () => {
+    await mount(1100);
+    await waitFor(() => host.querySelectorAll('video').length > 0);
+    const videos = Array.from(host.querySelectorAll('video'));
+    for (const video of videos) {
+      expect(video.getAttribute('crossorigin')).toBe('anonymous');
+      expect(video.crossOrigin).toBe('anonymous');
+    }
+  }, 60_000);
+
   it('resizes the stacked sidebar with the keyboard', async () => {
     const layout = await mount(500);
     await waitFor(() => layout.getAttribute('data-layout') === 'stacked');

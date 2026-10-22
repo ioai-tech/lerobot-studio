@@ -1292,7 +1292,7 @@ const ChartPanelContent: React.FC<ChartPanelProps> = ({ params }) => {
       className="w-full h-full flex flex-col bg-background text-foreground overflow-hidden"
     >
       <div className="flex flex-wrap items-center justify-between gap-y-1 px-3 py-1.5 border-b bg-muted/20">
-        <div className="flex items-center gap-2 overflow-hidden mr-2">
+        <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 mr-2">
           <ChartJointFilterDropdown {...jointFilterDropdownProps} />
           <Button
             type="button"

@@ -8,7 +8,7 @@ import type { LeRobotFeature } from '@/core';
 import 'dockview-react/dist/styles/dockview.css';
 import { VideoPanel, ImagePanel, ChartPanel, RawPanel, PanelErrorBoundary } from './panels';
 import { PanelTitle } from './PanelTitle';
-import { getAutoLayoutVisualRows, getVisualMaxPerRow } from '@/core';
+import { getAutoLayoutVisualRows, getVisualMaxPerRow, isStackedPanelsWidth } from '@/core';
 import { safeAddPanel } from '../utils/dockviewPanelId';
 
 type DockviewSerializedGrid = {
@@ -20,6 +20,9 @@ type DockviewSerializedGrid = {
 type GridNode =
   | { type: 'leaf'; data: { id: string; activePanel: string; panels: string[] }; size: number }
   | { type: 'branch'; data: GridNode[]; size: number };
+
+/** Minimum height of each panel in the stacked (narrow) column; the column scrolls. */
+const STACKED_PANEL_MIN_HEIGHT_PX = 220;
 
 // Per-instance API context (multi-embed safe; no module singleton)
 const DockviewApiContext = createContext<DockviewApi | null>(null);
@@ -76,12 +79,16 @@ export const DockviewLayout: React.FC = () => {
   const { info } = useLeRobotData();
   const dockviewRef = useRef<HTMLDivElement>(null);
   const [maxPerRow, setMaxPerRow] = useState(4);
+  // Narrow containers (embedded viewers on phones) get a single stacked column.
+  const [stacked, setStacked] = useState(false);
+  const [panelCount, setPanelCount] = useState(0);
 
   useEffect(() => {
     const el = dockviewRef.current;
     if (!el) return;
     const update = (width: number) => {
       setMaxPerRow(getVisualMaxPerRow(width));
+      setStacked(isStackedPanelsWidth(width));
     };
     update(el.clientWidth);
     const observer = new ResizeObserver((entries) => {
@@ -279,6 +286,8 @@ export const DockviewLayout: React.FC = () => {
       .filter((v): v is NonNullable<typeof v> => Boolean(v));
     const visibleVisual = [...row1Visual, ...row2Visual];
 
+    setPanelCount(0);
+
     // 如果没有视觉源，降级为 chart + raw 横向均分（避免空白）
     if (visibleVisual.length === 0) {
       safeAddPanel(api, {
@@ -294,8 +303,32 @@ export const DockviewLayout: React.FC = () => {
         title: t('panels.raw.title'),
         params: {},
         tabComponent: 'default',
-        position: { referencePanel: 'chart-panel', direction: 'right' },
+        position: { referencePanel: 'chart-panel', direction: stacked ? 'below' : 'right' },
       });
+      return;
+    }
+
+    if (stacked) {
+      let previousId: string | null = null;
+      const stackedPanels = [
+        ...visibleVisual.map((v) => ({
+          id: v.id,
+          component: v.component,
+          title: v.title,
+          params: v.params as { featureKey?: string },
+        })),
+        { id: 'chart-panel', component: 'chart' as const, title: t('common.chart'), params: {} },
+        { id: 'raw-panel', component: 'raw' as const, title: t('panels.raw.title'), params: {} },
+      ];
+      for (const p of stackedPanels) {
+        safeAddPanel(api, {
+          ...p,
+          tabComponent: 'default',
+          ...(previousId ? { position: { referencePanel: previousId, direction: 'below' } } : {}),
+        });
+        previousId = p.id;
+      }
+      setPanelCount(stackedPanels.length);
       return;
     }
 
@@ -377,7 +410,7 @@ export const DockviewLayout: React.FC = () => {
       row1Visual.map((v) => v.id),
       row2Visual.map((v) => v.id),
     );
-  }, [info, t, maxPerRow]);
+  }, [info, t, maxPerRow, stacked]);
 
   const onReady = (event: DockviewReadyEvent) => {
     const { api } = event;
@@ -395,17 +428,31 @@ export const DockviewLayout: React.FC = () => {
 
   return (
     <DockviewApiContext.Provider value={dockviewApi}>
-      <div ref={dockviewRef} className="w-full h-full">
-        <DockviewReact
-          components={components}
-          tabComponents={tabComponents}
-          defaultTabComponent={PanelTitle}
-          singleTabMode="fullwidth"
-          /** 关闭标签栏溢出下拉（长标题时否则会遮挡 PanelTitle 右侧操作区） */
-          disableTabsOverflowList
-          onReady={onReady}
-          className={resolvedTheme === 'dark' ? 'dockview-theme-dark' : 'dockview-theme-light'}
-        />
+      <div
+        ref={dockviewRef}
+        className="w-full h-full"
+        data-layout={stacked ? 'stacked' : 'split'}
+        style={stacked ? { overflowY: 'auto', overflowX: 'hidden' } : undefined}
+      >
+        <div
+          className="w-full"
+          style={{
+            height: stacked
+              ? `max(100%, ${Math.max(panelCount, 1) * STACKED_PANEL_MIN_HEIGHT_PX}px)`
+              : '100%',
+          }}
+        >
+          <DockviewReact
+            components={components}
+            tabComponents={tabComponents}
+            defaultTabComponent={PanelTitle}
+            singleTabMode="fullwidth"
+            /** 关闭标签栏溢出下拉（长标题时否则会遮挡 PanelTitle 右侧操作区） */
+            disableTabsOverflowList
+            onReady={onReady}
+            className={resolvedTheme === 'dark' ? 'dockview-theme-dark' : 'dockview-theme-light'}
+          />
+        </div>
       </div>
     </DockviewApiContext.Provider>
   );
