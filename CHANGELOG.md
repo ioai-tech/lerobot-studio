@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.6.3
+
+### Patch Changes
+
+- b065f3a: Localize hardcoded English UI strings (en/zh/ja): the episode loading status messages ("Fetching frame data for episode N...", "Loading episode N...", "Reading metadata...", "Processing charts...", "Initializing data loader..."), the "No features available" empty state, the filter "clear search" accessible label, the sample cover image alt text and the image panel load errors.
+
 ## 1.6.2
 
 ### Patch Changes
