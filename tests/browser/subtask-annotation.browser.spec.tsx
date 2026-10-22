@@ -68,7 +68,7 @@ describe('browser: subtask viewing and annotation', () => {
       root.render(<LeRobotViewer dataSource={source} language="en" showSidebar showPlaybackBar />);
     });
 
-    await waitFor(() => (host.textContent ?? '').includes('Episodes'));
+    await waitFor(() => /\d+ episodes?/.test(host.textContent ?? ''));
     expect(host.querySelector('[aria-label="Start (Q)"]')).toBeNull();
     expect(host.querySelector('[aria-label="End (E)"]')).toBeNull();
     const edit = host.querySelector<HTMLButtonElement>('[title="Edit episodes"]');

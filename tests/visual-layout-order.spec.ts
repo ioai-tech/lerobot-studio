@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { classifyVisualFeatureKey, getAutoLayoutVisualRows, getVisualMaxPerRow } from '@/core';
+import {
+  classifyVisualFeatureKey,
+  getAutoLayoutVisualRows,
+  getVisualMaxPerRow,
+  isStackedPanelsWidth,
+} from '@/core';
 
 describe('visual auto layout', () => {
   it('with >=4 keys, groups by semantic bucket (head vs wrist) then packs rows', () => {
@@ -135,5 +140,13 @@ describe('visual auto layout', () => {
     expect(getVisualMaxPerRow(800)).toBe(2);
     expect(getVisualMaxPerRow(900)).toBe(4);
     expect(getVisualMaxPerRow(1280)).toBe(4);
+  });
+
+  it('stacks panels into one column under 600px of container width', () => {
+    expect(isStackedPanelsWidth(390)).toBe(true);
+    expect(isStackedPanelsWidth(599)).toBe(true);
+    expect(isStackedPanelsWidth(600)).toBe(false);
+    expect(isStackedPanelsWidth(1280)).toBe(false);
+    expect(isStackedPanelsWidth(0)).toBe(false);
   });
 });

@@ -371,6 +371,17 @@ function getLegacyLayoutVisualRows(
 /** Narrow main panes cannot fit 4 Dockview tiles (100px min each) without clipping. */
 export const NARROW_VISUAL_ROW_WIDTH = 900;
 
+/** Container width (px) below which panels default to a single stacked column. */
+export const STACKED_PANELS_MAX_WIDTH = 600;
+
+export function isStackedPanelsWidth(containerWidth: number): boolean {
+  return (
+    Number.isFinite(containerWidth) &&
+    containerWidth > 0 &&
+    containerWidth < STACKED_PANELS_MAX_WIDTH
+  );
+}
+
 export function getVisualMaxPerRow(containerWidth: number): number {
   return containerWidth > 0 && containerWidth < NARROW_VISUAL_ROW_WIDTH ? 2 : 4;
 }

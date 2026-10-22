@@ -1,4 +1,5 @@
 import { memo, useEffect, useMemo, useRef } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Search, X } from 'lucide-react';
 import { Input } from '@/ui';
 import { Button } from '@/ui';
@@ -89,6 +90,7 @@ export const NestedHierarchicalFilterList = memo(function NestedHierarchicalFilt
   getItemColor,
   className,
 }: NestedHierarchicalFilterListProps) {
+  const { t } = useTranslation();
   const allItemIds = useMemo(() => getAllFeatureFilterItemIds(featureNodes), [featureNodes]);
   const filteredNodes = useMemo(
     () => filterFeatureNodes(featureNodes, searchValue),
@@ -139,7 +141,7 @@ export const NestedHierarchicalFilterList = memo(function NestedHierarchicalFilt
                   e.stopPropagation();
                   onSearchChange('');
                 }}
-                aria-label="clear-search"
+                aria-label={t('common.clearSearch')}
               >
                 <X className="h-3.5 w-3.5" />
               </Button>

@@ -324,6 +324,7 @@ const VideoPanelContent: React.FC<VideoPanelProps> = ({ params }) => {
           transform: 'translateZ(0)',
           backfaceVisibility: 'hidden' as const,
         }}
+        crossOrigin="anonymous"
         muted
         playsInline
         preload="auto"

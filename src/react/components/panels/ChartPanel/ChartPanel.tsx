@@ -15,6 +15,7 @@ import { Button } from '@/ui';
 import { PanelRight } from 'lucide-react';
 import { PanelEmptyState, PanelLoadingState } from '../Common/PanelState';
 import { ChartJointFilterDropdown } from './ChartJointFilterDropdown';
+import { ChartLineStyleKey } from './ChartLineStyleKey';
 import { buildFeatureFilterTree, getVisibleJointNamesFromSelected } from '@/core';
 import { applyGroupSelection } from '@/core';
 import { getChartSeriesKind, getDefaultChartFeatureKeys } from '@/core';
@@ -1290,8 +1291,8 @@ const ChartPanelContent: React.FC<ChartPanelProps> = ({ params }) => {
       ref={containerRef}
       className="w-full h-full flex flex-col bg-background text-foreground overflow-hidden"
     >
-      <div className="flex items-center justify-between px-3 py-1.5 border-b bg-muted/20">
-        <div className="flex items-center gap-2 overflow-hidden mr-2">
+      <div className="flex flex-wrap items-center justify-between gap-y-1 px-3 py-1.5 border-b bg-muted/20">
+        <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 mr-2">
           <ChartJointFilterDropdown {...jointFilterDropdownProps} />
           <Button
             type="button"
@@ -1310,91 +1311,12 @@ const ChartPanelContent: React.FC<ChartPanelProps> = ({ params }) => {
           </Button>
         </div>
 
-        <div className="flex gap-2 shrink-0 items-center">
-          {(hasAction || hasState) && (
-            <>
-              {hasAction && (
-                <div
-                  className="group relative flex items-center gap-1.5 text-[10px] font-medium text-muted-foreground tracking-tight px-1.5 py-0.5 rounded hover:bg-muted/30 transition-colors cursor-pointer"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setShowAction(!showAction);
-                  }}
-                >
-                  <input
-                    type="checkbox"
-                    checked={showAction}
-                    onChange={(e) => {
-                      e.stopPropagation();
-                      setShowAction(e.target.checked);
-                    }}
-                    className="opacity-0 group-hover:opacity-100 transition-opacity w-3 h-3 cursor-pointer accent-primary shrink-0"
-                    title={t('chart.legend.toggleAction')}
-                    onClick={(e) => e.stopPropagation()}
-                  />
-                  <svg
-                    width="18"
-                    height="6"
-                    viewBox="0 0 18 6"
-                    className="overflow-visible shrink-0"
-                  >
-                    <line
-                      x1="0"
-                      y1="3"
-                      x2="18"
-                      y2="3"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      strokeDasharray="3 3"
-                      className={showAction ? 'text-foreground/60' : 'text-muted-foreground/30'}
-                    />
-                  </svg>
-                  <span className={showAction ? '' : 'opacity-30'}>
-                    {t('chart.legend.actionAbbr')}
-                  </span>
-                </div>
-              )}
-              {hasState && (
-                <div
-                  className="group relative flex items-center gap-1.5 text-[10px] font-medium text-muted-foreground tracking-tight px-1.5 py-0.5 rounded hover:bg-muted/30 transition-colors cursor-pointer"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setShowState(!showState);
-                  }}
-                >
-                  <input
-                    type="checkbox"
-                    checked={showState}
-                    onChange={(e) => {
-                      e.stopPropagation();
-                      setShowState(e.target.checked);
-                    }}
-                    className="opacity-0 group-hover:opacity-100 transition-opacity w-3 h-3 cursor-pointer accent-primary shrink-0"
-                    title={t('chart.legend.toggleState')}
-                    onClick={(e) => e.stopPropagation()}
-                  />
-                  <svg
-                    width="18"
-                    height="6"
-                    viewBox="0 0 18 6"
-                    className="overflow-visible shrink-0"
-                  >
-                    <line
-                      x1="0"
-                      y1="3"
-                      x2="18"
-                      y2="3"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      className={showState ? 'text-foreground/40' : 'text-muted-foreground/30'}
-                    />
-                  </svg>
-                  <span className={showState ? '' : 'opacity-30'}>
-                    {t('chart.legend.stateAbbr')}
-                  </span>
-                </div>
-              )}
-            </>
+        <div className="flex flex-wrap justify-end gap-x-2 gap-y-0.5 min-w-0 items-center">
+          {hasAction && (
+            <ChartLineStyleKey kind="action" visible={showAction} onVisibleChange={setShowAction} />
+          )}
+          {hasState && (
+            <ChartLineStyleKey kind="state" visible={showState} onVisibleChange={setShowState} />
           )}
         </div>
       </div>

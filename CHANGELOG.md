@@ -1,5 +1,29 @@
 # Changelog
 
+## 1.6.4
+
+### Patch Changes
+
+- b908f4f: Fix two embedding problems. Narrow containers (under 600px wide, measured on the viewer container rather than the window) now default to a single stacked column of panels that scrolls, and the chart panel toolbar wraps instead of clipping its line-chart and split-view controls; the desktop layout is unchanged. Every `<video>` (and the frame-extraction video and image decoder) now sets `crossOrigin="anonymous"`, so the media request and the later CORS `fetch()` of the same presigned URL share one CORS cache entry instead of the `fetch()` being blocked by a cached no-cors response; no credentials are sent.
+
+## 1.6.3
+
+### Patch Changes
+
+- b065f3a: Localize hardcoded English UI strings (en/zh/ja): the episode loading status messages ("Fetching frame data for episode N...", "Loading episode N...", "Reading metadata...", "Processing charts...", "Initializing data loader..."), the "No features available" empty state, the filter "clear search" accessible label, the sample cover image alt text and the image panel load errors.
+
+## 1.6.2
+
+### Patch Changes
+
+- 4636977: Localize remaining English labels in the zh locale: "全部特征", "特征" and "已复制".
+
+## 1.6.1
+
+### Patch Changes
+
+- cfaeb4b: The Chart toolbar line-style key shows the full words "Action" and "State" instead of the clipped "Act" and "Sta", and wraps instead of clipping when space is tight. The sidebar episode count is localized and pluralized ("1 episode", "2 episodes", "1 个片段", "3 件のエピソード") instead of a hardcoded English "Episodes".
+
 ## 1.6.0
 
 ### Minor Changes

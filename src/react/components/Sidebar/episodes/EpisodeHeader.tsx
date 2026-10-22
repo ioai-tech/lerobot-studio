@@ -26,8 +26,11 @@ export const EpisodeHeader: React.FC<EpisodeHeaderProps> = ({
   return (
     <div className="flex min-w-0 flex-wrap items-center justify-between gap-2 overflow-hidden">
       <h2 className="flex min-w-0 items-center gap-1 text-sm text-muted-foreground overflow-hidden">
-        {totalCount != null && <span>{totalCount}</span>}
-        <span>Episodes</span>
+        {totalCount != null ? (
+          <span>{t('sidebar.episodesCount', { count: totalCount })}</span>
+        ) : (
+          <span>{t('sidebar.episodesTitle')}</span>
+        )}
       </h2>
 
       {!isReadOnly && (

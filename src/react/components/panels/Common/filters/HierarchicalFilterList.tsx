@@ -1,4 +1,5 @@
 import { memo, useEffect, useMemo, useRef } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Search, X } from 'lucide-react';
 import { Input } from '@/ui';
 import { Button } from '@/ui';
@@ -72,6 +73,7 @@ export const HierarchicalFilterList = memo(function HierarchicalFilterList({
   getGroupColor,
   className,
 }: HierarchicalFilterListProps) {
+  const { t } = useTranslation();
   const allItemIds = useMemo(
     () => groups.flatMap((group) => group.items.map((item) => item.id)),
     [groups],
@@ -121,7 +123,7 @@ export const HierarchicalFilterList = memo(function HierarchicalFilterList({
                   e.stopPropagation();
                   onSearchChange('');
                 }}
-                aria-label="clear-search"
+                aria-label={t('common.clearSearch')}
               >
                 <X className="h-3.5 w-3.5" />
               </Button>

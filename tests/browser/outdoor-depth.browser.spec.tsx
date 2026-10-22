@@ -65,7 +65,7 @@ describe('browser: official outdoor-depth playback', () => {
       root.render(<LeRobotViewer dataSource={source} language="en" showSidebar showPlaybackBar />);
     });
 
-    await waitFor(() => (host.textContent ?? '').includes('Episodes'), 90_000);
+    await waitFor(() => /\d+ episodes?/.test(host.textContent ?? ''), 90_000);
     await waitFor(() => host.querySelector('canvas[data-depth-map="true"]') !== null, 90_000);
 
     const canvas = host.querySelector<HTMLCanvasElement>('canvas[data-depth-map="true"]');

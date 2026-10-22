@@ -9,6 +9,7 @@
     "copy": "Copy",
     "copied": "Copied",
     "close": "Close",
+    "noFeaturesAvailable": "No features available",
     "clearSearch": "Clear search",
     "loading": "Loading...",
     "addPanel": "Add Panel",
@@ -51,6 +52,13 @@
       "render": "Rendering panels...",
       "ready": "Ready",
       "error": "Load Failed"
+    },
+    "message": {
+      "initLoader": "Initializing data loader...",
+      "readMetadata": "Reading metadata...",
+      "loadEpisode": "Loading episode {{index}}...",
+      "fetchFrames": "Fetching frame data for episode {{index}}...",
+      "processCharts": "Processing charts..."
     }
   },
   "errors": {
@@ -404,6 +412,7 @@
       "analysis": "Analysis"
     },
     "episodesTitle": "Episodes",
+    "episodesCount": "{count, plural, one {# episode} other {# episodes}}",
     "searchPlaceholder": "Search...",
     "noDescription": "No description",
     "errorLoading": "Error loading data",
@@ -510,6 +519,8 @@
       }
     },
     "image": {
+      "noParquetPath": "Cannot determine parquet file path",
+      "loadFailed": "Failed to load image",
       "title": "Image Panel",
       "placeholder": "Waiting for image file...",
       "debug": {
@@ -607,6 +618,7 @@
       }
     },
     "welcome": {
+      "defaultCover": "Default cover",
       "title": "Open Data",
       "subtitle": "Select local file/folder or enter remote URL",
       "quickStart": "Quick Start",

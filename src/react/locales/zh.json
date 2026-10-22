@@ -10,6 +10,7 @@
     "copy": "复制",
     "copied": "已复制",
     "close": "关闭",
+    "noFeaturesAvailable": "没有可用的特征",
     "clearSearch": "清空搜索",
     "loading": "加载中...",
     "addPanel": "添加面板",
@@ -51,6 +52,13 @@
       "render": "正在渲染面板...",
       "ready": "加载完成",
       "error": "加载失败"
+    },
+    "message": {
+      "initLoader": "正在初始化数据加载器...",
+      "readMetadata": "正在读取元数据...",
+      "loadEpisode": "正在加载 Episode {{index}}...",
+      "fetchFrames": "正在获取 Episode {{index}} 的帧数据...",
+      "processCharts": "正在处理图表..."
     }
   },
   "errors": {
@@ -173,7 +181,7 @@
         "fieldExists": "字段存在",
         "positiveIntArray": "[正整数, ...]",
         "stringArrayMatchShape": "string[]（长度=shape 末维）",
-        "objectWithFeatures": "含至少一个 feature 的对象",
+        "objectWithFeatures": "含至少一个特征的对象",
         "positiveIntMatchTotalEpisodes": "正整数，与 total_episodes 一致",
         "episodeLengthPositive": "每个 episode 的 length > 0",
         "nonNegativeIntCount": "非负整数（条数）",
@@ -403,7 +411,8 @@
       "episodes": "任务",
       "analysis": "分析"
     },
-    "episodesTitle": "Episodes",
+    "episodesTitle": "片段",
+    "episodesCount": "{count} 个片段",
     "searchPlaceholder": "搜索...",
     "noDescription": "暂无描述",
     "errorLoading": "加载数据失败",
@@ -457,8 +466,8 @@
       "label": "关节",
       "selectAll": "全选",
       "clear": "清空",
-      "searchPlaceholder": "搜索 Feature / 关节（action、left、observation.state…）",
-      "noResults": "未找到匹配的 Feature 或关节",
+      "searchPlaceholder": "搜索特征 / 关节（action、left、observation.state…）",
+      "noResults": "未找到匹配的特征或关节",
       "groupToggleTitle": "{{group}}：一键全选/取消全选",
       "selectedOverTotal": "已选/总数"
     },
@@ -510,6 +519,8 @@
       }
     },
     "image": {
+      "noParquetPath": "无法确定 Parquet 文件路径",
+      "loadFailed": "图像加载失败",
       "title": "图像面板",
       "placeholder": "等待加载图像文件...",
       "debug": {
@@ -538,25 +549,25 @@
     },
     "raw": {
       "title": "原始消息",
-      "select_feature": "选择 Feature",
+      "select_feature": "选择特征",
       "loading": "正在加载数据...",
-      "no_feature": "请选择一个 Feature 以查看原始数据",
+      "no_feature": "请选择一个特征以查看原始数据",
       "downloadBinary": "点击下载二进制数据",
       "copyImage": "复制图像",
       "copyingImage": "复制中",
-      "copiedImage": "COPIED",
+      "copiedImage": "已复制",
       "downloadedImage": "已下载 PNG",
       "imageDtype": "IMAGE",
       "videoDtype": "VIDEO",
-      "allFeatures": "全部 Features",
+      "allFeatures": "全部特征",
       "none": "未选择",
       "featuresCount": "{{count}} 项",
-      "features": "Features",
+      "features": "特征",
       "selectAll": "全选",
       "reset": "常用预设",
       "clear": "清空",
-      "searchFeature": "搜索 Features",
-      "noSearchResult": "未找到匹配 Features",
+      "searchFeature": "搜索特征",
+      "noSearchResult": "未找到匹配特征",
       "undefined": "未记录",
       "itemsCount": "{{count}} 项",
       "keysCount": "{{count}} 个键",
@@ -607,6 +618,7 @@
       }
     },
     "welcome": {
+      "defaultCover": "默认封面",
       "title": "浏览数据",
       "subtitle": "选择本地文件、文件夹或输入远程 URL",
       "quickStart": "快速开始",
