@@ -642,11 +642,11 @@
         "key": "End"
       },
       "maximize": {
-        "action": "Focus / show all cameras",
+        "action": "Focus / show all cameras (click a camera first)",
         "key": "M"
       },
       "fullscreen": {
-        "action": "Full screen camera",
+        "action": "Full screen camera (click a camera first)",
         "key": "F"
       }
     },

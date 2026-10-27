@@ -217,6 +217,8 @@ export const LeRobotDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
   // 卸载时清理资源
   useEffect(() => {
     return () => {
+      // the episode load in flight is no longer current: it must not report the worker it loses
+      episodeLoadAbortRef.current?.abort();
       // 这里的 reset 是异步的，但在卸载时我们主要关心同步清理（如 worker terminate 和 ObjectURL 撤销）
       // DataLoader.dispose 会处理这些。
       if (dataLoaderRef.current) {

@@ -141,10 +141,12 @@ const VideoPanelContent: React.FC<VideoPanelProps> = ({ params, panelApi, contai
     (event: React.KeyboardEvent<HTMLDivElement>) => {
       if (event.altKey || event.ctrlKey || event.metaKey) return;
       const key = event.key.toLowerCase();
-      if (key === 'f') {
+      // F and M only when typed on the camera itself, not on one of its buttons
+      const onCamera = event.target === event.currentTarget;
+      if (key === 'f' && onCamera) {
         event.preventDefault();
         toggleFullscreen();
-      } else if (key === 'm' && panelApi) {
+      } else if (key === 'm' && onCamera && panelApi) {
         event.preventDefault();
         toggleMaximize();
       } else if (event.key === 'Escape' && panelApi?.isMaximized()) {
@@ -187,6 +189,7 @@ const VideoPanelContent: React.FC<VideoPanelProps> = ({ params, panelApi, contai
       data-camera={featureKey}
       data-camera-status={snapshot.status}
       data-video-error={snapshot.errorCode ?? undefined}
+      role="group"
       tabIndex={0}
       onKeyDown={onKeyDown}
       aria-label={t('panels.video.cameraLabel', { name: title })}

@@ -642,11 +642,11 @@
         "key": "End"
       },
       "maximize": {
-        "action": "专注 / 显示全部相机",
+        "action": "专注 / 显示全部相机（先点击相机）",
         "key": "M"
       },
       "fullscreen": {
-        "action": "相机全屏",
+        "action": "相机全屏（先点击相机）",
         "key": "F"
       }
     },
