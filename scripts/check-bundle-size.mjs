@@ -35,7 +35,9 @@ const budgets = {
   // the seek controller, URL renewal and retry, and the auto layout builder (measured
   // 437.1 KiB raw, 133.3 KiB gzip). The stage owns seeking and episode switches from the first
   // frame, so it cannot wait for the lazy Dockview chunk.
-  libEntry: { raw: 460_000, gzip: 140_000 },
+  // +20 KB raw / +5 KB gzip for fitting Original to the link (planner, link measurement, hidden
+  // pre-roll, cover canvas, playback-bar notice; measured 458.0 KiB raw, 138.2 KiB gzip).
+  libEntry: { raw: 480_000, gzip: 145_000 },
   libCss: { raw: 360_000, gzip: 110_000 },
   // +5 KB gzip head for the embed layout hook, resizable stacked sidebar and
   // phone navbar (measured 722.7 KiB gzip, level with the old 740,000-byte ceiling).
@@ -43,7 +45,8 @@ const budgets = {
   // (measured 727.8 KiB gzip).
   // +60 KB raw / +20 KB gzip head for the same playback stage in the web app (measured
   // 2.58 MiB raw, 743.5 KiB gzip; the old head was 0.2%).
-  webInitialJs: { raw: 2_760_000, gzip: 770_000 },
+  // +15 KB gzip for the same (measured 2.62 MiB raw, 753.3 KiB gzip).
+  webInitialJs: { raw: 2_760_000, gzip: 785_000 },
   webInitialCss: { raw: 200_000, gzip: 25_000 },
   libDataLoader: { raw: 280_000, gzip: 60_000 },
   // Range reads (rangeFile + Comlink proxy) in the loader: measured 9.8 KiB gzip.
