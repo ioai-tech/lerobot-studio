@@ -66,8 +66,6 @@ export class LeRobotDataLoader {
   private worker: Remote<ParquetWorkerAPI>;
   private fileUrlCache: LRUCache<string, string>;
   private disposed = false;
-  /** Files whose Range reads worked (a later failure is a real error, not a missing Range support). */
-  private readonly rangedPaths = new Set<string>();
   /** Files read whole: no size, or the server does not serve Range. */
   private readonly wholeFilePaths = new Set<string>();
   private validationReport: ValidationReport | null = null;
@@ -310,9 +308,11 @@ export class LeRobotDataLoader {
     if (!source.readRange || !source.getSize || this.wholeFilePaths.has(path)) return null;
     let byteLength: number;
     try {
-      byteLength = await source.getSize(path);
+      byteLength = await this.withRangeRetry(() => source.getSize!(path), signal);
     } catch (error) {
-      // no size (a store that hides Content-Range, a refused lookup): read the file whole
+      // only a definitive answer (the store hides the size) reads the file whole; a lookup that
+      // kept failing (network, refused) fails this load, and the next load asks again
+      if (!isRangeUnavailable(error)) throw error;
       console.warn(`[lerobot] no size for ${path}; reading it whole`, error);
       this.wholeFilePaths.add(path);
       return null;
@@ -342,6 +342,33 @@ export class LeRobotDataLoader {
    * ranged read of the file fails: a server that ignores Range, a store that refuses it) `whole`
    * with the whole file, as datasets without Range support always do.
    */
+  /**
+   * Runs a Range step (a size lookup, a ranged read), retrying a transient failure with backoff.
+   * A definitive answer (no Range, no size) and an abort are not retried.
+   */
+  private async withRangeRetry<T>(step: () => Promise<T>, signal?: AbortSignal): Promise<T> {
+    for (let attempt = 0; ; attempt++) {
+      try {
+        return await step();
+      } catch (error) {
+        const delay = RANGE_RETRY_POLICY.delaysMs[attempt];
+        if (delay === undefined || isRangeUnavailable(error) || isAbortError(error)) throw error;
+        if (signal?.aborted) throw error;
+        // the user left this episode meanwhile: stop waiting
+        await new Promise<void>((resolve) => {
+          const done = () => {
+            clearTimeout(timer);
+            signal?.removeEventListener('abort', done);
+            resolve();
+          };
+          const timer = setTimeout(done, delay);
+          signal?.addEventListener('abort', done, { once: true });
+        });
+        signal?.throwIfAborted();
+      }
+    }
+  }
+
   private async withRangeFallback<T>(
     path: string,
     signal: AbortSignal | undefined,
@@ -351,12 +378,12 @@ export class LeRobotDataLoader {
     const file = await this.rangeFile(path, signal);
     if (file) {
       try {
-        const result = await ranged(file);
-        this.rangedPaths.add(path);
-        return result;
+        return await this.withRangeRetry(() => ranged(file), signal);
       } catch (error) {
-        if (this.rangedPaths.has(path) || isAbortError(error) || signal?.aborted) throw error;
-        console.warn(`[lerobot] range reads of ${path} failed; reading it whole`, error);
+        // Only a server that ignores Range reads the file whole: a data file can be hundreds of
+        // MB, so a transient failure is retried and then reported, never turned into a download.
+        if (!isRangeUnavailable(error) || signal?.aborted) throw error;
+        console.warn(`[lerobot] range reads of ${path} are not supported; reading it whole`, error);
         this.wholeFilePaths.add(path);
       }
     }
@@ -726,6 +753,20 @@ export class LeRobotDataLoader {
   isFileBytesCached(path: string): boolean {
     return this.fileBytesCache?.path === path;
   }
+}
+
+/** Backoff of a Range step that failed transiently (ms per retry; tests shorten it). */
+export const RANGE_RETRY_POLICY: { delaysMs: number[] } = { delaysMs: [500, 1_500, 4_000] };
+
+/**
+ * The source answered that Range reads of a file cannot work (`RangeNotSupportedError`,
+ * `SizeUnavailableError`). By name: errors from the worker cross Comlink as plain errors.
+ */
+function isRangeUnavailable(error: unknown): boolean {
+  return (
+    error instanceof Error &&
+    (error.name === 'RangeNotSupportedError' || error.name === 'SizeUnavailableError')
+  );
 }
 
 function isAbortError(error: unknown): boolean {

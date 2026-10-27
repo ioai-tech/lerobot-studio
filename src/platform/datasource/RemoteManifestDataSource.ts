@@ -262,8 +262,9 @@ export class RemoteManifestDataSource implements DataSource {
    * Size from the manifest, or from a one-byte Range GET (`Content-Range: bytes 0-0/<size>`) when
    * the manifest has none. Not HEAD: a presigned URL is signed for GET only, and S3-style stores
    * refuse HEAD on it. Cross-origin stores must expose `Content-Range`
-   * (`Access-Control-Expose-Headers`); without it, or when the lookup fails, this throws and the
-   * loader reads the whole file instead. A failed lookup is not repeated for a minute.
+   * (`Access-Control-Expose-Headers`); without it, or the size is unreadable, this throws
+   * `SizeUnavailableError` (not repeated for a minute) and the loader reads the whole file instead.
+   * Other failures (network, refused) throw as they are and are asked again.
    */
   async getSize(path: string): Promise<number> {
     const entry = this.getEntry(path);
@@ -276,17 +277,18 @@ export class RemoteManifestDataSource implements DataSource {
       lookup = this.fetchEntry(path, { headers: { Range: 'bytes=0-0' } }).then(async (res) => {
         const size = sizeFromResponse(res);
         await res.body?.cancel().catch(() => undefined);
-        if (size === null) {
-          throw new Error(`HTTP ${res.status}: no size for ${path} (Content-Range not readable)`);
-        }
-        return size;
+        if (size !== null) return size;
+        // a failed request is not an answer about the size: asked again
+        if (!res.ok) throw new Error(`HTTP ${res.status} fetching the size of ${path}`);
+        throw new SizeUnavailableError(path, res.status);
       });
       lookup.catch((error: unknown) => {
         this.sizeLookups.delete(key);
-        this.sizeFailures.set(key, {
-          at: Date.now(),
-          error: error instanceof Error ? error : new Error(String(error)),
-        });
+        // only a definitive answer (the store hides the size) is remembered; a network error or
+        // a refused request is asked again
+        if (error instanceof SizeUnavailableError) {
+          this.sizeFailures.set(key, { at: Date.now(), error });
+        }
       });
       this.sizeLookups.set(key, lookup);
     }
@@ -372,6 +374,18 @@ export class RangeNotSupportedError extends Error {
   constructor(path: string, status: number) {
     super(`HTTP ${status} without a byte range fetching ${path}: the server ignored Range`);
     this.name = 'RangeNotSupportedError';
+  }
+}
+
+/**
+ * The server answered the size lookup but the size cannot be read (a cross-origin store that does
+ * not expose `Content-Range`): a definitive answer, the caller reads the file whole.
+ */
+export class SizeUnavailableError extends Error {
+  readonly code = 'SIZE_UNAVAILABLE';
+  constructor(path: string, status: number) {
+    super(`HTTP ${status}: no size for ${path} (Content-Range not readable)`);
+    this.name = 'SizeUnavailableError';
   }
 }
 
