@@ -10,6 +10,14 @@ import {
 } from '../platform/datasource/ArchiveDataSourceFactory';
 import { DirectoryDataSource } from '../platform/datasource/dataSources';
 import {
+  EPISODE_SET_PREVIEW_VIDEO_PATH,
+  EpisodeSetDataSource,
+  type EpisodeSetEpisode,
+  type EpisodeSetManifest,
+  type EpisodeSetOptions,
+  type EpisodeSetRecording,
+} from '../platform/datasource/EpisodeSetDataSource';
+import {
   RemoteManifestDataSource,
   type RemoteFileEntry,
   type RemoteManifestOptions,
@@ -40,6 +48,20 @@ export type {
   ProgressInfo,
 } from '../core/datasource/types';
 export type { RemoteFileEntry, RemoteManifestOptions };
+export type { EpisodeSetEpisode, EpisodeSetManifest, EpisodeSetOptions, EpisodeSetRecording };
+export { EPISODE_SET_PREVIEW_VIDEO_PATH };
+
+/**
+ * Create a viewer data source that plays episodes of several recordings (a curated dataset
+ * version) as one dataset, from each recording's own presigned files. Pass
+ * `EPISODE_SET_PREVIEW_VIDEO_PATH` as the viewer's `previewVideoPath` to play preview copies.
+ */
+export function createEpisodeSetDataSource(
+  manifest: EpisodeSetManifest,
+  options?: EpisodeSetOptions,
+): DataSource {
+  return new EpisodeSetDataSource(manifest, options);
+}
 
 /** Create a viewer data source for a local ZIP, TAR, or TAR.GZ archive. */
 export function createArchiveDataSourceFromFile(file: File): DataSource {

@@ -223,56 +223,64 @@ export class V3FormatValidator extends BaseLeRobotValidator {
       this.validateFeatures(features as Record<string, unknown>);
     }
 
-    // ── 7. meta/episodes (v3 parquet) ────────────────────────────────────────
-    let episodesExist = false;
-    try {
-      episodesExist = await dataSource.exists(EPISODES_PARQUET_PATH);
-    } catch {
-      // ignore
-    }
-
-    if (!episodesExist) {
-      this.fail(
-        'file_structure',
-        EPISODES_PARQUET_PATH,
-        'EPISODES_PARQUET_MISSING',
-        'meta/episodes first file does not exist',
-        'Not found',
-        'Exists',
-        'Generate meta/episodes/chunk-xxx/file-xxx.parquet per v3 format',
-      );
-      return createReport(this.items);
-    }
-    this.pass('file_structure', EPISODES_PARQUET_PATH, 'Exists', 'Path or file exists');
-
+    // ── 7. meta/episodes (v3 parquet, or rows supplied by an episode-set source) ──
     let episodeCount = 0;
     let episodesTableSchema: { name: string }[] = [];
     let firstEpisodeRow: Record<string, unknown> | null = null;
-    if (helpers?.readParquetToIPC) {
+    const suppliedRows = dataSource.readEpisodeRows ? await dataSource.readEpisodeRows() : null;
+    if (suppliedRows) {
+      episodeCount = suppliedRows.length;
+      firstEpisodeRow = suppliedRows[0] ?? null;
+      episodesTableSchema = Object.keys(firstEpisodeRow ?? {}).map((name) => ({ name }));
+      this.pass('file_structure', 'episode rows', 'Supplied by the data source', 'Episode rows');
+    } else {
+      let episodesExist = false;
       try {
-        const ipcBytes = await helpers.readParquetToIPC(EPISODES_PARQUET_PATH);
-        const table = tableFromIPC(ipcBytes);
-        episodeCount = table.numRows;
-        episodesTableSchema = table.schema.fields.map((f) => ({ name: f.name }));
-        if (table.numRows > 0) {
-          const row: Record<string, unknown> = {};
-          table.schema.fields.forEach((field) => {
-            const vector = table.getChild(field.name);
-            if (vector) row[field.name] = convertArrowValue(vector.get(0));
-          });
-          firstEpisodeRow = row;
-        }
+        episodesExist = await dataSource.exists(EPISODES_PARQUET_PATH);
       } catch {
+        // ignore
+      }
+
+      if (!episodesExist) {
         this.fail(
-          'episodes',
-          'episodes parquet',
-          'EPISODES_PARQUET_INVALID',
-          'meta/episodes first file could not be parsed as Parquet',
-          'Parse error',
-          'Valid Parquet table',
-          'Ensure episodes Parquet files are valid',
+          'file_structure',
+          EPISODES_PARQUET_PATH,
+          'EPISODES_PARQUET_MISSING',
+          'meta/episodes first file does not exist',
+          'Not found',
+          'Exists',
+          'Generate meta/episodes/chunk-xxx/file-xxx.parquet per v3 format',
         );
         return createReport(this.items);
+      }
+      this.pass('file_structure', EPISODES_PARQUET_PATH, 'Exists', 'Path or file exists');
+
+      if (helpers?.readParquetToIPC) {
+        try {
+          const ipcBytes = await helpers.readParquetToIPC(EPISODES_PARQUET_PATH);
+          const table = tableFromIPC(ipcBytes);
+          episodeCount = table.numRows;
+          episodesTableSchema = table.schema.fields.map((f) => ({ name: f.name }));
+          if (table.numRows > 0) {
+            const row: Record<string, unknown> = {};
+            table.schema.fields.forEach((field) => {
+              const vector = table.getChild(field.name);
+              if (vector) row[field.name] = convertArrowValue(vector.get(0));
+            });
+            firstEpisodeRow = row;
+          }
+        } catch {
+          this.fail(
+            'episodes',
+            'episodes parquet',
+            'EPISODES_PARQUET_INVALID',
+            'meta/episodes first file could not be parsed as Parquet',
+            'Parse error',
+            'Valid Parquet table',
+            'Ensure episodes Parquet files are valid',
+          );
+          return createReport(this.items);
+        }
       }
     }
 

@@ -1,0 +1,164 @@
+import { promises as fs } from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+
+vi.mock('../src/platform/workers/workerManager.ts', async () => {
+  const { readParquetToIPC } = await import('./helpers/parquet');
+  const range = await import('../src/platform/workers/parquetRange');
+  return {
+    createParquetWorker: () => ({
+      readParquet: async (buffer: ArrayBuffer, columns?: string[]) =>
+        readParquetToIPC(new Uint8Array(buffer), columns),
+      readNumericColumnsRange: range.readNumericColumnsRange,
+      readFeatureDataRange: range.readFeatureRowsRange,
+      clearCache: async () => undefined,
+    }),
+    terminateWorker: () => undefined,
+  };
+});
+
+import { LeRobotDataLoader } from '@/platform';
+import {
+  createEpisodeSetDataSource,
+  EPISODE_SET_PREVIEW_VIDEO_PATH,
+  type EpisodeSetRecording,
+} from '../src/react/public-api';
+
+const fixture = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  'fixtures/datasets/lerobotv3',
+);
+const info = JSON.parse(await fs.readFile(path.join(fixture, 'meta/info.json'), 'utf-8'));
+
+/** A recording tree served from the fixture under https://store.test/<id>/<path>. */
+async function recording(id: string, preview = false): Promise<EpisodeSetRecording> {
+  const paths = ['meta/info.json', 'data/chunk-000/file-000.parquet'];
+  paths.push('videos/observation.images.cam/chunk-000/file-000.mp4');
+  if (preview) paths.push('preview/observation.images.cam.mp4');
+  return {
+    id,
+    previewVideoPath: preview ? 'preview/{video_key}.mp4' : null,
+    files: await Promise.all(
+      paths.map(async (logicalPath) => ({
+        logicalPath,
+        presignedUrl: `https://store.test/${id}/${logicalPath}?sig=1`,
+        sizeBytes: (await fs.stat(path.join(fixture, fixturePath(logicalPath)))).size,
+      })),
+    ),
+  };
+}
+
+function fixturePath(logicalPath: string): string {
+  return logicalPath.startsWith('preview/')
+    ? 'videos/observation.images.cam/chunk-000/file-001.mp4'
+    : logicalPath;
+}
+
+describe('createEpisodeSetDataSource', () => {
+  const requested: string[] = [];
+
+  beforeEach(() => {
+    vi.stubGlobal('fetch', async (url: string, init?: RequestInit) => {
+      requested.push(url);
+      const logicalPath = new URL(url).pathname.split('/').slice(2).join('/');
+      const bytes = await fs.readFile(path.join(fixture, fixturePath(logicalPath)));
+      const header = new Headers(init?.headers).get('range');
+      const match = header ? /^bytes=(\d+)-(\d+)$/.exec(header) : null;
+      if (!match) return new Response(bytes, { status: 200 });
+      return new Response(bytes.subarray(Number(match[1]), Number(match[2]) + 1), {
+        status: 206,
+      });
+    });
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    requested.length = 0;
+  });
+
+  it('plays row ranges of several recordings as one v3 dataset', async () => {
+    const source = createEpisodeSetDataSource({
+      fps: info.fps,
+      features: info.features,
+      recordings: [await recording('a'), await recording('b', true)],
+      episodes: [
+        { recordingId: 'a', task: 'pick', fromRow: 2, toRow: 5, fromS: 0.2, toS: 0.5 },
+        { recordingId: 'b', task: 'place', fromRow: 0, toRow: 3, fromS: 0, toS: 0.3 },
+      ],
+    });
+    const loader = new LeRobotDataLoader(source);
+    await loader.initialize();
+
+    expect(loader.getEpisodes().map((e) => e.tasks)).toEqual([['pick'], ['place']]);
+    expect(loader.getEpisodeDataPath(0)).toMatchObject({
+      path: 'data/chunk-000/file-000.parquet',
+      startRow: 2,
+      endRow: 5,
+    });
+    expect(loader.getEpisodeDataPath(1)).toMatchObject({
+      path: 'data/chunk-000/file-001.parquet',
+      startRow: 0,
+      endRow: 3,
+    });
+
+    const columns = await loader.loadAllNumericalData(0, ['index']);
+    expect(Array.from(columns.index.values)).toEqual([2, 3, 4]);
+    expect(requested.every((url) => url.startsWith('https://store.test/a/'))).toBe(true);
+
+    expect(loader.getEpisodeVideoPath(1, 'observation.images.cam')).toEqual({
+      path: 'videos/observation.images.cam/chunk-000/file-001.mp4',
+      fromSec: 0,
+      toSec: 0.3,
+    });
+    const preview = loader.getEpisodeVideoPath(
+      1,
+      'observation.images.cam',
+      EPISODE_SET_PREVIEW_VIDEO_PATH,
+    );
+    await expect(source.exists(preview!.path)).resolves.toBe(true);
+    await expect(source.getObjectUrl(preview!.path)).resolves.toBe(
+      'https://store.test/b/preview/observation.images.cam.mp4?sig=1',
+    );
+    // recording a has no preview: the viewer falls back to its original video
+    const missing = loader.getEpisodeVideoPath(
+      0,
+      'observation.images.cam',
+      EPISODE_SET_PREVIEW_VIDEO_PATH,
+    );
+    await expect(source.exists(missing!.path)).resolves.toBe(false);
+    await loader.dispose();
+  });
+
+  it('refuses a recording that is not a single-file tree', async () => {
+    const twoFiles = await recording('a');
+    twoFiles.files.push({
+      ...twoFiles.files[1]!,
+      logicalPath: 'data/chunk-000/file-001.parquet',
+    });
+    expect(() =>
+      createEpisodeSetDataSource({
+        fps: 10,
+        features: info.features,
+        recordings: [twoFiles],
+        episodes: [],
+      }),
+    ).toThrow(/2 data files/);
+  });
+
+  it('refuses an episode of an unknown recording or with an empty range', async () => {
+    const base = { fps: 10, features: info.features, recordings: [await recording('a')] };
+    expect(() =>
+      createEpisodeSetDataSource({
+        ...base,
+        episodes: [{ recordingId: 'x', task: 't', fromRow: 0, toRow: 1, fromS: 0, toS: 0.1 }],
+      }),
+    ).toThrow(/unknown recording/);
+    expect(() =>
+      createEpisodeSetDataSource({
+        ...base,
+        episodes: [{ recordingId: 'a', task: 't', fromRow: 3, toRow: 3, fromS: 0, toS: 0 }],
+      }),
+    ).toThrow(/empty or negative/);
+  });
+});

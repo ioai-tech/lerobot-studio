@@ -43,4 +43,10 @@ export interface DataSource {
    * groups of one episode and the requested column chunks instead of the whole file.
    */
   readRange?(path: string, offset: number, length: number): Promise<Uint8Array>;
+  /**
+   * Episode metadata rows (the columns of `meta/episodes/*.parquet`) supplied by the source instead
+   * of episode parquet files: a set of episodes assembled from several recordings. In these rows
+   * `dataset_from_index` / `dataset_to_index` are rows of the episode's own data file.
+   */
+  readEpisodeRows?(): Promise<Array<Record<string, unknown>>>;
 }

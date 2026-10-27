@@ -17,6 +17,9 @@ export function createArchiveDataSourceFromUrl(url: string): DataSource;
 export function createDirectoryDataSource(handle: FileSystemDirectoryHandle): DataSource;
 
 // @public
+export function createEpisodeSetDataSource(manifest: EpisodeSetManifest, options?: EpisodeSetOptions): DataSource;
+
+// @public
 export function createRemoteManifestDataSource(files: RemoteFileEntry[], options?: RemoteManifestOptions): DataSource;
 
 // @public
@@ -49,6 +52,7 @@ export interface DataSource {
     invalidateObjectUrl?(path: string): void | Promise<void>;
     listPaths?(): Promise<string[]>;
     readBytes(path: string, onProgress?: ProgressHandler): Promise<Uint8Array>;
+    readEpisodeRows?(): Promise<Array<Record<string, unknown>>>;
     readRange?(path: string, offset: number, length: number): Promise<Uint8Array>;
     readText(path: string, onProgress?: ProgressHandler): Promise<string>;
 }
@@ -71,6 +75,46 @@ export interface DragAndDropCallbacks {
     onFile: (file: File) => void;
     // (undocumented)
     onUnresolvedDirectory?: (name: string) => void;
+}
+
+// @public
+export const EPISODE_SET_PREVIEW_VIDEO_PATH = "meta/embodiflow/preview/videos/{video_key}/chunk-{chunk_index:03d}/file-{file_index:03d}.mp4";
+
+// @public
+export interface EpisodeSetEpisode {
+    fromRow: number;
+    fromS: number;
+    // (undocumented)
+    recordingId: string;
+    // (undocumented)
+    task: string;
+    toRow: number;
+    toS: number;
+}
+
+// @public
+export interface EpisodeSetManifest {
+    // (undocumented)
+    episodes: EpisodeSetEpisode[];
+    features: Record<string, unknown>;
+    // (undocumented)
+    fps: number;
+    // (undocumented)
+    recordings: EpisodeSetRecording[];
+    // (undocumented)
+    robotType?: string | null;
+}
+
+// @public
+export interface EpisodeSetOptions {
+    refresh?: () => Promise<EpisodeSetRecording[]>;
+}
+
+// @public
+export interface EpisodeSetRecording {
+    files: RemoteFileEntry[];
+    id: string;
+    previewVideoPath?: string | null;
 }
 
 // @public @deprecated (undocumented)

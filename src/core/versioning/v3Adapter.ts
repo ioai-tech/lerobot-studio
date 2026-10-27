@@ -169,8 +169,11 @@ export class V3Adapter extends LeRobotVersionAdapter {
       : [];
     const paths = discoveredPaths.length > 0 ? discoveredPaths : undefined;
     let pathIndex = 0;
+    // An episode set supplies its rows directly; their row ranges are already file-local.
+    const suppliedRows = dataSource.readEpisodeRows ? await dataSource.readEpisodeRows() : null;
+    if (suppliedRows) allEpisodes.push(...(suppliedRows as EpisodeMetadataV3[]));
 
-    while (true) {
+    while (!suppliedRows) {
       const path = paths?.[pathIndex] ?? episodeFilePath(chunkIdx, fileIdx);
       let ipcBytes: Uint8Array;
       try {
@@ -218,7 +221,9 @@ export class V3Adapter extends LeRobotVersionAdapter {
         getDataChunkValue(episode),
         getDataFileValue(episode),
       );
-      const datasetFromIndex = Number((episode as Record<string, unknown>).dataset_from_index ?? 0);
+      const datasetFromIndex = suppliedRows
+        ? 0
+        : Number((episode as Record<string, unknown>).dataset_from_index ?? 0);
       const cachedStart = this.dataFileStartByPath.get(path);
       this.dataFileStartByPath.set(
         path,
