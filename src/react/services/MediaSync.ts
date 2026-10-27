@@ -1,8 +1,9 @@
 /**
  * Native, synchronised video playback.
  *
- * While playing, every registered video runs `play()` and the first one with metadata is the master:
- * its `currentTime` is the playback clock (the engine reads the frame index from it). Followers are
+ * While playing, every registered video runs `play()` and one with metadata is the master (the first
+ * registered, kept while it can drive the clock: a camera that joins later never takes over and
+ * moves the timeline to its own time): its `currentTime` is the playback clock (the engine reads the frame index from it). Followers are
  * pulled to the master by nudging `playbackRate`, and seek only when they are far off. When any video
  * runs short of data, all pause until every one can play again, so cameras and charts never drift
  * apart and the timeline never runs ahead of the pixels.
@@ -71,6 +72,8 @@ export class MediaSync {
   private atEnd = false;
   private rate = 1;
   private fps = 30;
+  /** The camera whose time is the clock; kept while it can drive it (a camera joining never takes over). */
+  private masterId: string | null = null;
 
   register(id: string, media: SyncedMedia): () => void {
     this.media.set(id, media);
@@ -83,6 +86,7 @@ export class MediaSync {
     return () => {
       if (this.media.get(id) === media) {
         this.media.delete(id);
+        if (this.masterId === id) this.masterId = null;
         media.video.pause();
       }
     };
@@ -259,9 +263,12 @@ export class MediaSync {
 
   /** Cameras that show the selected episode and can play (not switching to it). */
   private ready(): SyncedMedia[] {
-    return [...this.media.values()].filter(
-      (media) =>
-        !isPending(media) && media.getStart() !== null && media.video.readyState >= HAVE_METADATA,
+    return [...this.media.values()].filter((media) => this.canDrive(media));
+  }
+
+  private canDrive(media: SyncedMedia): boolean {
+    return (
+      !isPending(media) && media.getStart() !== null && media.video.readyState >= HAVE_METADATA
     );
   }
 
@@ -278,7 +285,16 @@ export class MediaSync {
   }
 
   private master(): SyncedMedia | null {
-    return this.ready()[0] ?? null;
+    const current = this.masterId !== null ? this.media.get(this.masterId) : undefined;
+    if (current && this.canDrive(current)) return current;
+    for (const [id, media] of this.media) {
+      if (this.canDrive(media)) {
+        this.masterId = id;
+        return media;
+      }
+    }
+    this.masterId = null;
+    return null;
   }
 
   private seekMedia(media: SyncedMedia, time: number, options?: { once?: boolean }): void {

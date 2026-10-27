@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  LinkEstimate,
   measureThroughput,
   planRenditions,
   type PlannedCamera,
@@ -269,5 +270,26 @@ describe('measureThroughput', () => {
     expect(
       await measureThroughput('https://example.test/v.mp4', { fetchImpl, now: () => clock.now }),
     ).toBeNull();
+  });
+});
+
+describe('LinkEstimate', () => {
+  it('takes the best recent reading', () => {
+    const link = new LinkEstimate(180_000, 60_000);
+    expect(link.add(40 * MBPS, 0)).toBe(40 * MBPS);
+    expect(link.add(10 * MBPS, 1_000)).toBe(40 * MBPS);
+    // older than the window: forgotten
+    expect(link.add(12 * MBPS, 200_000)).toBe(12 * MBPS);
+  });
+
+  it('a stall caps it, and readings from before the stall do not come back when the cap lapses', () => {
+    const link = new LinkEstimate(180_000, 60_000);
+    link.add(40 * MBPS, 0);
+    link.capAt(8 * MBPS, 1_000);
+    expect(link.add(30 * MBPS, 2_000)).toBe(8 * MBPS);
+    // the cap lapsed: what was measured after the stall counts, the 40 Mbps before it does not
+    expect(link.add(9 * MBPS, 70_000)).toBe(30 * MBPS);
+    link.capAt(8 * MBPS, 71_000);
+    expect(link.add(9 * MBPS, 140_000)).toBe(9 * MBPS);
   });
 });

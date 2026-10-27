@@ -134,6 +134,29 @@ function recordings(files: RemoteFileEntry[], videoQuery: Partial<Record<'a' | '
   });
 }
 
+/** Add `query` to the URLs of recording `recordingId`'s files that `match` (server test knobs). */
+function patchFiles(recordingId: string, match: (path: string) => boolean, query: string) {
+  return (sets: EpisodeSetRecording[]) =>
+    sets.map((recording) =>
+      recording.id !== recordingId
+        ? recording
+        : {
+            ...recording,
+            files: recording.files.map((file) =>
+              match(file.logicalPath)
+                ? {
+                    ...file,
+                    presignedUrl: `${file.presignedUrl}${file.presignedUrl.includes('?') ? '&' : '?'}${query}`,
+                  }
+                : file,
+            ),
+          },
+    );
+}
+
+const videoOf = (camera: string) => (path: string) =>
+  path.includes(camera) && path.endsWith('.mp4');
+
 describe('browser: an episode set over two recordings', () => {
   let host: HTMLDivElement;
   let root: Root;
@@ -153,6 +176,15 @@ describe('browser: an episode set over two recordings', () => {
       return value !== null && value >= first && value < first + FRAMES;
     });
   const playButton = () => host.querySelector<HTMLButtonElement>('[aria-label="Play/pause"]');
+  const slider = () =>
+    host.querySelector<HTMLElement>('[role="slider"][aria-label="Playback progress"]');
+  async function press(key: string) {
+    await act(async () => {
+      slider()?.dispatchEvent(
+        new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true }),
+      );
+    });
+  }
   const isPlaying = () => Boolean(playButton()?.querySelector('.lucide-pause'));
   const frameText = () =>
     Number(
@@ -168,6 +200,8 @@ describe('browser: an episode set over two recordings', () => {
       refreshQuery?: string | (() => string);
       mutate?: (sets: EpisodeSetRecording[]) => EpisodeSetRecording[];
       waitFirst?: boolean;
+      /** Other episodes than `EPISODES` (rows of the recordings' data files). */
+      episodes?: ReadonlyArray<{ recordingId: string; fromRow: number; toRow: number }>;
     } = {},
   ) {
     const load = async (query: string) =>
@@ -185,7 +219,7 @@ describe('browser: an episode set over two recordings', () => {
         fps: FPS,
         features: info.features,
         recordings: mutate(recordings(files, options.videoQuery)),
-        episodes: EPISODES.map((episode) => ({
+        episodes: (options.episodes ?? EPISODES).map((episode) => ({
           recordingId: episode.recordingId,
           task: 'look at the counter',
           fromRow: episode.fromRow,
@@ -472,6 +506,291 @@ describe('browser: an episode set over two recordings', () => {
       () => wrist()?.dataset.cameraStatus === 'ready' && shown(CAMERAS[1]) !== null,
       15_000,
       'wrist camera shows its picture after Retry',
+    );
+  });
+
+  it('a camera whose switch fails lets the others play on (playing, and paused then Play)', async ({
+    skip,
+  }) => {
+    if (!(await frameCodedAvailable())) return skip();
+    DEFAULT_RETRY_POLICY.baseMs = 100;
+    DEFAULT_RETRY_POLICY.maxMs = 200;
+    // the wrist camera's videos of recording b are gone (404)
+    await open({ mutate: patchFiles('b', videoOf(CAMERAS[1]), `fail=404&run=${Date.now()}`) });
+    await setPlaying(true);
+    await sleep(500);
+    await selectEpisode(2);
+    await waitFor(() => panel(CAMERAS[1])?.dataset.cameraStatus === 'error', 20_000, 'wrist error');
+    // the front camera and the timeline play on without it
+    const front = () => shown(CAMERAS[0]);
+    await waitFor(
+      () => isPlaying() && frameText() > 30 && (front() ?? 0) > EPISODES[2].first + 30,
+      10_000,
+      'front camera plays episode 2 on',
+    );
+    expect(allIn(2) || shown(CAMERAS[1]) === null, describeState()).toBe(true);
+
+    // paused: a switch into the failing recording, then Play
+    await setPlaying(false);
+    await selectEpisode(3);
+    await waitFor(() => allIn(3), 15_000, 'episode 3 on screen');
+    await setPlaying(false);
+    await selectEpisode(1);
+    await waitFor(() => panel(CAMERAS[1])?.dataset.cameraStatus === 'error', 20_000, 'wrist error');
+    await setPlaying(true);
+    await waitFor(
+      () => isPlaying() && frameText() > 30 && (front() ?? 0) > EPISODES[1].first + 30,
+      10_000,
+      'front camera plays episode 1 after Play',
+    );
+  });
+
+  it('Retry after a failed switch loads the episode switched to, not the one before', async ({
+    skip,
+  }) => {
+    if (!(await frameCodedAvailable())) return skip();
+    DEFAULT_RETRY_POLICY.baseMs = 100;
+    DEFAULT_RETRY_POLICY.maxMs = 200;
+    // two episodes: a 3 s one in recording a, then all of recording b (6 s, dataset frames 180-359)
+    const inSecond = (value: number | null) => value !== null && value >= 180 && value < 360;
+    // the wrist camera's preview of recording b fails 9 times (past the retry budget), then works
+    await open({
+      waitFirst: false,
+      episodes: [
+        { recordingId: 'a', fromRow: 90, toRow: 180 },
+        { recordingId: 'b', fromRow: 0, toRow: 180 },
+      ],
+      mutate: patchFiles(
+        'b',
+        (path) => path === RECORDING_PREVIEW.replace('{video_key}', CAMERAS[1]),
+        `fail=500&failTimes=9&run=${Date.now()}`,
+      ),
+    });
+    await waitFor(() => allIn(0), 30_000, 'first episode on screen');
+    await setPlaying(true);
+    await sleep(500);
+    await selectEpisode(1);
+    const wrist = () => panel(CAMERAS[1]);
+    await waitFor(() => wrist()?.dataset.cameraStatus === 'error', 30_000, 'wrist gives up');
+    // the front camera played on in the episode switched to
+    expect(inSecond(shown(CAMERAS[0])), describeState()).toBe(true);
+    const retry = Array.from(wrist()!.querySelectorAll<HTMLButtonElement>('button')).find(
+      (button) => /retry/i.test(button.textContent ?? ''),
+    );
+    expect(retry, 'retry button').not.toBeNull();
+    await act(async () => retry!.click());
+    // the wrist camera loads that episode (never the one before), and joins the playing clock
+    let before = 0;
+    await waitFor(
+      () => {
+        const value = shown(CAMERAS[1]);
+        if (value !== null && value < 180) before += 1;
+        const front = shown(CAMERAS[0]);
+        return (
+          wrist()?.dataset.cameraStatus === 'ready' &&
+          inSecond(value) &&
+          inSecond(front) &&
+          Math.abs((value ?? 0) - (front ?? 0)) <= 2
+        );
+      },
+      15_000,
+      'wrist camera shows the second episode after Retry, in sync',
+    );
+    expect(before, describeState()).toBe(0);
+  });
+
+  it('a late first camera joins the playing clock without moving the timeline back', async ({
+    skip,
+  }) => {
+    if (!(await frameCodedAvailable())) return skip();
+    const { SWITCH_HOLD_POLICY } = await import('../../src/react/services/video/CameraPlayer');
+    const saved = SWITCH_HOLD_POLICY.maxMs;
+    SWITCH_HOLD_POLICY.maxMs = 1_000;
+    try {
+      // the FRONT camera (registered first: the clock's master) answers late in recording b
+      await open({ mutate: patchFiles('b', videoOf(CAMERAS[0]), 'delayMs=2500') });
+      await setPlaying(true);
+      await sleep(500);
+      await selectEpisode(2);
+      let max = 0;
+      let backJump = 0;
+      const trace: number[] = [];
+      const startedAt = performance.now();
+      // through episode 2 (3 s; it plays on into episode 3 at its end)
+      while (performance.now() - startedAt < 6_000 && max < FRAMES - 15) {
+        const frame = frameText();
+        trace.push(frame);
+        max = Math.max(max, frame);
+        if (isPlaying()) backJump = Math.max(backJump, max - frame);
+        await sleep(50);
+      }
+      expect(backJump, `${trace.join(',')}\n${describeState()}`).toBeLessThanOrEqual(1);
+      await waitFor(
+        () => {
+          const values = CAMERAS.map(shown);
+          return (
+            values.every((value) => value !== null) &&
+            Math.abs((values[0] ?? 0) - (values[1] ?? 0)) <= 2
+          );
+        },
+        10_000,
+        'both cameras on screen, in sync',
+      );
+    } finally {
+      SWITCH_HOLD_POLICY.maxMs = saved;
+    }
+  });
+
+  it('the switch hold counts playing time only, and a new selection holds again', async ({
+    skip,
+  }) => {
+    if (!(await frameCodedAvailable())) return skip();
+    const { SWITCH_HOLD_POLICY } = await import('../../src/react/services/video/CameraPlayer');
+    const saved = SWITCH_HOLD_POLICY.maxMs;
+    SWITCH_HOLD_POLICY.maxMs = 2_000;
+    try {
+      await open({ mutate: patchFiles('b', videoOf(CAMERAS[0]), 'delayMs=6000') });
+      // paused: a switch into the slow recording, Play shortly before the hold limit
+      await setPlaying(false);
+      await selectEpisode(2);
+      await sleep(1_700);
+      await setPlaying(true);
+      // the clock still waits for the slow camera (the paused time did not count)
+      const playedAt = performance.now();
+      let ran = 0;
+      while (performance.now() - playedAt < 1_000) {
+        if (!allIn(2)) ran = Math.max(ran, frameText());
+        await sleep(50);
+      }
+      expect(ran, describeState()).toBeLessThanOrEqual(1);
+
+      // playing: a switch that comes late, then another episode of the same file while it loads
+      SWITCH_HOLD_POLICY.maxMs = 1_500;
+      await selectEpisode(3);
+      await waitFor(() => allIn(3) && isPlaying(), 15_000, 'episode 3 playing');
+      await selectEpisode(1);
+      await sleep(1_800); // late by now: the clock runs without the front camera
+      await selectEpisode(2);
+      const selectedAt = performance.now();
+      let ahead = 0;
+      await waitFor(
+        () => {
+          if (!allIn(2)) ahead = Math.max(ahead, frameText());
+          return allIn(2) || performance.now() - selectedAt > 1_200;
+        },
+        5_000,
+        'episode 2 or the hold limit',
+      );
+      // the new selection held the clock again
+      expect(ahead, describeState()).toBeLessThanOrEqual(1);
+    } finally {
+      SWITCH_HOLD_POLICY.maxMs = saved;
+    }
+  });
+
+  it('a layout rebuild while playing keeps playing; the Raw panel shows the frame playback stops on', async ({
+    skip,
+  }) => {
+    if (!(await frameCodedAvailable())) return skip();
+    // two 6 s episodes (whole recordings), so the rebuilds happen within one episode
+    await open({
+      waitFirst: false,
+      episodes: [
+        { recordingId: 'a', fromRow: 0, toRow: 180 },
+        { recordingId: 'b', fromRow: 0, toRow: 180 },
+      ],
+    });
+    await waitFor(() => CAMERAS.every((camera) => shown(camera) !== null), 30_000, 'first picture');
+    const proto = Element.prototype as Element & { moveBefore?: unknown };
+    const nativeMove = proto.moveBefore;
+    try {
+      // with the state-preserving move, and with a plain append (browsers without moveBefore)
+      for (const mode of ['native', 'append'] as const) {
+        if (mode === 'append') delete proto.moveBefore;
+        await setPlaying(true);
+        for (const width of ['520px', '1400px']) {
+          host.style.width = width;
+          await sleep(600);
+          const paused = CAMERAS.filter((camera) => activeVideo(camera)?.paused !== false);
+          expect(paused, `${mode} ${width}: ${describeState()}`).toEqual([]);
+          expect(isPlaying()).toBe(true);
+        }
+        await setPlaying(false);
+        // the Raw panel shows the frame playback stopped on (its trailing update)
+        await sleep(400);
+        const rawFrame = () => {
+          const key = Array.from(host.querySelectorAll('span')).find(
+            (span) => span.textContent === '"index": ',
+          );
+          return Number(key?.nextElementSibling?.textContent ?? 'NaN');
+        };
+        // (the episode is rows 0-179 of recording a: its dataset index is the frame)
+        expect(rawFrame(), `${mode}: ${describeState()}`).toBe(frameText());
+        await act(async () => {
+          slider()!.focus();
+        });
+        await press('Home');
+      }
+    } finally {
+      if (nativeMove !== undefined) proto.moveBefore = nativeMove;
+    }
+  });
+
+  it('the bar, the chart and the time base are the episode own, also after it plays on into the next', async ({
+    skip,
+  }) => {
+    if (!(await frameCodedAvailable())) return skip();
+    // episodes that start inside the fixture's episodes (whose timestamps run from 0 every 90
+    // rows): 60 frames from 1 s, then 80 frames from 0.33 s of another recording
+    await open({
+      waitFirst: false,
+      episodes: [
+        { recordingId: 'a', fromRow: 30, toRow: 90 },
+        { recordingId: 'b', fromRow: 100, toRow: 180 },
+      ],
+    });
+    await waitFor(() => CAMERAS.every((camera) => shown(camera) !== null), 30_000, 'first picture');
+    await setPlaying(false);
+    const barText = () =>
+      playButton()?.closest('div')?.parentElement?.textContent?.replace(/\s+/g, '') ?? '';
+    const xRange = () => {
+      const range = host.querySelector<HTMLElement>('[data-x-range]')?.dataset.xRange;
+      return range ? range.split(':').map(Number) : null;
+    };
+    // episode time: from 0:00 to the episode's length (1.97 s), not its data's 1-2.97 s
+    await waitFor(() => /\/0:01\.96/.test(barText()), 10_000, `bar total: ${barText()}`);
+    await waitFor(
+      () => {
+        const range = xRange();
+        return range !== null && Math.abs(range[0]) < 0.05 && Math.abs(range[1] - 1.967) < 0.05;
+      },
+      10_000,
+      `chart range of the first episode: ${xRange()}`,
+    );
+    // plays on into the next episode: the bar and the chart follow it
+    await setPlaying(true);
+    await waitFor(
+      () => {
+        const range = xRange();
+        return (
+          /\/0:02\.63/.test(barText()) &&
+          range !== null &&
+          Math.abs(range[0]) < 0.05 &&
+          Math.abs(range[1] - 2.633) < 0.05
+        );
+      },
+      15_000,
+      'bar and chart of the second episode',
+    );
+    await setPlaying(false);
+    await act(async () => {
+      slider()!.focus();
+    });
+    await press('End');
+    await waitFor(
+      () => /0:02\.63\/0:02\.63/.test(barText()),
+      5_000,
+      `bar at the end: ${barText()}`,
     );
   });
 });

@@ -20,6 +20,7 @@ import {
   planRenditions,
   type Rendition,
   type RenditionPlan,
+  LinkEstimate,
 } from './quality';
 
 export type VideoVariantKind = Rendition;
@@ -140,10 +141,8 @@ export class VideoStage {
   /** Measured link throughput (bits/s; Infinity for local files), null before a measurement. */
   private linkBps: number | null = null;
   private linkMeasuredAt = 0;
-  /** Recent link measurements (bits/s, ms). */
-  private linkSamples: Array<{ bps: number; at: number }> = [];
-  /** A stall capped the estimate (bits/s, ms): it holds for `LINK_FRESH_MS`. */
-  private linkCap: { bps: number; at: number } | null = null;
+  /** Recent link measurements and the cap of the last stall (held for `LINK_FRESH_MS`). */
+  private readonly linkEstimate = new LinkEstimate(LINK_SAMPLE_WINDOW_MS, LINK_FRESH_MS);
   private measuring: Promise<void> | null = null;
   private lastStallAt = 0;
   private stallTimer: number | null = null;
@@ -230,8 +229,7 @@ export class VideoStage {
     this.starved.clear();
     this.linkBps = null;
     this.linkMeasuredAt = 0;
-    this.linkSamples = [];
-    this.linkCap = null;
+    this.linkEstimate.reset();
     this.plan = null;
     this.cancelPrefetch();
     for (const [key, player] of this.players) {
@@ -877,15 +875,7 @@ export class VideoStage {
       if (this.loader !== loader) return;
       if (bps !== null) {
         const now = performance.now();
-        this.linkSamples = this.linkSamples.filter(
-          (sample) => now - sample.at < LINK_SAMPLE_WINDOW_MS,
-        );
-        this.linkSamples.push({ bps, at: now });
-        let estimate = Math.max(...this.linkSamples.map((sample) => sample.bps));
-        if (this.linkCap && now - this.linkCap.at < LINK_FRESH_MS) {
-          estimate = Math.min(estimate, this.linkCap.bps);
-        }
-        this.linkBps = estimate;
+        this.linkBps = this.linkEstimate.add(bps, now);
         this.linkMeasuredAt = now;
       }
     };
@@ -977,7 +967,9 @@ export class VideoStage {
     const needed = onOriginal.reduce((sum, player) => sum + (this.originalBps(player.key) ?? 0), 0);
     if (needed <= 0 || !Number.isFinite(this.linkBps)) return;
     this.linkBps = Math.min(this.linkBps, needed) * 0.85;
-    this.linkCap = { bps: this.linkBps, at: now };
+    // readings from before the stall above the cap are not this link any more: once the cap
+    // lapses only fresh measurements may raise the estimate again
+    this.linkEstimate.capAt(this.linkBps, now);
     this.linkMeasuredAt = now;
     this.replan();
   }

@@ -40,6 +40,7 @@ import { usePlaybackBridge } from './usePlaybackBridge';
 import { MediaSync } from '../services/MediaSync';
 import { VideoStage } from '../services/video/VideoStage';
 import { VideoStageContext } from './VideoStageContext';
+import { nextEpisodeAutoplay, type EpisodeAutoplayIntent } from './episodeAutoplay';
 
 /**
  * 规范化 info.features 中的 names 字段
@@ -321,7 +322,7 @@ export const LeRobotDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
   const isPlayingRef = useRef(isPlaying);
   isPlayingRef.current = isPlaying;
   /** The selection whose autoplay is still to happen (see `consumeEpisodeAutoplay`). */
-  const autoplayRef = useRef<{ episode: number | null; play: boolean }>({
+  const autoplayRef = useRef<EpisodeAutoplayIntent>({
     episode: null,
     play: true,
   });
@@ -579,11 +580,7 @@ export const LeRobotDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
       // the latest call owns the loading state (two calls for the same episode: auto-advance + click)
       const isCurrent = () => episodeLoadAbortRef.current === controller && !signal.aborted;
 
-      // the first episode autoplays; later ones play on only when chosen while playing
-      autoplayRef.current = {
-        episode: index,
-        play: autoplayRef.current.episode === null || isPlayingRef.current,
-      };
+      autoplayRef.current = nextEpisodeAutoplay(autoplayRef.current, index, isPlayingRef.current);
       setIsLoading(true);
       setIsPlaying(false);
       setError(null);

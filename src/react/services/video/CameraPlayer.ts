@@ -123,6 +123,10 @@ interface Job {
    * clock (nor its transition group); the camera shows its placeholder and joins when ready.
    */
   late: boolean;
+  /** Bumped by each (re)arming of the switch deadline: an older countdown stops. */
+  deadline: number;
+  /** Joining a playing clock without a picture of its own: promote when the clock reaches this frame. */
+  clockFrame: number | null;
 }
 
 /** Cameras that switch together (paused): all promote in the same frame. */
@@ -304,6 +308,12 @@ export class CameraPlayer {
   /** Paused swap: the old picture painted on a canvas while its element let go of its connection. */
   private cover: HTMLCanvasElement | null = null;
   private frozenFrame: number | null = null;
+  /**
+   * The picture of the previous episode was let go (a switch that came late or failed): the camera
+   * neither holds nor drives the playing clock until a picture of the selected episode is promoted
+   * (see `dropPicture`).
+   */
+  private pictureDropped = false;
 
   constructor(key: string, env: PlayerEnvironment) {
     this.key = key;
@@ -435,8 +445,14 @@ export class CameraPlayer {
     if (job && !job.failed && job.source.path === source.path && !this.urlStale(job)) {
       const switching = this.switchesEpisode(source);
       job.source = source;
-      if (job.purpose !== 'show' && switching) this.armSwitchDeadline(job);
+      // a new selection: it holds the clock again (also when the job had come late for another one)
+      if (switching && (job.purpose !== 'show' || job.late)) {
+        job.late = false;
+        this.armSwitchDeadline(job);
+      }
+      job.clockFrame = null;
       job.purpose = 'show';
+      this.refreshSyncRegistration();
       // the standby still needs data: free the old element's connection for it (see startJob)
       if (switching && !job.ready) this.freeze();
       this.retarget(job, frame);
@@ -446,7 +462,12 @@ export class CameraPlayer {
       return;
     }
 
-    if (this.activeUrl && this.source?.path === source.path && this.frozenFrame === null) {
+    if (
+      this.activeUrl &&
+      this.source?.path === source.path &&
+      this.frozenFrame === null &&
+      !this.pictureDropped
+    ) {
       const same = sameEpisode(this.source, source);
       this.cancelJob();
       this.source = source;
@@ -481,10 +502,11 @@ export class CameraPlayer {
     if (this.disposed) return;
     const job = this.job;
     if (job && job.purpose !== 'prefetch' && job.purpose !== 'renew') {
+      job.clockFrame = null;
       this.retarget(job, frame);
       return;
     }
-    if (!this.activeUrl || !this.source) return;
+    if (!this.activeUrl || !this.source || this.pictureDropped) return;
     this.activeSeeker.seek(this.frameTime(this.source, frame, this.active), {
       fast,
       force: exact,
@@ -501,6 +523,8 @@ export class CameraPlayer {
   /** Frame shown by the element on screen. */
   currentFrame(): number {
     if (this.frozenFrame !== null) return this.frozenFrame;
+    // no element of its own on screen: the playhead
+    if (this.pictureDropped) return this.env.frameIndex();
     if (!this.source) return 0;
     const fps = this.env.fps();
     return Math.max(0, Math.floor((this.active.currentTime - this.source.start) * fps + 1e-3));
@@ -535,6 +559,7 @@ export class CameraPlayer {
     source: CameraSource,
     frame: number,
     group: TransitionGroup | null,
+    late = false,
   ): void {
     if (purpose !== 'prefetch') this.generation += 1;
     this.cancelJob();
@@ -562,10 +587,14 @@ export class CameraPlayer {
       group: null,
       startedAt: performance.now(),
       urlExpiry: null,
-      late: false,
+      late,
+      deadline: 0,
+      clockFrame: null,
     };
     this.job = job;
-    if (purpose === 'show' && this.switchesEpisode(source)) this.armSwitchDeadline(job);
+    if (purpose === 'show' && !late && this.switchesEpisode(source)) this.armSwitchDeadline(job);
+    // a camera that let its picture go joins the playing group again while this switch holds it
+    if (this.pictureDropped) this.refreshSyncRegistration();
     if (group) this.joinGroup(job, group);
     // Paused, or switching to another episode (the clock waits for it anyway): the old picture
     // stays on a canvas and its element lets go of its connection, so the new file gets the
@@ -635,7 +664,13 @@ export class CameraPlayer {
     let frame = job.frame;
     const same = sameEpisode(this.source, job.source);
     // (a frozen camera has no clock of its own: it loads at the playhead and catches up on promotion)
-    if (playing && job.purpose !== 'prefetch' && same && this.frozenFrame === null) {
+    if (
+      playing &&
+      job.purpose !== 'prefetch' &&
+      same &&
+      this.frozenFrame === null &&
+      !this.pictureDropped
+    ) {
       // the same episode in another rendition or under a renewed URL, while playing: prepare
       // ahead of the clock and promote when it gets there
       const lead = RENDEZVOUS_LEAD_SECONDS * Math.max(1, this.active.playbackRate);
@@ -714,6 +749,10 @@ export class CameraPlayer {
   /** Promote a ready job now, or at its rendezvous with the playing clock. */
   private finishWhenReady(job: Job): void {
     if (!job.ready) return; // onJobReady calls back
+    if (this.pictureDropped && job.purpose !== 'prefetch') {
+      this.joinClock(job);
+      return;
+    }
     if (job.rendezvous === null || !this.activeUrl) {
       this.promote(job);
       return;
@@ -732,8 +771,13 @@ export class CameraPlayer {
       }
       if (job.purpose === 'renew' && this.renewUrgent()) {
         // the URL on screen is about to expire: swap now (a short hold to buffer) rather than let
-        // the old one be refused at the next request
+        // the old one be refused at the next request; at the clock's frame, not ahead of it (the
+        // timeline would jump forward when this camera drives it)
         this.stopPreroll(job);
+        job.element.pause();
+        this.seekerOf(job.element).seek(
+          this.frameTime(job.source, this.currentFrame(), job.element),
+        );
         this.promote(job);
         return;
       }
@@ -868,6 +912,7 @@ export class CameraPlayer {
     this.source = job.source;
     this.applyRoles();
     this.unfreeze();
+    this.pictureDropped = false;
     this.renewBackoffMs = 0;
     this.active.preload = this.isVisible() ? 'auto' : 'metadata';
     previous.pause();
@@ -901,21 +946,32 @@ export class CameraPlayer {
   }
 
   /**
-   * No picture of the selected episode yet: a switch to it is loading (and not given up on), or the
-   * picture was let go (a cover holds it). Such a camera holds the playing clock.
+   * No picture of the selected episode yet: a switch to it is loading (and not given up on), or a
+   * reload runs behind a cover of the last picture. Such a camera holds the playing clock.
    */
   private isPendingSwitch(): boolean {
     const job = this.job;
-    if (job && job.purpose === 'show' && !job.late && this.switchesEpisode(job.source)) return true;
-    return this.frozenFrame !== null && !(job?.late ?? false);
+    if (!job || job.late || job.failed || job.purpose === 'prefetch') return false;
+    if (job.purpose === 'show' && this.switchesEpisode(job.source)) return true;
+    return this.frozenFrame !== null;
   }
 
-  /** Playing, a switch that keeps the clock waiting too long stops holding it. */
+  /**
+   * A switch that keeps the playing clock waiting longer than `SWITCH_HOLD_POLICY.maxMs` (counted
+   * while playing only) stops holding it.
+   */
   private armSwitchDeadline(job: Job): void {
+    const deadline = ++job.deadline;
+    const step = Math.max(50, Math.min(250, SWITCH_HOLD_POLICY.maxMs / 4));
+    let waited = 0;
+    let last = performance.now();
     const check = () => {
-      if (this.job !== job || this.disposed || job.late) return;
-      if (!this.env.mediaSync.isPlaying()) {
-        window.setTimeout(check, SWITCH_HOLD_POLICY.maxMs);
+      if (this.job !== job || this.disposed || job.late || job.deadline !== deadline) return;
+      const now = performance.now();
+      if (this.env.mediaSync.isPlaying()) waited += now - last;
+      last = now;
+      if (waited < SWITCH_HOLD_POLICY.maxMs) {
+        window.setTimeout(check, step);
         return;
       }
       job.late = true;
@@ -925,14 +981,91 @@ export class CameraPlayer {
         job.group = null;
         group.drop(this);
       }
+      if (job.ready) {
+        // ready, waiting only for the others of its group: it shows its picture now
+        this.finishWhenReady(job);
+        return;
+      }
       // no picture of another episode under the new timeline: the placeholder shows instead
-      this.unfreeze();
-      releaseMediaElement(this.active);
-      this.activeSeeker.cancel();
+      this.dropPicture();
       this.update({ switching: true, buffering: false });
-      if (job.ready) this.finishWhenReady(job);
     };
-    window.setTimeout(check, SWITCH_HOLD_POLICY.maxMs);
+    window.setTimeout(check, step);
+  }
+
+  /**
+   * Let go of the previous episode's picture (a switch came late or failed): the cover goes and the
+   * element releases its connection. The camera no longer holds the clock (nor drives it), so the
+   * other cameras play on; it leaves the playing group once it gives up, and joins the clock again
+   * when a picture of the selected episode is promoted.
+   */
+  private dropPicture(): void {
+    this.unfreeze();
+    if (this.pictureDropped) return;
+    this.pictureDropped = true;
+    releaseMediaElement(this.active);
+    this.activeSeeker.cancel();
+  }
+
+  /**
+   * The camera has no picture of its own on screen (`pictureDropped`): a ready job promotes where
+   * the clock is. Paused, at the playhead. Playing, it aims ahead of the clock by what getting ready
+   * took and promotes when the clock gets there, so the timeline never moves back for it.
+   */
+  private joinClock(job: Job): void {
+    const now = this.env.frameIndex();
+    // paused, or the clock waits for this camera (a selection it holds, or no other camera has a
+    // picture to drive it): at the playhead
+    if (
+      !this.env.mediaSync.isPlaying() ||
+      this.isPendingSwitch() ||
+      !this.env.mediaSync.isActive()
+    ) {
+      job.clockFrame = null;
+      if (job.frame !== now) this.retarget(job, now);
+      else this.promote(job);
+      return;
+    }
+    const fps = this.env.fps();
+    const target = job.clockFrame !== null && job.frame === job.clockFrame ? job.clockFrame : null;
+    if (target !== null && now >= target && now <= target + 1) {
+      this.promote(job);
+      return;
+    }
+    const passed = target !== null && now > target + 1;
+    // the clock jumped back (a seek) far behind what the job aims at
+    const jumpedBack = target !== null && now < target - Math.ceil(11 * fps);
+    if (target === null || passed || jumpedBack) {
+      if (passed) job.overtaken += 1;
+      if (job.overtaken >= MAX_OVERTAKEN) {
+        // the link does not get it ready ahead of the clock: join at the clock's frame and let the
+        // playing group wait for it to buffer (never move the timeline back to it)
+        job.clockFrame = null;
+        job.element.pause();
+        this.seekerOf(job.element).seek(this.frameTime(job.source, now, job.element));
+        this.promote(job);
+        return;
+      }
+      const lead = Math.min(10, this.reaimLead(job, 1) * 2 ** job.overtaken);
+      job.clockFrame = now + Math.ceil(lead * fps);
+      this.retarget(job, job.clockFrame);
+      return;
+    }
+    const wait = () => {
+      if (this.job !== job || this.disposed || !job.ready) return;
+      const frame = this.env.frameIndex();
+      if (
+        !this.env.mediaSync.isActive() ||
+        this.isPendingSwitch() ||
+        frame >= target ||
+        frame + 1 < now
+      ) {
+        this.joinClock(job);
+        return;
+      }
+      requestAnimationFrame(wait);
+    };
+    requestAnimationFrame(wait);
   }
 
   /** The URL a job loaded expires before it could be used for long (a prefetch kept for a while). */
@@ -963,11 +1096,16 @@ export class CameraPlayer {
     job.failed = true;
     job.group?.settle(this, false);
     const purpose = job.purpose;
+    // the old picture was frozen for this job, or it was another episode: either way it is not
+    // what the timeline shows, and the camera must not hold the others while it retries
+    const dropOld =
+      purpose !== 'prefetch' && (this.frozenFrame !== null || this.switchesEpisode(job.source));
     this.job = null;
     if (this.snapshot.pendingRendition) this.update({ pendingRendition: null });
     job.resolve(false);
     releaseMediaElement(job.element);
     if (purpose === 'prefetch') return; // the real switch loads it again
+    if (dropOld) this.dropPicture();
     void this.handleFailure(job.source, job.frame, job.url, purpose);
   }
 
@@ -993,6 +1131,7 @@ export class CameraPlayer {
         buffering: false,
         errorCode: this.snapshot.errorCode ?? 'VIDEO_UNAVAILABLE',
       });
+      this.refreshSyncRegistration();
       return;
     }
     const expiry = this.env.getUrlExpiry(source.path);
@@ -1016,8 +1155,17 @@ export class CameraPlayer {
           return;
         }
       }
-      if (this.activeUrl && this.source?.path === source.path) this.swapUrl('recover');
-      else this.startJob(purpose === 'prefetch' ? 'show' : purpose, source, frame, null);
+      if (this.activeUrl && this.source?.path === source.path && sameEpisode(this.source, source))
+        this.swapUrl('recover');
+      // a retry of a switch that failed does not hold the clock again: it joins when it can
+      else
+        this.startJob(
+          purpose === 'prefetch' ? 'show' : purpose,
+          source,
+          this.pictureDropped ? this.env.frameIndex() : frame,
+          null,
+          this.pictureDropped,
+        );
     };
     if (refused) {
       // an expired signature: re-sign and retry at once (still counted against the budget)
@@ -1051,7 +1199,11 @@ export class CameraPlayer {
     // the source on screen, or the one that failed before anything could be shown
     const failed = this.failed;
     this.failed = null;
-    if (this.source && this.activeUrl) {
+    if (failed && this.activeUrl && this.source && !sameEpisode(this.source, failed.source)) {
+      // a switch to another episode failed: try that one again (not the one it switched from)
+      this.update({ status: 'loading', errorCode: null });
+      this.startJob('show', failed.source, this.env.frameIndex(), null);
+    } else if (this.source && this.activeUrl) {
       this.update({ status: 'ready', errorCode: null });
       this.startJob('recover', this.source, this.currentFrame(), null);
     } else if (failed) {
@@ -1216,9 +1368,17 @@ export class CameraPlayer {
     }
     if (this.cover && this.cover.parentElement !== owner) moveInto(owner, this.cover);
     // a media element taken out of the document pauses (where the state-preserving move is not
-    // supported): a layout rebuild while playing must not leave the camera paused
-    if (moved && this.activeUrl && this.env.mediaSync.isPlaying() && this.active.paused) {
-      this.env.mediaSync.refresh(this.key);
+    // supported), and only once the move settled: a layout rebuild while playing must not leave
+    // the camera paused
+    if (moved && this.activeUrl) {
+      const resume = () => {
+        if (this.disposed || !this.env.mediaSync.isPlaying() || !this.active.paused) return;
+        if (this.pictureDropped || this.frozenFrame !== null) return;
+        this.env.mediaSync.refresh(this.key);
+      };
+      resume();
+      window.setTimeout(resume, 0);
+      requestAnimationFrame(resume);
     }
     for (const host of this.hosts.slice(1)) {
       if (!this.mirrors.has(host)) {
@@ -1348,7 +1508,9 @@ export class CameraPlayer {
 
   /** Join MediaSync while a source is on screen and the camera is visible. */
   private refreshSyncRegistration(): void {
-    const shouldRegister = Boolean(this.activeUrl && this.source && this.isVisible());
+    // a camera that let its picture go and gave up has nothing to play or wait for
+    const gaveUp = this.pictureDropped && this.snapshot.status === 'error';
+    const shouldRegister = Boolean(this.activeUrl && this.source && this.isVisible() && !gaveUp);
     if (shouldRegister && !this.unregisterSync) {
       if (!this.env.mediaSync.isPlaying() && !this.job) {
         // shown again while paused: catch up with the playhead
@@ -1383,6 +1545,7 @@ export class CameraPlayer {
     this.unregisterSync = null;
     for (const element of this.elements) releaseMediaElement(element);
     this.unfreeze();
+    this.pictureDropped = false;
     this.activeUrl = null;
     this.failed = null;
     this.update({ status: this.source ? 'empty' : this.snapshot.status, buffering: false });
@@ -1403,7 +1566,7 @@ export class CameraPlayer {
   /** Elements that may download, with the file each loads (link measurement). */
   streams(): Array<{ element: HTMLVideoElement; path: string }> {
     const streams: Array<{ element: HTMLVideoElement; path: string }> = [];
-    if (this.activeUrl && this.source && this.frozenFrame === null)
+    if (this.activeUrl && this.source && this.frozenFrame === null && !this.pictureDropped)
       streams.push({ element: this.active, path: this.source.path });
     if (this.job?.url) streams.push({ element: this.job.element, path: this.job.source.path });
     return streams;
@@ -1422,7 +1585,12 @@ export class CameraPlayer {
   /** Duration of `path` when one of the elements has loaded it. */
   mediaDuration(path: string): number | null {
     const candidates: HTMLVideoElement[] = [];
-    if (this.activeUrl && this.source?.path === path && this.frozenFrame === null)
+    if (
+      this.activeUrl &&
+      this.source?.path === path &&
+      this.frozenFrame === null &&
+      !this.pictureDropped
+    )
       candidates.push(this.active);
     if (this.job?.source.path === path) candidates.push(this.job.element);
     for (const element of candidates) {

@@ -203,3 +203,42 @@ export function bufferedAhead(element: HTMLMediaElement, time: number): number {
   }
   return 0;
 }
+
+/**
+ * The link estimate from recent measurements: the best reading of `windowMs` (one short probe
+ * under contention reads low; a link does not get slower than its best recent reading unless
+ * playback stalls). A stall caps the estimate for `capMs` and drops the readings above the cap, so
+ * the cap lapsing does not bring back what the link no longer carries.
+ */
+export class LinkEstimate {
+  private samples: Array<{ bps: number; at: number }> = [];
+  private cap: { bps: number; at: number } | null = null;
+
+  private readonly windowMs: number;
+  private readonly capMs: number;
+
+  constructor(windowMs: number, capMs: number) {
+    this.windowMs = windowMs;
+    this.capMs = capMs;
+  }
+
+  /** Add a measurement (bits/s) taken at `now` (ms); returns the estimate. */
+  add(bps: number, now: number): number {
+    this.samples = this.samples.filter((sample) => now - sample.at < this.windowMs);
+    this.samples.push({ bps, at: now });
+    let estimate = Math.max(...this.samples.map((sample) => sample.bps));
+    if (this.cap && now - this.cap.at < this.capMs) estimate = Math.min(estimate, this.cap.bps);
+    return estimate;
+  }
+
+  /** Playback stalled at `bps` (ms `now`). */
+  capAt(bps: number, now: number): void {
+    this.cap = { bps, at: now };
+    this.samples = this.samples.filter((sample) => sample.bps <= bps);
+  }
+
+  reset(): void {
+    this.samples = [];
+    this.cap = null;
+  }
+}

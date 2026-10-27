@@ -240,4 +240,25 @@ describe('MediaSync', () => {
     empty.start(0, 1);
     expect(empty.tick()).toBeNull();
   });
+
+  it('keeps its master when a camera joins: the joining one meets the clock, not the reverse', () => {
+    const sync = new MediaSync();
+    sync.setFps(30);
+    const front = tracked(new FakeVideo());
+    const wrist = tracked(new FakeVideo());
+    // the first registered camera let its picture go (a late switch): the second drives the clock
+    front.readyState = 0;
+    sync.register('front', { video: front, getStart: () => 0 });
+    sync.register('wrist', { video: wrist, getStart: () => 0 });
+    sync.start(0, 1);
+    advance(wrist, 1.4);
+    expect(sync.tick()?.frameIndex).toBe(42);
+    // the first camera gets a picture again, at an older frame of the episode
+    front.readyState = 4;
+    front.currentTime = 0.1;
+    sync.refresh('front');
+    const clock = sync.tick();
+    expect(clock?.frameIndex).toBe(42);
+    expect(front.currentTime).toBeCloseTo(wrist.currentTime, 6);
+  });
 });

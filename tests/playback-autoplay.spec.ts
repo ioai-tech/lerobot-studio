@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { nextEpisodeAutoplay } from '../src/react/contexts/episodeAutoplay';
 import { shouldStartAutoplay } from '@/core';
 
 describe('playback autoplay', () => {
@@ -57,5 +58,24 @@ describe('playback autoplay', () => {
         ...overrides,
       }),
     ).toBe(false);
+  });
+});
+
+describe('episode autoplay intent', () => {
+  const none = { episode: null, play: true };
+  it('the first selection autoplays', () => {
+    expect(nextEpisodeAutoplay(none, 0, false).play).toBe(true);
+  });
+  it('a later selection plays on only when chosen while playing', () => {
+    const consumed = { episode: 0, play: false };
+    expect(nextEpisodeAutoplay(consumed, 1, true).play).toBe(true);
+    expect(nextEpisodeAutoplay(consumed, 1, false).play).toBe(false);
+  });
+  it('a quick reselection keeps the intent the previous selection did not use yet', () => {
+    // chosen while playing (playback stops while it loads), then another before it autoplayed
+    const waiting = nextEpisodeAutoplay({ episode: 0, play: false }, 1, true);
+    expect(nextEpisodeAutoplay(waiting, 2, false)).toEqual({ episode: 2, play: true });
+    // the first episode still loading
+    expect(nextEpisodeAutoplay(nextEpisodeAutoplay(none, 0, false), 3, false).play).toBe(true);
   });
 });
