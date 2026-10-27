@@ -170,6 +170,33 @@ describe('SeekController', () => {
     expect(media.seekLog.at(-1)).toBe(7.3);
   });
 
+  it('applies a newer fast target set while a fast seek was in flight (the pointer stopped)', () => {
+    const { media, controller } = setup();
+    media.fastSeek = (time: number) => {
+      media.fastSeeks.push(time);
+      media.seeking = true;
+    };
+    controller.seek(2, { fast: true });
+    controller.seek(5, { fast: true });
+    controller.seek(6, { fast: true });
+    expect(media.fastSeeks).toEqual([2]);
+    media.complete(2);
+    // the latest target is applied, not dropped
+    expect(media.fastSeeks).toEqual([2, 6]);
+    media.complete(6);
+    expect(controller.pendingTarget).toBeNull();
+  });
+
+  it('does not re-check a sync correction of a playing element', () => {
+    const { media, controller } = setup();
+    controller.seek(3, { once: true });
+    expect(media.seekLog).toEqual([3]);
+    // it plays on: lands, then is a few frames further by the time `seeked` fires
+    media.complete(3.2);
+    expect(controller.pendingTarget).toBeNull();
+    expect(media.seekLog).toEqual([3]);
+  });
+
   it('stops listening when disposed', () => {
     const { media, controller } = setup();
     controller.dispose();

@@ -41,7 +41,10 @@ export class SeekController {
   private target: number | null = null;
   private fast = false;
   private force = false;
+  private once = false;
   private inFlight = false;
+  /** The target of the seek in flight: a newer one set meanwhile is applied when it lands. */
+  private inFlightTarget: number | null = null;
   private reapplied = 0;
   private disposed = false;
   private readonly settledListeners = new Set<() => void>();
@@ -63,11 +66,14 @@ export class SeekController {
    * when `currentTime` is already within half a frame — after a pause the picture can be a frame
    * ahead of `currentTime`, and only a seek puts that exact frame on screen.
    */
-  seek(time: number, options: { fast?: boolean; force?: boolean } = {}): void {
+  seek(time: number, options: { fast?: boolean; force?: boolean; once?: boolean } = {}): void {
     if (this.disposed || !Number.isFinite(time)) return;
     this.target = Math.max(0, time);
     this.fast = options.fast === true;
     this.force = options.force === true;
+    // `once`: a playing element (a sync correction): seek, but do not check where it landed — it
+    // has moved on by then
+    this.once = options.once === true;
     this.reapplied = 0;
     this.pump();
   }
@@ -134,6 +140,7 @@ export class SeekController {
       return;
     }
     this.inFlight = true;
+    this.inFlightTarget = target;
     this.force = false;
     if (this.fast && typeof media.fastSeek === 'function') {
       media.fastSeek(target);
@@ -145,8 +152,11 @@ export class SeekController {
   private readonly onEvent = (): void => {
     if (this.inFlight && !this.media.seeking) {
       this.inFlight = false;
-      if (this.fast && this.target !== null) {
-        // a keyframe seek lands near the target by design; the exact seek on release follows
+      const landed = this.inFlightTarget;
+      this.inFlightTarget = null;
+      if ((this.fast || this.once) && this.target !== null && this.target === landed) {
+        // a keyframe seek lands near the target by design (the exact seek on release follows);
+        // a sync correction is not checked. A newer target set meanwhile is applied below.
         this.target = null;
         this.flushSettled();
         return;
@@ -165,6 +175,7 @@ export class SeekController {
   private readonly onEmptied = (): void => {
     // A new source: the in-flight seek is gone; the target is applied on loadedmetadata.
     this.inFlight = false;
+    this.inFlightTarget = null;
   };
 
   private flushSettled(): void {

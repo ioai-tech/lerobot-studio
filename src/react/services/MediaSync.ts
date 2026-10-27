@@ -34,8 +34,11 @@ export interface SyncedMedia {
   getStart: () => number | null;
   /** End (`to_timestamp`) of the selected episode in this file, in seconds, when known. */
   getEnd?: () => number | null;
-  /** Exact seek (coalescing); defaults to writing `currentTime`. */
-  seek?: (time: number) => void;
+  /**
+   * Exact seek (coalescing); defaults to writing `currentTime`. `once`: a correction of a playing
+   * element, not re-checked where it landed (it plays on).
+   */
+  seek?: (time: number, options?: { once?: boolean }) => void;
 }
 
 export interface MediaClock {
@@ -249,8 +252,8 @@ export class MediaSync {
     return this.ready()[0] ?? null;
   }
 
-  private seekMedia(media: SyncedMedia, time: number): void {
-    if (media.seek) media.seek(time);
+  private seekMedia(media: SyncedMedia, time: number, options?: { once?: boolean }): void {
+    if (media.seek) media.seek(time, options);
     else media.video.currentTime = time;
   }
 
@@ -259,7 +262,8 @@ export class MediaSync {
     const target = (media.getStart() ?? 0) + offset;
     const drift = media.video.currentTime - target;
     if (Math.abs(drift) > HARD_SYNC_SECONDS || (hard && Math.abs(drift) > 1 / this.fps)) {
-      media.video.currentTime = target;
+      // through the camera's seek controller: a direct write would race a seek it has in flight
+      this.seekMedia(media, target, { once: true });
       media.video.playbackRate = this.rate;
     } else if (Math.abs(drift) > SOFT_SYNC_FRAMES / this.fps) {
       media.video.playbackRate = this.rate * (drift > 0 ? 1 - RATE_NUDGE : 1 + RATE_NUDGE);
