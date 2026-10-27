@@ -89,6 +89,13 @@
     }
   },
   "playback": {
+    "quality": {
+      "label": "视频清晰度",
+      "preview": "预览",
+      "original": "原画",
+      "previewHint": "正在播放轻量预览副本；切换到原始分辨率",
+      "originalHint": "正在播放原始视频；切回轻量预览副本"
+    },
     "noData": "请选择一个动作任务开始播放",
     "progress": "播放进度",
     "a11y": {

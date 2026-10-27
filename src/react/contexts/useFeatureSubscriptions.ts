@@ -17,6 +17,8 @@ export function materializeNumericFeatureRows(column: NumericalColumnMap[string]
 
 type FeatureSnapshot = {
   episodeIndex: number | null;
+  /** True while the episode load is running; it reads the subscribed features itself. */
+  episodeLoading?: boolean;
   loader: LeRobotDataLoader | null;
   info: LeRobotInfo | null;
   chartData: NumericalColumnMap;
@@ -30,6 +32,8 @@ type FeatureSubscriptionBatcherOptions = {
   cancel?: (timer: number) => void;
   onError?: (message: string, error: unknown) => void;
 };
+
+const EPISODE_LOAD_RETRY_MS = 100;
 
 function isMediaFeature(feature: LeRobotFeature | undefined): boolean {
   return feature?.dtype === 'image' || feature?.dtype === 'video';
@@ -92,6 +96,11 @@ export class FeatureSubscriptionBatcher {
       this.pending.clear();
       return;
     }
+    if (snapshot.episodeLoading) {
+      // the episode load reads the subscribed features; flush what it left once it is done
+      this.ensureScheduled(EPISODE_LOAD_RETRY_MS);
+      return;
+    }
 
     const queued = Array.from(this.pending).filter((featureName) => {
       if (this.loading.has(featureName)) return false;
@@ -149,11 +158,11 @@ export class FeatureSubscriptionBatcher {
     }
   }
 
-  private ensureScheduled(): void {
+  private ensureScheduled(delay = 0): void {
     if (this.timer !== null) return;
     this.timer = (this.options.schedule ?? window.setTimeout)(() => {
       void this.flush();
-    }, 0);
+    }, delay);
   }
 }
 
@@ -164,6 +173,8 @@ type UseFeatureSubscriptionsOptions = {
   chartData: NumericalColumnMap;
   featureData: Record<string, unknown[]>;
   setFeatureData: React.Dispatch<React.SetStateAction<Record<string, unknown[]>>>;
+  /** True while `selectEpisode` loads; it reads the subscribed features itself. */
+  episodeLoadingRef?: React.RefObject<boolean>;
 };
 
 export function useFeatureSubscriptions({
@@ -173,6 +184,7 @@ export function useFeatureSubscriptions({
   chartData,
   featureData,
   setFeatureData,
+  episodeLoadingRef,
 }: UseFeatureSubscriptionsOptions) {
   const snapshotRef = useRef<FeatureSnapshot>({
     episodeIndex: selectedEpisodeIndex,
@@ -192,7 +204,10 @@ export function useFeatureSubscriptions({
   const batcherRef = useRef<FeatureSubscriptionBatcher | null>(null);
   if (!batcherRef.current) {
     batcherRef.current = new FeatureSubscriptionBatcher({
-      getSnapshot: () => snapshotRef.current,
+      getSnapshot: () => ({
+        ...snapshotRef.current,
+        episodeLoading: episodeLoadingRef?.current ?? false,
+      }),
       onFeatureData: (data) => setFeatureData((previous) => ({ ...previous, ...data })),
       onError: (message, error) => console.error(message, error),
     });

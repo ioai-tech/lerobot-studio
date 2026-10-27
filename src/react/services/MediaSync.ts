@@ -95,6 +95,13 @@ export class MediaSync {
     }
   }
 
+  /** Change the playback rate of running videos (speed control). */
+  setRate(rate: number): void {
+    this.rate = rate > 0 ? rate : 1;
+    if (!this.playing) return;
+    for (const media of this.media.values()) media.video.playbackRate = this.rate;
+  }
+
   stop(): void {
     const wasHeld = this.held;
     this.playing = false;

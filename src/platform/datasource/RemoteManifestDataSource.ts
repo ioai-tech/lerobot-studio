@@ -17,6 +17,25 @@ export interface RemoteFileEntry {
   contentType?: string | null;
   /** Optional size in bytes; used by safety limits when present. */
   sizeBytes?: number | null;
+  /** Optional expiry of `presignedUrl` (ISO 8601); with `refresh`, URLs are renewed before it. */
+  expiresAt?: string | null;
+}
+
+/** Options for a manifest whose presigned URLs expire. */
+export interface RemoteManifestOptions {
+  /**
+   * Returns a fresh manifest (same paths, new URLs). Called shortly before the earliest `expiresAt`
+   * and after a request is refused with 400/401/403, which is how object stores answer an expired
+   * signature. The data source keeps its identity, so the viewer does not reload.
+   */
+  refresh?: () => Promise<RemoteFileEntry[]>;
+}
+
+/** Renew this long before the earliest expiry, so a Range request never carries a dead URL. */
+const REFRESH_MARGIN_MS = 2 * 60_000;
+
+function isExpiredSignature(status: number): boolean {
+  return status === 400 || status === 401 || status === 403;
 }
 
 function normalizePath(path: string): string {
@@ -39,8 +58,17 @@ export class RemoteManifestDataSource implements DataSource {
   private readonly entryMap = new Map<string, RemoteFileEntry>();
   private readonly limits: Readonly<DataSourceSafetyLimits>;
   private readonly sizeLookups = new Map<string, Promise<number>>();
+  private readonly refreshManifest?: () => Promise<RemoteFileEntry[]>;
+  private refreshing: Promise<void> | null = null;
+  private readonly staleUrls = new Set<string>();
+  private earliestExpiry = Number.POSITIVE_INFINITY;
 
-  constructor(files: RemoteFileEntry[], limitOverrides?: Partial<DataSourceSafetyLimits>) {
+  constructor(
+    files: RemoteFileEntry[],
+    limitOverrides?: Partial<DataSourceSafetyLimits>,
+    options: RemoteManifestOptions = {},
+  ) {
+    this.refreshManifest = options.refresh;
     this.limits = resolveSafetyLimits(limitOverrides);
     if (files.length > this.limits.maxManifestEntries) {
       throw new DataSourceSafetyError('ENTRY_COUNT_LIMIT', 'Manifest contains too many entries', {
@@ -82,7 +110,53 @@ export class RemoteManifestDataSource implements DataSource {
         }
       }
       this.entryMap.set(path, file);
+      this.noteExpiry(file);
     }
+  }
+
+  private noteExpiry(file: RemoteFileEntry): void {
+    const expiry = file.expiresAt ? Date.parse(file.expiresAt) : Number.NaN;
+    if (Number.isFinite(expiry)) this.earliestExpiry = Math.min(this.earliestExpiry, expiry);
+  }
+
+  /** Swap in fresh URLs for the paths this manifest already has; new or missing paths are ignored. */
+  private applyRefresh(files: RemoteFileEntry[]): void {
+    this.earliestExpiry = Number.POSITIVE_INFINITY;
+    for (const file of files) {
+      const path = validateUntrustedPath(file.logicalPath, this.limits);
+      const current = this.entryMap.get(path);
+      if (!current) continue;
+      validateManifestUrl(file.presignedUrl, this.limits, path);
+      const next = { ...current, presignedUrl: file.presignedUrl, expiresAt: file.expiresAt };
+      this.entryMap.set(path, next);
+      this.noteExpiry(next);
+    }
+  }
+
+  /** Renew the URLs once for all concurrent callers; `force` after a refused request. */
+  private async renew(force: boolean): Promise<boolean> {
+    if (!this.refreshManifest) return false;
+    if (!force && this.earliestExpiry - Date.now() > REFRESH_MARGIN_MS) return false;
+    if (!this.refreshing) {
+      this.refreshing = this.refreshManifest()
+        .then((files) => this.applyRefresh(files))
+        .finally(() => {
+          this.refreshing = null;
+        });
+    }
+    await this.refreshing;
+    return true;
+  }
+
+  /** fetch with a fresh URL, renewing and retrying once when the store refuses the signature. */
+  private async fetchEntry(path: string, init?: RequestInit): Promise<Response> {
+    await this.renew(false);
+    const res = await fetch(this.getEntry(path).presignedUrl, init);
+    if (isExpiredSignature(res.status) && (await this.renew(true))) {
+      await res.body?.cancel();
+      return fetch(this.getEntry(path).presignedUrl, init);
+    }
+    return res;
   }
 
   async exists(path: string): Promise<boolean> {
@@ -99,9 +173,8 @@ export class RemoteManifestDataSource implements DataSource {
 
   async readBytes(path: string, onProgress?: ProgressHandler): Promise<Uint8Array> {
     const entry = this.getEntry(path);
-    const url = entry.presignedUrl;
     assertMaterializable(path, entry.sizeBytes ?? undefined, this.limits);
-    const res = await fetch(url);
+    const res = await this.fetchEntry(path);
     if (!res.ok) {
       throw new Error(`HTTP ${res.status} fetching ${path}`);
     }
@@ -159,7 +232,7 @@ export class RemoteManifestDataSource implements DataSource {
     const key = normalizePath(path);
     let lookup = this.sizeLookups.get(key);
     if (!lookup) {
-      lookup = fetch(entry.presignedUrl, { method: 'HEAD' }).then((res) => {
+      lookup = this.fetchEntry(path, { method: 'HEAD' }).then((res) => {
         const length = Number(res.headers.get('content-length'));
         if (!res.ok || !Number.isSafeInteger(length) || length < 0) {
           throw new Error(`HTTP ${res.status} reading the size of ${path}`);
@@ -174,7 +247,7 @@ export class RemoteManifestDataSource implements DataSource {
 
   /** One HTTP Range request; a server that ignores Range is refused rather than downloaded whole. */
   async readRange(path: string, offset: number, length: number): Promise<Uint8Array> {
-    const entry = this.getEntry(path);
+    this.getEntry(path);
     if (
       !Number.isSafeInteger(offset) ||
       !Number.isSafeInteger(length) ||
@@ -189,7 +262,7 @@ export class RemoteManifestDataSource implements DataSource {
     }
     if (length === 0) return new Uint8Array(0);
     assertMaterializable(path, length, this.limits);
-    const res = await fetch(entry.presignedUrl, {
+    const res = await this.fetchEntry(path, {
       headers: { Range: `bytes=${offset}-${offset + length - 1}` },
     });
     if (res.status === 206) {
@@ -209,19 +282,19 @@ export class RemoteManifestDataSource implements DataSource {
    * (e.g. video) via HTTP Range requests without downloading it entirely.
    */
   async getObjectUrl(path: string): Promise<string> {
-    return this.getUrl(path);
+    this.getEntry(path);
+    if (this.staleUrls.delete(normalizePath(path))) await this.renew(true);
+    else await this.renew(false);
+    return this.getEntry(path).presignedUrl;
   }
 
   clear(): void {
     // No blob URLs to revoke; presigned URLs are external references.
   }
 
-  invalidateObjectUrl(_path: string): void {
-    // no-op: presigned URLs are not cached as blob URLs here
-  }
-
-  private getUrl(path: string): string {
-    return this.getEntry(path).presignedUrl;
+  /** A media element failed on this URL (likely expired): the next `getObjectUrl` renews first. */
+  invalidateObjectUrl(path: string): void {
+    this.staleUrls.add(normalizePath(path));
   }
 
   private getEntry(path: string): RemoteFileEntry {

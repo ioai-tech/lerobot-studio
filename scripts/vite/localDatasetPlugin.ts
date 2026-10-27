@@ -1,4 +1,5 @@
 import fs from 'node:fs';
+import { once } from 'node:events';
 import path from 'node:path';
 import type { Plugin } from 'vite';
 
@@ -8,7 +9,7 @@ export const DEFAULT_V2_SUBTASK_DATASET = '/data/lerobot/route_subtasks_dual_ove
 export const DEFAULT_PUSHT_SUBTASK_DATASET = '/data/lerobot/pusht-subtask';
 export const DEFAULT_DEPTH_DATASET = '/data/lerobot/outdoor-depth';
 
-export type LocalDatasetId = 'v2' | 'v3' | 'pusht' | 'depth';
+export type LocalDatasetId = 'v2' | 'v3' | 'pusht' | 'depth' | 'large';
 
 export interface LocalDatasetStatus {
   id: LocalDatasetId;
@@ -20,6 +21,7 @@ export interface LocalDatasetStatus {
 function contentTypeFor(filePath: string): string {
   if (filePath.endsWith('.json') || filePath.endsWith('.jsonl')) return 'application/json';
   if (filePath.endsWith('.mp4')) return 'video/mp4';
+  if (filePath.endsWith('.mkv')) return 'video/x-matroska';
   if (filePath.endsWith('.parquet')) return 'application/octet-stream';
   return 'application/octet-stream';
 }
@@ -63,7 +65,57 @@ export function isOutdoorDepthSourceAvailable(root: string): boolean {
   }
 }
 
-function sendFile(res: import('http').ServerResponse, filePath: string): void {
+/**
+ * Optional link emulation for playback tests: `LEROBOT_E2E_THROTTLE_MBPS` caps the bytes per second
+ * of every dataset response together, the way one user link is shared by all cameras.
+ */
+function createThrottle(mbps: number): (chunk: Buffer) => Promise<void> {
+  const bytesPerMs = (mbps * 1_000_000) / 8 / 1000;
+  let nextFree = 0;
+  return (chunk) => {
+    const now = Date.now();
+    const start = Math.max(now, nextFree);
+    nextFree = start + chunk.byteLength / bytesPerMs;
+    const wait = nextFree - now;
+    return wait > 1 ? new Promise((resolve) => setTimeout(resolve, wait)) : Promise.resolve();
+  };
+}
+
+const throttleMbps = Number(process.env.LEROBOT_E2E_THROTTLE_MBPS ?? '');
+const throttle = throttleMbps > 0 ? createThrottle(throttleMbps) : null;
+
+function streamFile(
+  res: import('http').ServerResponse,
+  filePath: string,
+  range?: { start: number; end: number },
+): void {
+  const stream = fs.createReadStream(filePath, range);
+  if (!throttle) {
+    stream.pipe(res);
+    return;
+  }
+  res.on('close', () => stream.destroy());
+  void (async () => {
+    try {
+      for await (const chunk of stream) {
+        const buffer = typeof chunk === 'string' ? Buffer.from(chunk) : (chunk as Buffer);
+        await throttle(buffer);
+        if (res.destroyed) return;
+        if (!res.write(buffer)) await once(res, 'drain');
+      }
+      res.end();
+    } catch {
+      res.destroy();
+    }
+  })();
+}
+
+/** Serves a file with `Range: bytes=` support (206 / 416), like an object store behind a presigned URL. */
+function sendFile(
+  req: import('http').IncomingMessage,
+  res: import('http').ServerResponse,
+  filePath: string,
+): void {
   let stat: fs.Stats;
   try {
     stat = fs.statSync(filePath);
@@ -77,10 +129,55 @@ function sendFile(res: import('http').ServerResponse, filePath: string): void {
     res.end('not found');
     return;
   }
-  res.statusCode = 200;
   res.setHeader('Content-Type', contentTypeFor(filePath));
+  res.setHeader('Accept-Ranges', 'bytes');
+  const header = req.headers.range;
+  const match = header ? /^bytes=(\d*)-(\d*)$/.exec(header) : null;
+  if (match && (match[1] || match[2])) {
+    let start: number;
+    let end: number;
+    if (match[1]) {
+      start = Number(match[1]);
+      end = match[2] ? Math.min(Number(match[2]), stat.size - 1) : stat.size - 1;
+    } else {
+      start = Math.max(0, stat.size - Number(match[2]));
+      end = stat.size - 1;
+    }
+    if (start > end || start >= stat.size) {
+      res.statusCode = 416;
+      res.setHeader('Content-Range', `bytes */${stat.size}`);
+      res.end();
+      return;
+    }
+    res.statusCode = 206;
+    res.setHeader('Content-Range', `bytes ${start}-${end}/${stat.size}`);
+    res.setHeader('Content-Length', String(end - start + 1));
+    if (req.method === 'HEAD') {
+      res.end();
+      return;
+    }
+    streamFile(res, filePath, { start, end });
+    return;
+  }
+  res.statusCode = 200;
   res.setHeader('Content-Length', String(stat.size));
-  fs.createReadStream(filePath).pipe(res);
+  if (req.method === 'HEAD') {
+    res.end();
+    return;
+  }
+  streamFile(res, filePath);
+}
+
+function listFiles(root: string, prefix = ''): Array<{ path: string; size: number }> {
+  const entries: Array<{ path: string; size: number }> = [];
+  for (const entry of fs.readdirSync(path.join(root, prefix), { withFileTypes: true })) {
+    const relative = prefix ? `${prefix}/${entry.name}` : entry.name;
+    // stat follows symlinks, so a dataset assembled from links lists like a real one
+    const stat = fs.statSync(path.join(root, relative));
+    if (stat.isDirectory()) entries.push(...listFiles(root, relative));
+    else if (stat.isFile()) entries.push({ path: relative, size: stat.size });
+  }
+  return entries;
 }
 
 /**
@@ -93,6 +190,9 @@ export function localDatasetPlugin(): Plugin {
   const pushtRoot =
     process.env.LEROBOT_PUSHT_SUBTASK_DATASET?.trim() || DEFAULT_PUSHT_SUBTASK_DATASET;
   const depthRoot = process.env.LEROBOT_DEPTH_DATASET?.trim() || DEFAULT_DEPTH_DATASET;
+  // A large dataset served as a remote manifest (Range reads, native playback); opt-in by path.
+  const largeRoot = process.env.LEROBOT_LARGE_DATASET?.trim() ?? '';
+  const largeAvailable = largeRoot !== '' && hasMetaInfo(largeRoot);
   const v2Available = hasMetaInfo(v2Root);
   const pushtAvailable = isPushtSubtaskSourceAvailable(pushtRoot);
   const depthAvailable = isOutdoorDepthSourceAvailable(depthRoot);
@@ -139,6 +239,7 @@ export function localDatasetPlugin(): Plugin {
                 root: depthRoot,
                 version: 'v3.0',
               },
+              large: { id: 'large', available: largeAvailable, root: largeRoot, version: 'v3.0' },
             };
             res.statusCode = 200;
             res.setHeader('Content-Type', 'application/json');
@@ -157,7 +258,28 @@ export function localDatasetPlugin(): Plugin {
           return;
         }
 
-        const match = /^\/e2e-datasets\/(v2|v3|pusht|depth)\/(.*)$/.exec(url);
+        if (url === '/e2e-datasets/large-manifest') {
+          if (!largeAvailable) {
+            res.statusCode = 404;
+            res.end('local dataset unavailable');
+            return;
+          }
+          const origin = `http://${req.headers.host ?? 'localhost'}`;
+          const files = listFiles(largeRoot).map((file) => ({
+            logicalPath: file.path,
+            presignedUrl: `${origin}/e2e-datasets/large/${file.path
+              .split('/')
+              .map(encodeURIComponent)
+              .join('/')}`,
+            sizeBytes: file.size,
+          }));
+          res.statusCode = 200;
+          res.setHeader('Content-Type', 'application/json');
+          res.end(JSON.stringify(files));
+          return;
+        }
+
+        const match = /^\/e2e-datasets\/(v2|v3|pusht|depth|large)\/(.*)$/.exec(url);
         if (!match) {
           next();
           return;
@@ -175,7 +297,7 @@ export function localDatasetPlugin(): Plugin {
             res.end('invalid path');
             return;
           }
-          sendFile(res, filePath);
+          sendFile(req, res, filePath);
         };
 
         const id = match[1] as LocalDatasetId;
@@ -190,6 +312,10 @@ export function localDatasetPlugin(): Plugin {
         }
         if (id === 'depth') {
           serve(depthAvailable ? depthRoot : null, relativePath);
+          return;
+        }
+        if (id === 'large') {
+          serve(largeAvailable ? largeRoot : null, relativePath);
           return;
         }
         const sendV3 = (root: string | null) => serve(root, relativePath);

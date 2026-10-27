@@ -89,6 +89,13 @@
     }
   },
   "playback": {
+    "quality": {
+      "label": "Video quality",
+      "preview": "Preview",
+      "original": "Original",
+      "previewHint": "Playing the light preview copy; switch to the original resolution",
+      "originalHint": "Playing the original videos; switch back to the light preview copy"
+    },
     "noData": "Select an episode to start playback",
     "progress": "Playback progress",
     "a11y": {

@@ -216,6 +216,7 @@ export const LeRobotDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
   }, []);
 
   const loadingEpisodeRef = useRef<number | null>(null);
+  const episodeLoadingRef = useRef(false);
 
   // 高性能帧索引订阅API
   const subscribeFrameIndex = useCallback((callback: FrameIndexSubscriber) => {
@@ -257,6 +258,7 @@ export const LeRobotDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
     chartData,
     featureData,
     setFeatureData,
+    episodeLoadingRef,
   });
 
   const {
@@ -539,6 +541,7 @@ export const LeRobotDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
       setFeatureData({});
       setSourceSubtaskIndices([]);
       loadingEpisodeRef.current = index;
+      episodeLoadingRef.current = true;
 
       // 若新 episode 对应的 parquet 与当前缓存不同（v3 分片 / v2.1 多文件），主动释放
       // 旧文件的解析缓存（主线程 Arrow Table + worker 内部 fileCache），避免叠加式内存占用。
@@ -645,6 +648,7 @@ export const LeRobotDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
         return false;
       } finally {
         if (loadingEpisodeRef.current === index) {
+          episodeLoadingRef.current = false;
           setIsLoading(false);
         }
       }

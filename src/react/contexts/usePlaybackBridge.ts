@@ -120,22 +120,47 @@ export function usePlaybackBridge({
     [frameIndexRef, isBusy, setFrameIndex],
   );
 
+  // The engine lives as long as the provider and reads current values through this ref. Recreating
+  // it on every dependency change disposed a running engine (stopping playback and pausing the
+  // videos) without starting its replacement.
+  const latestRef = useRef({
+    frameCount,
+    fps,
+    playbackSpeed,
+    playbackMode,
+    episodes,
+    selectedEpisodeIndex,
+    deletedEpisodes,
+    notifyFrameSubscribers,
+  });
+  latestRef.current = {
+    frameCount,
+    fps,
+    playbackSpeed,
+    playbackMode,
+    episodes,
+    selectedEpisodeIndex,
+    deletedEpisodes,
+    notifyFrameSubscribers,
+  };
+
   const playbackEngineRef = useRef<PlaybackEngine | null>(null);
   useEffect(() => {
+    const latest = () => latestRef.current;
     const engine = new PlaybackEngine({
       getFrameIndex: () => frameIndexRef.current,
       setFrameIndexSilent: (index) => {
         frameIndexRef.current = index;
       },
-      notifyFrame: notifyFrameSubscribers,
-      getFrameCount: () => frameCount,
+      notifyFrame: (index) => latest().notifyFrameSubscribers(index),
+      getFrameCount: () => latest().frameCount,
       getPreviewRange: () => previewRangeRef.current,
-      getFps: () => fps || 30,
-      getPlaybackSpeed: () => playbackSpeed,
-      getPlaybackMode: () => playbackMode,
-      getEpisodes: () => episodes,
-      getSelectedEpisodeIndex: () => selectedEpisodeIndex,
-      getDeletedEpisodes: () => deletedEpisodes,
+      getFps: () => latest().fps || 30,
+      getPlaybackSpeed: () => latest().playbackSpeed,
+      getPlaybackMode: () => latest().playbackMode,
+      getEpisodes: () => latest().episodes,
+      getSelectedEpisodeIndex: () => latest().selectedEpisodeIndex,
+      getDeletedEpisodes: () => latest().deletedEpisodes,
       onStop: () => setIsPlaying(false),
       shouldHoldAtEpisodeEnd: () => shouldHoldAtEpisodeEndRef?.current() ?? false,
       onNaturalEnd: () => onNaturalEndRef?.current(),
@@ -145,7 +170,7 @@ export function usePlaybackBridge({
         ? {
             getMediaClock: () => mediaSync.tick(),
             onPlaybackStart: (frameIndex: number, rate: number) => {
-              mediaSync.setFps(fps);
+              mediaSync.setFps(latest().fps);
               mediaSync.start(frameIndex, rate);
             },
             onPlaybackStop: () => mediaSync.stop(),
@@ -157,21 +182,12 @@ export function usePlaybackBridge({
       engine.dispose();
       playbackEngineRef.current = null;
     };
-  }, [
-    frameCount,
-    frameIndexRef,
-    fps,
-    playbackSpeed,
-    playbackMode,
-    episodes,
-    selectedEpisodeIndex,
-    deletedEpisodes,
-    selectEpisodeRef,
-    notifyFrameSubscribers,
-    shouldHoldAtEpisodeEndRef,
-    onNaturalEndRef,
-    mediaSync,
-  ]);
+  }, [frameIndexRef, selectEpisodeRef, shouldHoldAtEpisodeEndRef, onNaturalEndRef, mediaSync]);
+
+  // speed changes apply to the running videos without restarting playback
+  useEffect(() => {
+    mediaSync?.setRate(playbackSpeed);
+  }, [mediaSync, playbackSpeed]);
 
   useEffect(() => {
     const engine = playbackEngineRef.current;

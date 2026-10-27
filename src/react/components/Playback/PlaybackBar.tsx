@@ -10,6 +10,7 @@ import {
 import { EpisodeTrimControls } from './EpisodeTrimControls';
 import { EditSubtaskDialog } from '../dialogs/EditSubtaskDialog';
 import { useLoading } from '../../contexts/LoadingContext';
+import { useVideoVariant } from '../../contexts/VideoVariantContext';
 import { shouldStartAutoplay } from '@/core';
 import { PlaybackProgressSlider } from './PlaybackProgressSlider';
 import { Button } from '@/ui';
@@ -38,6 +39,7 @@ export const PlaybackBar: React.FC = () => {
   } = useLeRobotPlayback();
   const { info, versionCapability, subscribeFrameIndex, getFrameIndex, isLoading } =
     useLeRobotData();
+  const { previewVideoPath, variant, setVariant } = useVideoVariant();
   const { selectedEpisodeIndex, trimRanges, trimEpisode } = useLeRobotSelection();
   const {
     canAnnotate,
@@ -295,6 +297,33 @@ export const PlaybackBar: React.FC = () => {
             </TooltipTrigger>
             <TooltipContent>{t('playback.speed')}</TooltipContent>
           </Tooltip>
+
+          {previewVideoPath ? (
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-8 px-2 text-xs"
+                    onClick={() => setVariant(variant === 'preview' ? 'original' : 'preview')}
+                    disabled={isLoading || totalFrames === 0}
+                    aria-label={t('playback.quality.label')}
+                    aria-pressed={variant === 'original'}
+                  />
+                }
+              >
+                {variant === 'preview'
+                  ? t('playback.quality.preview')
+                  : t('playback.quality.original')}
+              </TooltipTrigger>
+              <TooltipContent>
+                {variant === 'preview'
+                  ? t('playback.quality.previewHint')
+                  : t('playback.quality.originalHint')}
+              </TooltipContent>
+            </Tooltip>
+          ) : null}
 
           <Tooltip>
             <TooltipTrigger

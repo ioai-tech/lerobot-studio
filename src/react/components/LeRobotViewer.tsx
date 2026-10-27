@@ -14,6 +14,7 @@ import {
   translateRemotePreflightFailure,
 } from '../../platform/datasource/remotePreflight';
 import { useLeRobotData } from '../contexts/LeRobotContext';
+import { VideoVariantContext, type VideoVariant } from '../contexts/VideoVariantContext';
 import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts';
 import { ViewerLayout } from '../features/viewer/ViewerLayout';
 import { ErrorState } from './Commons/ErrorState';
@@ -65,6 +66,14 @@ export interface LeRobotViewerProps {
    * @defaultValue true
    */
   enableKeyboardShortcuts?: boolean;
+  /**
+   * Template of a lighter preview copy of every video, in the syntax of `info.video_path`
+   * (`{video_key}`, `{chunk_index}`, `{file_index}`, or the v2 `{episode_chunk}`, `{episode_index}`).
+   * The preview must hold the same frames at the same timestamps as the original. When set, video
+   * panels play the preview where the file exists and the playback bar offers a Preview / Original
+   * switch; without it every panel plays the original.
+   */
+  previewVideoPath?: string;
 }
 
 /** Viewer without the provider wrapper; render inside `LeRobotStudioProvider`. */
@@ -76,11 +85,21 @@ export function LeRobotViewerContent({
   enableKeyboardShortcuts = true,
   onBack,
   onExport,
+  previewVideoPath,
 }: Omit<LeRobotViewerProps, 'theme' | 'language' | 'className'> & {
   showSidebar: boolean;
   showPlaybackBar: boolean;
 }) {
   const { t } = useTranslation();
+  const [videoVariant, setVideoVariant] = useState<VideoVariant>('preview');
+  const videoVariantValue = useMemo(
+    () => ({
+      previewVideoPath: previewVideoPath?.trim() || null,
+      variant: videoVariant,
+      setVariant: setVideoVariant,
+    }),
+    [previewVideoPath, videoVariant],
+  );
   const { initialize, error, isLoading, clearError } = useLeRobotData();
 
   useKeyboardShortcuts(enableKeyboardShortcuts);
@@ -291,15 +310,17 @@ export function LeRobotViewerContent({
   );
 
   return (
-    <ViewerLayout
-      showSidebar={showSidebar}
-      showPlaybackBar={showPlaybackBar}
-      showToaster={false}
-      sidebar={<EpisodeSidebar />}
-      sidebarHeader={sidebarHeader}
-      emptyState={emptyState}
-      onRetry={handleRetry}
-    />
+    <VideoVariantContext.Provider value={videoVariantValue}>
+      <ViewerLayout
+        showSidebar={showSidebar}
+        showPlaybackBar={showPlaybackBar}
+        showToaster={false}
+        sidebar={<EpisodeSidebar />}
+        sidebarHeader={sidebarHeader}
+        emptyState={emptyState}
+        onRetry={handleRetry}
+      />
+    </VideoVariantContext.Provider>
   );
 }
 
@@ -314,6 +335,7 @@ export const LeRobotViewer: React.FC<LeRobotViewerProps> = ({
   enableKeyboardShortcuts = true,
   onBack,
   onExport,
+  previewVideoPath,
 }) => {
   return (
     <LeRobotStudioProvider theme={theme} language={language} className={className} showToaster>
@@ -325,6 +347,7 @@ export const LeRobotViewer: React.FC<LeRobotViewerProps> = ({
         enableKeyboardShortcuts={enableKeyboardShortcuts}
         onBack={onBack}
         onExport={onExport}
+        previewVideoPath={previewVideoPath}
       />
     </LeRobotStudioProvider>
   );

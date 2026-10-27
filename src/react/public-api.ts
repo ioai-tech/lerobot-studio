@@ -12,6 +12,7 @@ import { DirectoryDataSource } from '../platform/datasource/dataSources';
 import {
   RemoteManifestDataSource,
   type RemoteFileEntry,
+  type RemoteManifestOptions,
 } from '../platform/datasource/RemoteManifestDataSource';
 
 export { LeRobotViewer, LeRobotViewerContent } from './components/LeRobotViewer';
@@ -38,7 +39,7 @@ export type {
   ProgressHandler,
   ProgressInfo,
 } from '../core/datasource/types';
-export type { RemoteFileEntry };
+export type { RemoteFileEntry, RemoteManifestOptions };
 
 /** Create a viewer data source for a local ZIP, TAR, or TAR.GZ archive. */
 export function createArchiveDataSourceFromFile(file: File): DataSource {
@@ -61,8 +62,11 @@ export function createArchiveDataSourceFromUrl(url: string): DataSource {
  * download a full archive. `getObjectUrl` returns the remote URL so the
  * browser can stream media with Range requests.
  */
-export function createRemoteManifestDataSource(files: RemoteFileEntry[]): DataSource {
-  return new RemoteManifestDataSource(files);
+export function createRemoteManifestDataSource(
+  files: RemoteFileEntry[],
+  options?: RemoteManifestOptions,
+): DataSource {
+  return new RemoteManifestDataSource(files, undefined, options);
 }
 
 /** Create a viewer data source from a File System Access directory handle. */

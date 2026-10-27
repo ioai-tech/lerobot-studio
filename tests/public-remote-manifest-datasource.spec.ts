@@ -85,3 +85,73 @@ describe('remote manifest range reads', () => {
     }
   });
 });
+
+describe('remote manifest URL refresh', () => {
+  const path = 'data/chunk-000/file-000.parquet';
+  const entry = (sig: number, expiresAt?: string) => ({
+    logicalPath: path,
+    presignedUrl: `https://cdn.example.test/data.parquet?sig=${sig}`,
+    sizeBytes: 64,
+    expiresAt,
+  });
+
+  it('renews and retries once when the store refuses an expired signature', async () => {
+    const urls: string[] = [];
+    vi.stubGlobal('fetch', async (url: string) => {
+      urls.push(url);
+      return url.endsWith('sig=1')
+        ? new Response('expired', { status: 403 })
+        : new Response(new Uint8Array([9]), { status: 206 });
+    });
+    try {
+      let refreshes = 0;
+      const source = createRemoteManifestDataSource([entry(1)], {
+        refresh: async () => {
+          refreshes += 1;
+          return [entry(2)];
+        },
+      });
+      const bytes = await source.readRange!(path, 0, 1);
+      expect(Array.from(bytes)).toEqual([9]);
+      expect(urls).toEqual([
+        'https://cdn.example.test/data.parquet?sig=1',
+        'https://cdn.example.test/data.parquet?sig=2',
+      ]);
+      expect(refreshes).toBe(1);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('renews before the earliest expiry, once for concurrent callers', async () => {
+    let refreshes = 0;
+    const soon = new Date(Date.now() + 30_000).toISOString();
+    const later = new Date(Date.now() + 3_600_000).toISOString();
+    const source = createRemoteManifestDataSource([entry(1, soon)], {
+      refresh: async () => {
+        refreshes += 1;
+        return [entry(2, later)];
+      },
+    });
+    const [first, second] = await Promise.all([
+      source.getObjectUrl(path),
+      source.getObjectUrl(path),
+    ]);
+    expect(first).toBe('https://cdn.example.test/data.parquet?sig=2');
+    expect(second).toBe(first);
+    expect(refreshes).toBe(1);
+    await source.getObjectUrl(path);
+    expect(refreshes).toBe(1);
+  });
+
+  it('hands a media element a fresh URL after it failed on the old one', async () => {
+    let sig = 1;
+    const later = new Date(Date.now() + 3_600_000).toISOString();
+    const source = createRemoteManifestDataSource([entry(1, later)], {
+      refresh: async () => [entry(++sig, later)],
+    });
+    expect(await source.getObjectUrl(path)).toMatch(/sig=1$/);
+    await source.invalidateObjectUrl?.(path);
+    expect(await source.getObjectUrl(path)).toMatch(/sig=2$/);
+  });
+});

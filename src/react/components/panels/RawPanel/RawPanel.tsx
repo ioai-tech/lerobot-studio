@@ -30,7 +30,7 @@ import {
 } from 'lucide-react';
 import { cn, Tooltip, TooltipContent, TooltipTrigger } from '@/ui';
 import { HierarchicalFilterList } from '../Common/filters/HierarchicalFilterList';
-import { groupFeatureKeys } from '@/core';
+import { getBudgetedChartFeatureKeys, groupFeatureKeys } from '@/core';
 import { applyGroupSelection } from '@/core';
 import { PanelEmptyState, PanelLoadingState } from '../Common/PanelState';
 import { copyImageBytesAsPng, copyVideoFrameAsPng, type MediaCopyResult } from '@/platform';
@@ -909,12 +909,19 @@ const RawPanelContent: React.FC<RawPanelProps> = ({ params }) => {
     return Object.keys(info.features).sort();
   }, [info]);
 
-  // 默认选中：URL 指定单 feature 时用该 feature，否则默认全选（与 Chart 面板一致）
+  // 默认选中：URL 指定单 feature 时用该 feature；否则媒体特征 + 维度预算内的数据特征（与 Chart 面板一致），
+  // 宽数据集（如上千维人体姿态）其余特征勾选后再按需读取，避免打开即整列读取。
   const defaultFeatures = useMemo(() => {
     const featureKey = params?.featureKey;
     if (featureKey) return new Set([featureKey]);
-    return new Set(allFeatures);
-  }, [allFeatures, params?.featureKey]);
+    const isMedia = (key: string) => {
+      const dtype = info?.features[key]?.dtype;
+      return dtype === 'video' || dtype === 'image';
+    };
+    const media = allFeatures.filter(isMedia);
+    const data = allFeatures.filter((key) => !isMedia(key));
+    return new Set([...media, ...getBudgetedChartFeatureKeys(info, data)]);
+  }, [allFeatures, info, params?.featureKey]);
 
   // 最终使用的特征列表：用户未显式选择时用默认（全选或单 feature）
   const selectedFeatures = useMemo(() => {

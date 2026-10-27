@@ -505,9 +505,15 @@ export class LeRobotDataLoader {
    * Version-agnostic: path and optional time range for this episode's video feature.
    * Used by VideoPanel and export. Returns null if not found.
    */
-  getEpisodeVideoPath(episodeIndex: number, featureKey: string): EpisodeVideoPathResult | null {
+  getEpisodeVideoPath(
+    episodeIndex: number,
+    featureKey: string,
+    /** Resolve against this template instead of `info.video_path` (a preview copy). */
+    videoPathTemplate?: string,
+  ): EpisodeVideoPathResult | null {
     if (!this.info || !this.adapter) return null;
-    return this.adapter.getEpisodeVideoPath(this.info, this.episodes, episodeIndex, featureKey);
+    const info = videoPathTemplate ? { ...this.info, video_path: videoPathTemplate } : this.info;
+    return this.adapter.getEpisodeVideoPath(info, this.episodes, episodeIndex, featureKey);
   }
 
   async loadEpisodeData(episodeIndex: number, columns?: string[]): Promise<FrameData[]> {

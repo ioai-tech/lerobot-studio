@@ -7,6 +7,7 @@ import { VideoUrlCache } from '@/platform';
 import { getFeatureDisplayType, getFirstVisualFeatureName } from '@/core';
 import { ImagePanel } from '../ImagePanel/ImagePanel';
 import { MediaDebugOverlay } from '../Common/MediaDebugOverlay';
+import { useVideoVariant } from '../../../contexts/VideoVariantContext';
 
 interface VideoPanelProps {
   params?: {
@@ -25,7 +26,8 @@ interface VideoPanelProps {
  */
 const VideoPanelContent: React.FC<VideoPanelProps> = ({ params }) => {
   const { t } = useTranslation();
-  const { info, dataLoader, subscribeFrameIndex, mediaSync } = useLeRobotData();
+  const { info, dataLoader, subscribeFrameIndex, getFrameIndex, mediaSync } = useLeRobotData();
+  const { previewVideoPath, variant } = useVideoVariant();
   const panelId = useId();
   const { selectedEpisodeIndex } = useLeRobotSelection();
 
@@ -77,17 +79,25 @@ const VideoPanelContent: React.FC<VideoPanelProps> = ({ params }) => {
    * 获取 episode 的视频文件信息（版本无关，由 dataLoader 委托适配器解析）
    */
   const getVideoFileInfo = useCallback(
-    (episodeIndex: number) => {
+    async (episodeIndex: number) => {
       if (!dataLoader) return null;
       const result = dataLoader.getEpisodeVideoPath(episodeIndex, featureKey);
       if (!result) return null;
+      let path = result.path;
+      // 预览副本与原视频同帧、同时间戳，只是分辨率/码率更低；不存在时回退原视频
+      if (variant === 'preview' && previewVideoPath) {
+        const preview = dataLoader.getEpisodeVideoPath(episodeIndex, featureKey, previewVideoPath);
+        if (preview && (await dataLoader.dataSource.exists(preview.path).catch(() => false))) {
+          path = preview.path;
+        }
+      }
       return {
-        path: result.path,
+        path,
         start: result.fromSec ?? 0,
         end: result.toSec ?? 0,
       };
     },
-    [dataLoader, featureKey],
+    [dataLoader, featureKey, previewVideoPath, variant],
   );
 
   /**
@@ -222,7 +232,8 @@ const VideoPanelContent: React.FC<VideoPanelProps> = ({ params }) => {
         return;
       }
 
-      const videoInfo = getVideoFileInfo(selectedEpisodeIndex);
+      const videoInfo = await getVideoFileInfo(selectedEpisodeIndex);
+      if (requestToken !== requestTokenRef.current) return;
       if (!videoInfo) {
         if (mountedRef.current && requestToken === requestTokenRef.current) {
           setCurrentVideoPath('');
@@ -255,16 +266,17 @@ const VideoPanelContent: React.FC<VideoPanelProps> = ({ params }) => {
           setTimelineRange({ startSec: start, endSec: episodeEnd });
         }
 
-        // 纯 seek 操作，无任何 UI 更新
+        // 纯 seek：新 episode 帧号已归零；切换清晰度时保持当前帧
+        const target = Math.min(start + getFrameIndex() / (info.fps || 30), episodeEnd);
         if (video.readyState >= 2) {
-          video.currentTime = start;
+          video.currentTime = target;
         } else {
           const handleReady = () => {
             if (requestToken !== requestTokenRef.current) {
               video.removeEventListener('canplay', handleReady);
               return;
             }
-            video.currentTime = start;
+            video.currentTime = Math.min(start + getFrameIndex() / (info.fps || 30), episodeEnd);
             video.removeEventListener('canplay', handleReady);
           };
           video.addEventListener('canplay', handleReady, { once: true });
@@ -273,7 +285,63 @@ const VideoPanelContent: React.FC<VideoPanelProps> = ({ params }) => {
     };
 
     handleEpisodeChange();
-  }, [selectedEpisodeIndex, info, dataLoader, featureKey, getVideoFileInfo, loadVideoFileSilent]);
+  }, [
+    selectedEpisodeIndex,
+    info,
+    dataLoader,
+    featureKey,
+    getVideoFileInfo,
+    getFrameIndex,
+    loadVideoFileSilent,
+  ]);
+
+  /**
+   * 播放中途失败（典型：预签名 URL 过期后浏览器的下一次 Range 请求被拒）：换新 URL，保持时间点。
+   * 暂停中的视频由 MediaSync 在下一次缓冲恢复时重新 play。
+   */
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!hasVideo || !video || !dataLoader) return;
+    let recovering = false;
+    const onError = () => {
+      const file = currentVideoFileRef.current;
+      // 只处理已加载文件的失败；切换文件时的失败由 loadVideoFileSilent 自己重试
+      if (
+        recovering ||
+        !file ||
+        video.currentSrc !== new URL(file.url, window.location.href).href
+      ) {
+        return;
+      }
+      recovering = true;
+      const resumeAt = video.currentTime;
+      void (async () => {
+        try {
+          videoCacheRef.current.invalidate(file.path);
+          await dataLoader.invalidateFileUrl(file.path);
+          const url = await dataLoader.getFileUrl(file.path);
+          videoCacheRef.current.getUrl(file.path, url);
+          currentVideoFileRef.current = { ...file, url };
+          video.src = url;
+          video.load();
+          video.addEventListener(
+            'loadedmetadata',
+            () => {
+              video.currentTime = resumeAt;
+            },
+            { once: true },
+          );
+        } catch (e) {
+          console.error('Failed to recover video after a playback error:', e);
+          setLoadError(t('sidebar.errorLoading'));
+        } finally {
+          recovering = false;
+        }
+      })();
+    };
+    video.addEventListener('error', onError);
+    return () => video.removeEventListener('error', onError);
+  }, [hasVideo, dataLoader, t]);
 
   useEffect(() => {
     mountedRef.current = true;

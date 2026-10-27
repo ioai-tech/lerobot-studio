@@ -89,6 +89,13 @@
     }
   },
   "playback": {
+    "quality": {
+      "label": "動画の画質",
+      "preview": "プレビュー",
+      "original": "オリジナル",
+      "previewHint": "軽量プレビューを再生中。オリジナル解像度に切り替え",
+      "originalHint": "オリジナル動画を再生中。軽量プレビューに戻す"
+    },
     "noData": "エピソードを選択して再生を開始",
     "progress": "再生進捗",
     "a11y": {

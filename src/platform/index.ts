@@ -23,7 +23,7 @@ export {
 export type { ArchiveKind } from './datasource/ArchiveDataSourceFactory';
 
 export { RemoteManifestDataSource } from './datasource/RemoteManifestDataSource';
-export type { RemoteFileEntry } from './datasource/RemoteManifestDataSource';
+export type { RemoteFileEntry, RemoteManifestOptions } from './datasource/RemoteManifestDataSource';
 
 export {
   preflightRemoteArchive,
