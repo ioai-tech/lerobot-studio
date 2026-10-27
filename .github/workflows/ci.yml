@@ -70,9 +70,14 @@ jobs:
       - run: npm ci
       - name: Install browser engines
         run: npx playwright install --with-deps chromium firefox webkit
+      - name: Install ffmpeg (frame-coded playback fixtures)
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg
       - name: Generate test fixtures
         run: npm run fixtures:generate
       - name: Chromium full browser suite
+        # the playback switching specs must run here: a missing frame-coded dataset fails them
+        env:
+          LEROBOT_E2E_REQUIRE_FRAMECODED: '1'
         run: npm run test:browser
       - name: Cross-browser compatibility smoke
         run: npm run test:browser:smoke

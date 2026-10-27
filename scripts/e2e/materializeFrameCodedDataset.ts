@@ -340,17 +340,72 @@ async function writeVideos(root: string): Promise<void> {
   await Promise.all(jobs);
 }
 
-/** Builds the dataset once (cached by version); null without ffmpeg/libx264. */
-export async function materializeFrameCodedDataset(): Promise<string | null> {
+/** Whether this host can build the dataset (ffmpeg with libx264). */
+export function canBuildFrameCodedDataset(): boolean {
+  return hasLibx264();
+}
+
+/** Another process holding the build lock longer than this is presumed dead (ms). */
+const LOCK_STALE_MS = 10 * 60_000;
+const LOCK_POLL_MS = 250;
+
+async function build(root: string, marker: string): Promise<string> {
+  const lock = `${root}.lock`;
+  await fs.mkdir(path.dirname(root), { recursive: true });
+  // one builder across processes (vitest starts more than one Vite server): an exclusive lock
+  // directory; the others wait for the marker
+  for (;;) {
+    if (existsSync(marker)) return root;
+    try {
+      await fs.mkdir(lock);
+      break;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
+      const stat = await fs.stat(lock).catch(() => null);
+      if (stat && Date.now() - stat.mtimeMs > LOCK_STALE_MS) {
+        await fs.rm(lock, { recursive: true, force: true });
+        continue;
+      }
+      await new Promise((resolve) => setTimeout(resolve, LOCK_POLL_MS));
+    }
+  }
+  const staging = `${root}.staging-${process.pid}-${Date.now()}`;
+  try {
+    if (existsSync(marker)) return root;
+    // build beside the final directory and move it into place whole: a reader never sees a
+    // partial tree, and a failed build leaves no marker
+    await fs.rm(staging, { recursive: true, force: true });
+    await fs.mkdir(staging, { recursive: true });
+    await writeMeta(staging);
+    await writeData(staging);
+    await writeVideos(staging);
+    await fs.writeFile(path.join(staging, path.basename(marker)), new Date().toISOString());
+    await fs.rm(root, { recursive: true, force: true });
+    await fs.rename(staging, root);
+    return root;
+  } finally {
+    await fs.rm(staging, { recursive: true, force: true }).catch(() => undefined);
+    await fs.rm(lock, { recursive: true, force: true }).catch(() => undefined);
+  }
+}
+
+let building: Promise<string | null> | null = null;
+
+/**
+ * Builds the dataset once (cached by version, one build per process and one across processes);
+ * null without ffmpeg/libx264. A failed build rejects (callers report it; tests fail, not skip).
+ */
+export function materializeFrameCodedDataset(): Promise<string | null> {
   const root = frameCodedOutputDir();
   const marker = path.join(root, `.ready-${VERSION}`);
-  if (existsSync(marker)) return root;
-  if (!hasLibx264()) return null;
-  await fs.rm(root, { recursive: true, force: true });
-  await fs.mkdir(root, { recursive: true });
-  await writeMeta(root);
-  await writeData(root);
-  await writeVideos(root);
-  await fs.writeFile(marker, new Date().toISOString());
-  return root;
+  if (existsSync(marker)) return Promise.resolve(root);
+  if (!building) {
+    building = (hasLibx264() ? build(root, marker) : Promise.resolve(null)).catch(
+      (error: unknown) => {
+        building = null;
+        throw error;
+      },
+    );
+  }
+  return building;
 }

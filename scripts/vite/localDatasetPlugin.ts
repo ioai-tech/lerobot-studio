@@ -16,6 +16,8 @@ export interface LocalDatasetStatus {
   available: boolean;
   root: string;
   version: 'v2.1' | 'v3.0';
+  /** Why a dataset this host can build is missing (the build failed); tests then fail, not skip. */
+  error?: string;
 }
 
 /** One dataset request seen by the dev server (browser tests count and inspect them). */
@@ -30,6 +32,8 @@ export interface DatasetRequestLogEntry {
 }
 
 const requestLog: DatasetRequestLogEntry[] = [];
+/** Requests seen per URL with `?failTimes=` (fail the first n, then serve). */
+const failCounts = new Map<string, number>();
 const REQUEST_LOG_LIMIT = 5_000;
 
 function contentTypeFor(filePath: string): string {
@@ -230,6 +234,7 @@ export function localDatasetPlugin(): Plugin {
       }
 
       let frameCodedRoot: string | null = null;
+      let frameCodedError: string | undefined;
       const frameCodedReady = import('../e2e/materializeFrameCodedDataset.ts')
         .then(({ materializeFrameCodedDataset }) => materializeFrameCodedDataset())
         .then((root) => {
@@ -238,6 +243,7 @@ export function localDatasetPlugin(): Plugin {
         })
         .catch((error: unknown) => {
           console.warn('[e2e] failed to build the frame-coded dataset', error);
+          frameCodedError = error instanceof Error ? error.message : String(error);
           return null;
         });
 
@@ -280,6 +286,13 @@ export function localDatasetPlugin(): Plugin {
                 available: Boolean(frameCodedRoot),
                 root: frameCodedRoot ?? '',
                 version: 'v3.0',
+                ...(frameCodedError
+                  ? { error: frameCodedError }
+                  : !frameCodedRoot && process.env.LEROBOT_E2E_REQUIRE_FRAMECODED === '1'
+                    ? {
+                        error: 'ffmpeg with libx264 is required (LEROBOT_E2E_REQUIRE_FRAMECODED=1)',
+                      }
+                    : {}),
               },
             };
             res.statusCode = 200;
@@ -352,64 +365,81 @@ export function localDatasetPlugin(): Plugin {
         res.on('finish', () => {
           entry.status = res.statusCode;
         });
-        // ?exp=<epoch ms>: an expired signature is refused like an object store does
-        const exp = Number(query.get('exp') ?? '');
-        if (Number.isFinite(exp) && exp > 0 && Date.now() > exp) {
-          res.statusCode = 403;
-          res.end('signature expired');
-          return;
-        }
-        // ?fail=<status>: a failing server (backoff tests)
-        const fail = Number(query.get('fail') ?? '');
-        if (Number.isInteger(fail) && fail >= 400) {
-          res.statusCode = fail;
-          res.end('failing on purpose');
-          return;
-        }
+        const respond = () => {
+          // ?exp=<epoch ms>: an expired signature is refused like an object store does
+          const exp = Number(query.get('exp') ?? '');
+          if (Number.isFinite(exp) && exp > 0 && Date.now() > exp) {
+            res.statusCode = 403;
+            res.end('signature expired');
+            return;
+          }
+          // ?fail=<status>: a failing server (backoff tests); with &failTimes=<n>, only the first
+          // n requests of this URL fail
+          const fail = Number(query.get('fail') ?? '');
+          const failTimes = Number(query.get('failTimes') ?? '');
+          let failing = Number.isInteger(fail) && fail >= 400;
+          if (failing && Number.isInteger(failTimes) && failTimes > 0) {
+            const seen = (failCounts.get(req.url ?? '') ?? 0) + 1;
+            failCounts.set(req.url ?? '', seen);
+            failing = seen <= failTimes;
+          }
+          if (failing) {
+            res.statusCode = fail;
+            res.end('failing on purpose');
+            return;
+          }
 
-        const serve = (root: string | null, relativePath: string) => {
-          if (!root) {
-            res.statusCode = 404;
-            res.end('local dataset unavailable');
+          const serve = (root: string | null, relativePath: string) => {
+            if (!root) {
+              res.statusCode = 404;
+              res.end('local dataset unavailable');
+              return;
+            }
+            const filePath = safeJoin(root, relativePath);
+            if (!filePath) {
+              res.statusCode = 400;
+              res.end('invalid path');
+              return;
+            }
+            sendFile(req, res, filePath);
+          };
+
+          const id = match[1] as LocalDatasetId;
+          const relativePath = decodeURIComponent(match[2]);
+          if (id === 'v2') {
+            serve(v2Available ? v2Root : null, relativePath);
             return;
           }
-          const filePath = safeJoin(root, relativePath);
-          if (!filePath) {
-            res.statusCode = 400;
-            res.end('invalid path');
+          if (id === 'pusht') {
+            serve(pushtAvailable ? pushtRoot : null, relativePath);
             return;
           }
-          sendFile(req, res, filePath);
+          if (id === 'depth') {
+            serve(depthAvailable ? depthRoot : null, relativePath);
+            return;
+          }
+          if (id === 'large') {
+            serve(largeAvailable ? largeRoot : null, relativePath);
+            return;
+          }
+          if (id === 'framecoded') {
+            void frameCodedReady.then((root) => serve(root, relativePath));
+            return;
+          }
+          const sendV3 = (root: string | null) => serve(root, relativePath);
+          if (v3Ready) {
+            void v3Ready.then(sendV3);
+            return;
+          }
+          sendV3(v3Root);
         };
-
-        const id = match[1] as LocalDatasetId;
-        const relativePath = decodeURIComponent(match[2]);
-        if (id === 'v2') {
-          serve(v2Available ? v2Root : null, relativePath);
+        // ?delayMs=<ms>: a slow server (race tests): the answer comes after it
+        const delayMs = Number(query.get('delayMs') ?? '');
+        if (Number.isFinite(delayMs) && delayMs > 0) {
+          setTimeout(respond, delayMs);
           return;
         }
-        if (id === 'pusht') {
-          serve(pushtAvailable ? pushtRoot : null, relativePath);
-          return;
-        }
-        if (id === 'depth') {
-          serve(depthAvailable ? depthRoot : null, relativePath);
-          return;
-        }
-        if (id === 'large') {
-          serve(largeAvailable ? largeRoot : null, relativePath);
-          return;
-        }
-        if (id === 'framecoded') {
-          void frameCodedReady.then((root) => serve(root, relativePath));
-          return;
-        }
-        const sendV3 = (root: string | null) => serve(root, relativePath);
-        if (v3Ready) {
-          void v3Ready.then(sendV3);
-          return;
-        }
-        sendV3(v3Root);
+        respond();
       });
     },
   };

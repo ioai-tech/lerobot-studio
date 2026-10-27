@@ -80,15 +80,17 @@ function decodeFrame(
   return value;
 }
 
+/**
+ * Whether the frame-coded dataset is served. Missing because this host cannot build it (no
+ * ffmpeg/libx264): the specs skip. Missing because the build failed: they fail.
+ */
 async function frameCodedAvailable(): Promise<boolean> {
-  try {
-    const status = (await (await fetch('/e2e-datasets/status')).json()) as {
-      datasets?: Record<string, { available?: boolean }>;
-    };
-    return Boolean(status.datasets?.framecoded?.available);
-  } catch {
-    return false;
-  }
+  const status = (await (await fetch('/e2e-datasets/status')).json()) as {
+    datasets?: Record<string, { available?: boolean; error?: string }>;
+  };
+  const dataset = status.datasets?.framecoded;
+  if (dataset?.error) throw new Error(`the frame-coded dataset failed to build: ${dataset.error}`);
+  return Boolean(dataset?.available);
 }
 
 async function requestLog(clear = false): Promise<LogEntry[]> {
@@ -167,12 +169,14 @@ describe('browser: playback switching on a frame-coded dataset', () => {
     manifestQuery = '',
     mutate?: (files: RemoteFileEntry[]) => RemoteFileEntry[],
     refresh?: () => Promise<RemoteFileEntry[]>,
+    wrap?: (source: ReturnType<typeof createRemoteManifestDataSource>) => void,
   ) {
     let files = (await (
       await fetch(`/e2e-datasets/framecoded-manifest${manifestQuery}`)
     ).json()) as RemoteFileEntry[];
     if (mutate) files = mutate(files);
     const source = createRemoteManifestDataSource(files, refresh ? { refresh } : undefined);
+    wrap?.(source);
     await act(async () => {
       root.render(
         <LeRobotViewer dataSource={source} language="en" previewVideoPath={PREVIEW_PATH} />,
@@ -369,6 +373,51 @@ describe('browser: playback switching on a frame-coded dataset', () => {
     expect(allShow(50)).toBe(true);
   });
 
+  it('switches every camera to a new episode when the quality changes while its preview check is pending', async ({
+    skip,
+  }) => {
+    if (!(await frameCodedAvailable())) return skip();
+    // the wrist camera has no preview of file 000: on episode 0 it plays the original either way,
+    // so the toggle to Original below changes the front camera only (a partial plan change)
+    const missing = 'meta/preview/videos/observation.images.wrist/chunk-000/file-000.mp4';
+    let release: () => void = () => {};
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let held = 0;
+    await open(
+      '',
+      (files) => files.filter((file) => file.logicalPath !== missing),
+      undefined,
+      (source) => {
+        const exists = source.exists.bind(source);
+        // the first look at the previews of file 001 (episodes 2-3) waits for the gate
+        source.exists = async (path: string) => {
+          if (path.startsWith('meta/preview/') && path.endsWith('file-001.mp4')) {
+            held += 1;
+            await gate;
+          }
+          return exists(path);
+        };
+      },
+    );
+    await waitFor(() => allShow(0), 30_000, 'first frame');
+    const toggle = host.querySelector<HTMLButtonElement>('[aria-label="Video quality"]')!;
+    expect(toggle.textContent).toContain('Preview');
+
+    await selectEpisode(2);
+    await waitFor(() => held > 0, 10_000, 'preview check of episode 2 pending');
+    // the plan changes while the switch waits for its files
+    await act(async () => toggle.click());
+    await sleep(300);
+    release();
+    // the switch goes on at once (a lost switch only recovers later, by chance)
+    await waitFor(() => allIn(2 * FRAMES), 6_000, 'every camera on episode 2');
+    await pauseAutoplay();
+    await sleep(500);
+    expect(allIn(2 * FRAMES), describeState()).toBe(true);
+  });
+
   it('switches quality while playing without a black frame or a jump back', async ({ skip }) => {
     if (!(await frameCodedAvailable())) return skip();
     await open();
@@ -545,6 +594,66 @@ describe('browser: playback switching on a frame-coded dataset', () => {
     }
     expect(refreshes).toBeGreaterThanOrEqual(1);
     expect(refreshes).toBeLessThanOrEqual(2);
+  });
+
+  it('backs off renewing a URL the source does not re-sign', async ({ skip }) => {
+    if (!(await frameCodedAvailable())) return skip();
+    // URLs that expire within the renewal lead, from a manifest without refresh: every renewal
+    // returns the same URL
+    VIDEO_URL_POLICY.renewLeadMs = 121_000;
+    let videoUrlLookups = 0;
+    await open('?expiresInMs=110000&sig=1', undefined, undefined, (source) => {
+      const getObjectUrl = source.getObjectUrl.bind(source);
+      source.getObjectUrl = async (path: string) => {
+        if (path.endsWith('.mp4')) videoUrlLookups += 1;
+        return getObjectUrl(path);
+      };
+    });
+    await waitFor(() => allShow(0), 30_000, 'first frame');
+    const before = videoUrlLookups;
+    await sleep(8_000);
+    // without a backoff each camera renews once a second (about 16 renewals, 32 lookups, in 8 s);
+    // with it about twice (5 s, then 10 s apart), plus a prefetch's lookups
+    expect(videoUrlLookups - before).toBeLessThanOrEqual(12);
+    expect(allShow(0)).toBe(true);
+  });
+
+  it('a failure still being diagnosed never loads the old episode over a newer selection', async ({
+    skip,
+  }) => {
+    if (!(await frameCodedAvailable())) return skip();
+    DEFAULT_RETRY_POLICY.baseMs = 150;
+    DEFAULT_RETRY_POLICY.maxMs = 600;
+    const front = 'meta/preview/videos/observation.images.front/chunk-000/file-000.mp4';
+    // the front camera's file of episode 0 fails (its load and the probe), slowly: the probe is
+    // still out when the user selects episode 2 (another file); a retry of it would then load
+    await requestLog(true);
+    await open('', (files) =>
+      files.map((file) =>
+        file.logicalPath === front
+          ? {
+              ...file,
+              presignedUrl: `${file.presignedUrl}?fail=500&failTimes=2&delayMs=1500&run=${Date.now()}`,
+            }
+          : file,
+      ),
+    );
+    const probing = async () =>
+      (await requestLog()).some((entry) => entry.path === front && entry.range === 'bytes=0-0');
+    const startedAt = performance.now();
+    while (!(await probing())) {
+      if (performance.now() - startedAt > 20_000) throw new Error('no probe of the failing file');
+      await sleep(50);
+    }
+    await selectEpisode(2);
+    await waitFor(() => allIn(2 * FRAMES), 20_000, 'every camera on episode 2');
+    await pauseAutoplay();
+    // the probe answers, the retry delay passes and a retry's load would have finished: the
+    // camera stays on episode 2
+    await sleep(5_000);
+    expect(allIn(2 * FRAMES), describeState()).toBe(true);
+    const src = activeVideo('observation.images.front')?.getAttribute('src') ?? '';
+    expect(src, describeState()).toContain('file-001');
   });
 
   it('retries a failing video with backoff and stops with a named error', async ({ skip }) => {

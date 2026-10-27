@@ -90,8 +90,13 @@ describe('browser: playback metrics (opt-in)', () => {
   it('reports switching and seeking timings', async ({ skip }) => {
     const status = (await (await fetch('/e2e-datasets/status')).json()) as {
       metrics?: boolean;
-      datasets?: Record<string, { available?: boolean }>;
+      datasets?: Record<string, { available?: boolean; error?: string }>;
     };
+    if (status.metrics && status.datasets?.framecoded?.error) {
+      throw new Error(
+        `the frame-coded dataset failed to build: ${status.datasets.framecoded.error}`,
+      );
+    }
     if (!status.metrics || !status.datasets?.framecoded?.available) return skip();
 
     /** The element on screen per camera panel (the newer build stacks a standby element below). */
