@@ -136,6 +136,8 @@ export async function measureThroughput(
     maxMs?: number;
     fetchImpl?: typeof fetch;
     now?: () => number;
+    /** How long the response headers may take (ms, on top of `maxMs`). */
+    headerTimeoutMs?: number;
   } = {},
 ): Promise<number | null> {
   const offset = Math.max(0, Math.floor(options.offset ?? 0));
@@ -149,6 +151,9 @@ export async function measureThroughput(
   let lastAt = startedAt;
   let bytesAfterFirst = 0;
   let total = 0;
+  // the whole request is bounded: a server that never answers, or a body that stalls, ends the
+  // measurement (with what arrived) instead of hanging it
+  const timer = setTimeout(() => controller.abort(), maxMs + (options.headerTimeoutMs ?? 3_000));
   try {
     const response = await fetchImpl(url, {
       headers: { Range: `bytes=${offset}-${offset + maxBytes - 1}` },
@@ -157,6 +162,7 @@ export async function measureThroughput(
     });
     if (!response.ok || !response.body) return null;
     const reader = response.body.getReader();
+    const bodyTimer = setTimeout(() => controller.abort(), maxMs);
     try {
       while (total < maxBytes && now() - startedAt < maxMs) {
         const { done, value } = await reader.read();
@@ -167,12 +173,17 @@ export async function measureThroughput(
         total += value.byteLength;
         lastAt = at;
       }
+    } catch {
+      // aborted at the time limit: measure what arrived
     } finally {
+      clearTimeout(bodyTimer);
       await reader.cancel().catch(() => undefined);
       controller.abort();
     }
   } catch {
     return null;
+  } finally {
+    clearTimeout(timer);
   }
   if (firstAt !== null && lastAt - firstAt >= 50 && bytesAfterFirst >= 64 * 1024) {
     return (bytesAfterFirst * 8 * 1000) / (lastAt - firstAt);

@@ -213,6 +213,56 @@ describe('measureThroughput', () => {
     expect(clock.now).toBeLessThanOrEqual(250);
   });
 
+  it('gives up on a server that never answers', async () => {
+    const fetchImpl = ((_url: string, init: RequestInit) =>
+      new Promise<Response>((_resolve, reject) => {
+        init.signal?.addEventListener('abort', () =>
+          reject(new DOMException('aborted', 'AbortError')),
+        );
+      })) as unknown as typeof fetch;
+    const startedAt = Date.now();
+    await expect(
+      measureThroughput('https://example.test/v.mp4', {
+        fetchImpl,
+        maxMs: 50,
+        headerTimeoutMs: 50,
+      }),
+    ).resolves.toBeNull();
+    expect(Date.now() - startedAt).toBeLessThan(2_000);
+  });
+
+  it('measures what arrived when the body stalls', async () => {
+    let clock = 0;
+    const fetchImpl = (async (_url: string, init: RequestInit) => {
+      let sent = 0;
+      const body = new ReadableStream<Uint8Array>({
+        pull(controller) {
+          if (sent < 4) {
+            sent += 1;
+            clock += 100;
+            controller.enqueue(new Uint8Array(500_000));
+            return;
+          }
+          // then nothing: the stream stalls until aborted
+          return new Promise<void>((_resolve, reject) => {
+            init.signal?.addEventListener('abort', () =>
+              reject(new DOMException('aborted', 'AbortError')),
+            );
+          });
+        },
+      });
+      return new Response(body, { status: 206 });
+    }) as unknown as typeof fetch;
+    const bps = await measureThroughput('https://example.test/v.mp4', {
+      fetchImpl,
+      // the fake clock stays under the limit; the real timer ends the stalled body after 300 ms
+      maxMs: 300,
+      now: () => clock * 0.1,
+      maxBytes: 100_000_000,
+    });
+    expect(bps).not.toBeNull();
+  });
+
   it('reports nothing for a refused request', async () => {
     const clock = { now: 0 };
     const { fetchImpl } = fakeFetch([1_000], 10, clock, 403);
