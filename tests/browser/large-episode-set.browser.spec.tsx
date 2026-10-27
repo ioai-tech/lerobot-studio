@@ -44,15 +44,34 @@ function waitFor(predicate: () => boolean, timeoutMs = 60_000): Promise<boolean>
   });
 }
 
+let throttled = false;
+
+/**
+ * Whether the large dataset is served; when it is, the browser's link becomes 20 Mbps with 20 ms
+ * latency, as a browser on such a link sees it (reset after the test). The dev server's own
+ * throttle, LEROBOT_E2E_THROTTLE_MBPS, is the alternative.
+ */
 async function largeAvailable(): Promise<boolean> {
+  let available: boolean;
   try {
     const status = (await (await fetch('/e2e-datasets/status')).json()) as {
       datasets?: Record<string, { available?: boolean }>;
     };
-    return Boolean(status.datasets?.large?.available);
+    available = Boolean(status.datasets?.large?.available);
   } catch {
-    return false;
+    available = false;
   }
+  if (!available) return false;
+  const session = cdp();
+  await session.send('Network.enable');
+  await session.send('Network.emulateNetworkConditions', {
+    offline: false,
+    latency: 20,
+    downloadThroughput: (20 * 1_000_000) / 8,
+    uploadThroughput: (20 * 1_000_000) / 8,
+  });
+  throttled = true;
+  return true;
 }
 
 /** Episode `[fromS, toS)` of recording `id`. */
@@ -215,16 +234,6 @@ describe('browser: a curated version over two long recordings', () => {
   }
 
   beforeEach(async () => {
-    // a 20 Mbps link with 20 ms latency, as a browser sees it (the dev server's own throttle,
-    // LEROBOT_E2E_THROTTLE_MBPS, is the alternative)
-    const session = cdp();
-    await session.send('Network.enable');
-    await session.send('Network.emulateNetworkConditions', {
-      offline: false,
-      latency: 20,
-      downloadThroughput: (20 * 1_000_000) / 8,
-      uploadThroughput: (20 * 1_000_000) / 8,
-    });
     await page.viewport(1_600, 1_000);
     host = document.createElement('div');
     host.style.width = '1600px';
@@ -236,6 +245,16 @@ describe('browser: a curated version over two long recordings', () => {
   afterEach(async () => {
     await act(async () => root.unmount());
     host.remove();
+    // the emulated link belongs to the browser session: the next spec file gets the real one
+    if (throttled) {
+      throttled = false;
+      await cdp().send('Network.emulateNetworkConditions', {
+        offline: false,
+        latency: 0,
+        downloadThroughput: -1,
+        uploadThroughput: -1,
+      });
+    }
   });
 
   it('switches while playing into an episode at an offset of another recording', async ({
