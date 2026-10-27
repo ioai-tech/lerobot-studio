@@ -9,7 +9,7 @@ export const DEFAULT_V2_SUBTASK_DATASET = '/data/lerobot/route_subtasks_dual_ove
 export const DEFAULT_PUSHT_SUBTASK_DATASET = '/data/lerobot/pusht-subtask';
 export const DEFAULT_DEPTH_DATASET = '/data/lerobot/outdoor-depth';
 
-export type LocalDatasetId = 'v2' | 'v3' | 'pusht' | 'depth' | 'large';
+export type LocalDatasetId = 'v2' | 'v3' | 'pusht' | 'depth' | 'large' | 'framecoded';
 
 export interface LocalDatasetStatus {
   id: LocalDatasetId;
@@ -17,6 +17,20 @@ export interface LocalDatasetStatus {
   root: string;
   version: 'v2.1' | 'v3.0';
 }
+
+/** One dataset request seen by the dev server (browser tests count and inspect them). */
+export interface DatasetRequestLogEntry {
+  id: string;
+  path: string;
+  query: string;
+  range: string | null;
+  method: string;
+  status: number;
+  at: number;
+}
+
+const requestLog: DatasetRequestLogEntry[] = [];
+const REQUEST_LOG_LIMIT = 5_000;
 
 function contentTypeFor(filePath: string): string {
   if (filePath.endsWith('.json') || filePath.endsWith('.jsonl')) return 'application/json';
@@ -215,8 +229,29 @@ export function localDatasetPlugin(): Plugin {
           });
       }
 
+      let frameCodedRoot: string | null = null;
+      const frameCodedReady = import('../e2e/materializeFrameCodedDataset.ts')
+        .then(({ materializeFrameCodedDataset }) => materializeFrameCodedDataset())
+        .then((root) => {
+          frameCodedRoot = root;
+          return root;
+        })
+        .catch((error: unknown) => {
+          console.warn('[e2e] failed to build the frame-coded dataset', error);
+          return null;
+        });
+
       server.middlewares.use((req, res, next) => {
-        const url = req.url?.split('?')[0] ?? '';
+        const [url = '', queryString = ''] = (req.url ?? '').split('?');
+        const query = new URLSearchParams(queryString);
+
+        if (url === '/e2e-datasets/request-log') {
+          res.statusCode = 200;
+          res.setHeader('Content-Type', 'application/json');
+          res.end(JSON.stringify(requestLog));
+          if (query.get('clear') === '1') requestLog.length = 0;
+          return;
+        }
         if (url === '/e2e-datasets/status') {
           const finish = (v3: string | null) => {
             const datasets: Record<string, LocalDatasetStatus> = {
@@ -240,6 +275,12 @@ export function localDatasetPlugin(): Plugin {
                 version: 'v3.0',
               },
               large: { id: 'large', available: largeAvailable, root: largeRoot, version: 'v3.0' },
+              framecoded: {
+                id: 'framecoded',
+                available: Boolean(frameCodedRoot),
+                root: frameCodedRoot ?? '',
+                version: 'v3.0',
+              },
             };
             res.statusCode = 200;
             res.setHeader('Content-Type', 'application/json');
@@ -247,41 +288,82 @@ export function localDatasetPlugin(): Plugin {
               JSON.stringify({
                 datasets,
                 available: Object.values(datasets).some((dataset) => dataset.available),
+                // opt-in timing report (tests/browser/playback-metrics.browser.spec.tsx)
+                metrics: process.env.LEROBOT_PLAYBACK_METRICS === '1',
               }),
             );
           };
-          if (v3Ready) {
-            void v3Ready.then(finish);
-            return;
-          }
-          finish(v3Root);
+          void Promise.all([v3Ready ?? Promise.resolve(v3Root), frameCodedReady]).then(([v3]) =>
+            finish(v3),
+          );
           return;
         }
 
-        if (url === '/e2e-datasets/large-manifest') {
-          if (!largeAvailable) {
-            res.statusCode = 404;
-            res.end('local dataset unavailable');
-            return;
-          }
-          const origin = `http://${req.headers.host ?? 'localhost'}`;
-          const files = listFiles(largeRoot).map((file) => ({
-            logicalPath: file.path,
-            presignedUrl: `${origin}/e2e-datasets/large/${file.path
-              .split('/')
-              .map(encodeURIComponent)
-              .join('/')}`,
-            sizeBytes: file.size,
-          }));
-          res.statusCode = 200;
-          res.setHeader('Content-Type', 'application/json');
-          res.end(JSON.stringify(files));
+        const manifestMatch = /^\/e2e-datasets\/(large|framecoded)-manifest$/.exec(url);
+        if (manifestMatch) {
+          void frameCodedReady.then(() => {
+            const id = manifestMatch[1];
+            const root = id === 'large' ? (largeAvailable ? largeRoot : null) : frameCodedRoot;
+            if (!root) {
+              res.statusCode = 404;
+              res.end('local dataset unavailable');
+              return;
+            }
+            const origin = `http://${req.headers.host ?? 'localhost'}`;
+            // ?expiresInMs=N: "presigned" URLs that the server refuses (403) after N ms
+            const expiresInMs = Number(query.get('expiresInMs') ?? '');
+            const expiresAt =
+              Number.isFinite(expiresInMs) && expiresInMs > 0 ? Date.now() + expiresInMs : null;
+            const signature = query.get('sig') ?? '1';
+            const files = listFiles(root).map((file) => ({
+              logicalPath: file.path,
+              presignedUrl: `${origin}/e2e-datasets/${id}/${file.path
+                .split('/')
+                .map(encodeURIComponent)
+                .join('/')}${expiresAt ? `?exp=${expiresAt}&sig=${signature}` : ''}`,
+              sizeBytes: file.size,
+              ...(expiresAt ? { expiresAt: new Date(expiresAt).toISOString() } : {}),
+            }));
+            res.statusCode = 200;
+            res.setHeader('Content-Type', 'application/json');
+            res.end(JSON.stringify(files));
+          });
           return;
         }
 
-        const match = /^\/e2e-datasets\/(v2|v3|pusht|depth|large)\/(.*)$/.exec(url);
+        const match = /^\/e2e-datasets\/(v2|v3|pusht|depth|large|framecoded)\/(.*)$/.exec(url);
         if (!match) {
           next();
+          return;
+        }
+
+        const entry: DatasetRequestLogEntry = {
+          id: match[1],
+          path: decodeURIComponent(match[2]),
+          query: queryString,
+          range: typeof req.headers.range === 'string' ? req.headers.range : null,
+          method: req.method ?? 'GET',
+          status: 0,
+          at: Date.now(),
+        };
+        requestLog.push(entry);
+        if (requestLog.length > REQUEST_LOG_LIMIT)
+          requestLog.splice(0, requestLog.length - REQUEST_LOG_LIMIT);
+        res.on('finish', () => {
+          entry.status = res.statusCode;
+        });
+        // ?exp=<epoch ms>: an expired signature is refused like an object store does
+        const exp = Number(query.get('exp') ?? '');
+        if (Number.isFinite(exp) && exp > 0 && Date.now() > exp) {
+          res.statusCode = 403;
+          res.end('signature expired');
+          return;
+        }
+        // ?fail=<status>: a failing server (backoff tests)
+        const fail = Number(query.get('fail') ?? '');
+        if (Number.isInteger(fail) && fail >= 400) {
+          res.statusCode = fail;
+          res.end('failing on purpose');
           return;
         }
 
@@ -316,6 +398,10 @@ export function localDatasetPlugin(): Plugin {
         }
         if (id === 'large') {
           serve(largeAvailable ? largeRoot : null, relativePath);
+          return;
+        }
+        if (id === 'framecoded') {
+          void frameCodedReady.then((root) => serve(root, relativePath));
           return;
         }
         const sendV3 = (root: string | null) => serve(root, relativePath);

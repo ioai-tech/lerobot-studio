@@ -9,8 +9,10 @@ globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
 /**
  * Opt-in: LEROBOT_LARGE_DATASET=<dataset root> (optionally LEROBOT_E2E_THROTTLE_MBPS) serves a
- * large dataset as a remote manifest with Range support. The test plays it natively and reports
- * time to first frame, parquet bytes read, buffering and camera drift.
+ * large dataset as a remote manifest with Range support. The test plays it natively for 60 s and
+ * reports time to first frame, parquet bytes read, stalls per minute, camera drift, and the black
+ * frames and duration of a Preview → Original switch during playback. It reads only the DOM, so it
+ * measures older builds the same way.
  */
 
 function waitFor(predicate: () => boolean, timeoutMs = 60_000): Promise<void> {
@@ -87,7 +89,11 @@ describe('browser: large dataset streaming playback', () => {
       );
     });
 
-    const videos = () => Array.from(host.querySelectorAll('video'));
+    // the element on screen per camera (newer builds stack a standby element below it)
+    const videos = () =>
+      Array.from(host.querySelectorAll('video')).filter(
+        (video) => video.dataset.lerobotRole !== 'standby',
+      );
     await waitFor(() => videos().length > 0 && videos().every((video) => video.readyState >= 2));
     const firstFrameMs = performance.now() - openedAt;
     await waitFor(() => host.querySelector('[aria-label="Play/pause"]') !== null);
@@ -107,7 +113,7 @@ describe('browser: large dataset streaming playback', () => {
     const playedAt = performance.now();
 
     const drifts: number[] = [];
-    const PLAY_MS = 20_000;
+    const PLAY_MS = 60_000;
     while (performance.now() - playedAt < PLAY_MS) {
       await sleep(500);
       const times = videos().map((video, index) => video.currentTime - startTimes[index]);
@@ -115,13 +121,45 @@ describe('browser: large dataset streaming playback', () => {
     }
     const advanced = videos()[0].currentTime - startTimes[0];
     const stillPlaying = isPlaying();
-    await act(async () => playButton.click());
+
+    // Preview → Original while playing: samples without a picture on screen, and time to switch
+    const toggle = host.querySelector<HTMLButtonElement>('[aria-label="Video quality"]');
+    let qualitySwitch: Record<string, unknown> = { available: false };
+    if (toggle && previewVideoPath) {
+      const isOriginal = () =>
+        videos().every(
+          (video) =>
+            !(video.getAttribute('src') ?? '').includes('/preview/') && video.readyState >= 2,
+        );
+      let samples = 0;
+      let blackSamples = 0;
+      let sampling = true;
+      const sample = () => {
+        if (!sampling) return;
+        samples += 1;
+        if (videos().some((video) => video.readyState < 2 || !video.getAttribute('src'))) {
+          blackSamples += 1;
+        }
+        requestAnimationFrame(sample);
+      };
+      requestAnimationFrame(sample);
+      const switchedAt = performance.now();
+      await act(async () => toggle.click());
+      await waitFor(isOriginal, 60_000).catch(() => undefined);
+      const switchMs = Math.round(performance.now() - switchedAt);
+      await sleep(500);
+      sampling = false;
+      qualitySwitch = { switchMs, samples, blackSamples, done: isOriginal() };
+    }
+    if (isPlaying()) await act(async () => playButton.click());
 
     const parquetBytesRead = performance
       .getEntriesByType('resource')
       .filter((entry) => entry.name.includes('/data/') && entry.name.endsWith('.parquet'))
       .reduce((sum, entry) => sum + (entry as PerformanceResourceTiming).encodedBodySize, 0);
-    const stallsAfterStart = waitingEvents.filter((time) => time - playedAt > 3_000).length;
+    const stallsAfterStart = waitingEvents.filter(
+      (time) => time - playedAt > 3_000 && time - playedAt < PLAY_MS,
+    ).length;
     const report = {
       cameras: videos().length,
       sources: videos().map((video) => video.currentSrc.replace(/^.*\/e2e-datasets\/large\//, '')),
@@ -131,7 +169,9 @@ describe('browser: large dataset streaming playback', () => {
       playedWallSeconds: PLAY_MS / 1000,
       mediaSecondsAdvanced: Number(advanced.toFixed(2)),
       stallsAfterStart,
+      stallsPerMinute: Number(((stallsAfterStart * 60_000) / (PLAY_MS - 3_000)).toFixed(2)),
       stillPlaying,
+      qualitySwitch,
       maxDriftFrames: Number((Math.max(...drifts.slice(4)) * 30).toFixed(2)),
       finalDriftFrames: Number((drifts[drifts.length - 1] * 30).toFixed(2)),
       videoStates: videos().map((video) => ({
