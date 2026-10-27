@@ -29,14 +29,19 @@ if (!Number.isFinite(scale) || scale <= 0 || scale > 1) {
 const budgets = {
   // +5 KB raw head for the splitter ARIA values and Space-on-button handling
   // (measured ~400.1 KB raw, just over the old 400,000-byte ceiling).
-  libEntry: { raw: 405_000, gzip: 125_000 },
+  // +10 KB raw / +4 KB gzip for MediaSync, the preview switch, URL refresh and Range reads
+  // (measured 399.5 KiB raw, 123.2 KiB gzip).
+  libEntry: { raw: 415_000, gzip: 129_000 },
   libCss: { raw: 360_000, gzip: 110_000 },
   // +5 KB gzip head for the embed layout hook, resizable stacked sidebar and
   // phone navbar (measured 722.7 KiB gzip, level with the old 740,000-byte ceiling).
-  webInitialJs: { raw: 2_700_000, gzip: 745_000 },
+  // +5 KB gzip head for the Preview/Original switch, MediaSync and the buffering overlay
+  // (measured 727.8 KiB gzip).
+  webInitialJs: { raw: 2_700_000, gzip: 750_000 },
   webInitialCss: { raw: 200_000, gzip: 25_000 },
   libDataLoader: { raw: 280_000, gzip: 60_000 },
-  webDataLoader: { raw: 40_000, gzip: 10_000 },
+  // Range reads (rangeFile + Comlink proxy) in the loader: measured 9.8 KiB gzip.
+  webDataLoader: { raw: 40_000, gzip: 11_000 },
   libDockview: { raw: 680_000, gzip: 160_000 },
   webDockview: { raw: 100_000, gzip: 30_000 },
   libWorkerWasm: { raw: 9_200_000, gzip: 3_000_000 },

@@ -17,7 +17,7 @@ export function createArchiveDataSourceFromUrl(url: string): DataSource;
 export function createDirectoryDataSource(handle: FileSystemDirectoryHandle): DataSource;
 
 // @public
-export function createRemoteManifestDataSource(files: RemoteFileEntry[]): DataSource;
+export function createRemoteManifestDataSource(files: RemoteFileEntry[], options?: RemoteManifestOptions): DataSource;
 
 // @public
 export const DatasetSourceSelector: React_2.FC<DatasetSourceSelectorProps>;
@@ -122,6 +122,7 @@ export interface LeRobotViewerProps {
     onBack?: () => void;
     onExport?: () => void;
     onFatalError?: (error: LeRobotViewerError) => void;
+    previewVideoPath?: string;
     showPlaybackBar?: boolean;
     showSidebar?: boolean;
     theme?: 'light' | 'dark' | 'system';
@@ -175,9 +176,15 @@ export interface ProgressInfo {
 // @public
 export interface RemoteFileEntry {
     contentType?: string | null;
+    expiresAt?: string | null;
     logicalPath: string;
     presignedUrl: string;
     sizeBytes?: number | null;
+}
+
+// @public
+export interface RemoteManifestOptions {
+    refresh?: () => Promise<RemoteFileEntry[]>;
 }
 
 // @public
