@@ -161,6 +161,8 @@ export const SUSTAIN_AHEAD_SECONDS = 3;
 export const VIDEO_URL_POLICY = { renewLeadMs: 90_000 };
 /** Elements without a panel for this long release their source. */
 const PARK_RELEASE_MS = 3_000;
+/** A camera hidden this long lets go of its element (ms). */
+const HIBERNATE_MS = 1_500;
 /** While playing, a swap is prepared this far ahead of the clock and promoted when it gets there. */
 const RENDEZVOUS_LEAD_SECONDS = 0.6;
 /** A playing switch gives up after the clock overtook the standby's buffer this many times. */
@@ -247,6 +249,7 @@ export class CameraPlayer {
   private readonly frameCallbacks = new WeakMap<HTMLVideoElement, number>();
   private readonly mirrors = new Map<HTMLElement, HTMLCanvasElement>();
   private mirrorHandle: number | null = null;
+  private hibernateTimer: number | null = null;
   /** Paused swap: the old picture painted on a canvas while its element let go of its connection. */
   private cover: HTMLCanvasElement | null = null;
   private frozenFrame: number | null = null;
@@ -555,7 +558,8 @@ export class CameraPlayer {
     let frame = job.frame;
     const sameEpisode =
       this.source !== null && Math.abs(this.source.start - job.source.start) < 1e-6;
-    if (playing && job.purpose !== 'prefetch' && sameEpisode) {
+    // (a frozen camera has no clock of its own: it loads at the playhead and catches up on promotion)
+    if (playing && job.purpose !== 'prefetch' && sameEpisode && this.frozenFrame === null) {
       // the same episode in another rendition or under a renewed URL, while playing: prepare
       // ahead of the clock and promote when it gets there
       const lead = RENDEZVOUS_LEAD_SECONDS * Math.max(1, this.active.playbackRate);
@@ -995,18 +999,20 @@ export class CameraPlayer {
    * element go, so its connection is free for the new file (browsers open about six connections
    * per host; four cameras on screen plus four loading would leave two waiting).
    */
-  private freeze(): void {
+  private freeze(always = false): void {
     const video = this.active;
     const owner = this.hosts[0];
-    if (this.frozenFrame !== null || !owner || video.readyState < HAVE_CURRENT_DATA) return;
-    if (!video.videoWidth || !video.videoHeight) return;
+    if (this.frozenFrame !== null || !owner) return;
+    const hasPicture =
+      video.readyState >= HAVE_CURRENT_DATA && video.videoWidth > 0 && video.videoHeight > 0;
+    if (!hasPicture && !always) return;
     const canvas = document.createElement('canvas');
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
+    canvas.width = video.videoWidth || 1;
+    canvas.height = video.videoHeight || 1;
     try {
-      canvas.getContext('2d')?.drawImage(video, 0, 0, canvas.width, canvas.height);
+      if (hasPicture) canvas.getContext('2d')?.drawImage(video, 0, 0, canvas.width, canvas.height);
     } catch {
-      return; // no picture to hold: keep the element
+      if (!always) return; // no picture to hold: keep the element
     }
     canvas.dataset.lerobotCover = this.key;
     Object.assign(canvas.style, {
@@ -1139,6 +1145,24 @@ export class CameraPlayer {
   /** Visible cameras download ahead and join playback; hidden ones only keep metadata. */
   private onVisibilityChange(): void {
     const visible = this.isVisible();
+    if (this.hibernateTimer !== null) {
+      clearTimeout(this.hibernateTimer);
+      this.hibernateTimer = null;
+    }
+    if (!visible && this.hosts.length > 0 && this.activeUrl && this.source) {
+      // Hidden for a while (another camera maximized, scrolled away; not a layout rebuild that
+      // shows it again at once): stop downloading. A paused or playing element keeps buffering
+      // whatever its preload says; only letting go of it stops that. Its last picture stays on a
+      // cover until it is shown again and reloads at the playhead.
+      this.hibernateTimer = window.setTimeout(() => {
+        this.hibernateTimer = null;
+        if (this.disposed || this.isVisible() || this.hosts.length === 0 || !this.activeUrl) return;
+        if (this.job && this.job.purpose !== 'show') this.cancelJob();
+        if (!this.job) this.freeze(true);
+      }, HIBERNATE_MS);
+    } else if (visible && this.frozenFrame !== null && !this.job && this.source) {
+      this.startJob('show', this.source, this.env.frameIndex(), null);
+    }
     this.active.preload = visible ? 'auto' : 'metadata';
     if (this.job && this.job.purpose !== 'prefetch')
       this.job.element.preload = visible ? 'auto' : 'metadata';
@@ -1239,6 +1263,7 @@ export class CameraPlayer {
     this.releaseSources();
     this.disposed = true;
     if (this.releaseTimer !== null) clearTimeout(this.releaseTimer);
+    if (this.hibernateTimer !== null) clearTimeout(this.hibernateTimer);
     this.observer?.disconnect();
     this.resizeObserver?.disconnect();
     this.seekers.forEach((seeker) => seeker.dispose());

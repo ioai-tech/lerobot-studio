@@ -100,8 +100,12 @@ describe('planRenditions', () => {
     const list = cameras(1, { current: 'original' });
     // 13.3 / 17.5 = 0.76: above the admit share, below the keep share
     expect(
-      planRenditions({ variant: 'original', playing: true, cameras: list, linkBps: 17.5 * MBPS })
-        .targets.get('cam0'),
+      planRenditions({
+        variant: 'original',
+        playing: true,
+        cameras: list,
+        linkBps: 17.5 * MBPS,
+      }).targets.get('cam0'),
     ).toBe('original');
     expect(
       planRenditions({
@@ -138,8 +142,12 @@ describe('planRenditions', () => {
     expect(plan.originalCount).toBe(0);
     list[3].originalBps = 9 * MBPS;
     expect(
-      planRenditions({ variant: 'original', playing: true, cameras: list, linkBps: 20 * MBPS })
-        .targets.get('cam3'),
+      planRenditions({
+        variant: 'original',
+        playing: true,
+        cameras: list,
+        linkBps: 20 * MBPS,
+      }).targets.get('cam3'),
     ).toBe('original');
   });
 

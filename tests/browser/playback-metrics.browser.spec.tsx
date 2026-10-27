@@ -43,10 +43,19 @@ function waitFor(predicate: () => boolean, timeoutMs = 60_000): Promise<boolean>
 const canvas = document.createElement('canvas');
 const context = canvas.getContext('2d', { willReadFrequently: true })!;
 
-function decodeFrame(video: HTMLVideoElement | null | undefined): number | null {
-  if (!video || !video.videoWidth || !video.getAttribute('src')) return null;
-  canvas.width = video.videoWidth;
-  canvas.height = video.videoHeight;
+function decodeFrame(
+  video: HTMLVideoElement | HTMLCanvasElement | null | undefined,
+): number | null {
+  if (!video) return null;
+  if (video instanceof HTMLVideoElement) {
+    if (!video.videoWidth || !video.getAttribute('src')) return null;
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+  } else {
+    if (!video.width || !video.height) return null;
+    canvas.width = video.width;
+    canvas.height = video.height;
+  }
   context.drawImage(video, 0, 0, canvas.width, canvas.height);
   const blockWidth = Math.floor(canvas.width / BITS);
   let value = 0;
@@ -90,7 +99,14 @@ describe('browser: playback metrics (opt-in)', () => {
       Array.from(host.querySelectorAll<HTMLVideoElement>('video')).filter(
         (video) => video.dataset.lerobotRole !== 'standby',
       );
-    const values = () => screens().map(decodeFrame);
+    /** What each camera shows: a paused swap holds the old picture on a cover canvas. */
+    const values = () =>
+      screens().map((video) =>
+        decodeFrame(
+          video.parentElement?.querySelector<HTMLCanvasElement>('canvas[data-lerobot-cover]') ??
+            video,
+        ),
+      );
     const allIn = (start: number) =>
       screens().length >= 2 &&
       values().every((value) => value !== null && value >= start && value < start + FRAMES);
