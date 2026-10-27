@@ -24,6 +24,7 @@ vi.mock('../src/platform/workers/workerManager.ts', async () => {
 });
 
 import { LeRobotDataLoader } from '@/platform';
+import { RANGE_RETRY_POLICY } from '../src/platform/services/LeRobotDataLoader';
 import {
   createEpisodeSetDataSource,
   EPISODE_SET_PREVIEW_VIDEO_PATH,
@@ -223,6 +224,77 @@ describe('createEpisodeSetDataSource', () => {
       await loader.dispose();
     }
     warn.mockRestore();
+  });
+
+  it('retries a transient Range failure and never reads the data file whole because of it', async () => {
+    const saved = RANGE_RETRY_POLICY.delaysMs;
+    RANGE_RETRY_POLICY.delaysMs = [1, 1, 1];
+    const unsized = async (id: string) => {
+      const rec = await recording(id);
+      rec.files = rec.files.map((file) => ({ ...file, sizeBytes: null }));
+      return rec;
+    };
+    const isData = (url: string) => url.includes('/data/');
+    // failures of data-file requests to inject: 'network' throws, a number answers that status
+    let failures: Array<'network' | number> = [];
+    const wholeReads: string[] = [];
+    vi.stubGlobal('fetch', async (url: string, init?: RequestInit) => {
+      requested.push(url);
+      const logicalPath = new URL(url).pathname.split('/').slice(2).join('/');
+      const bytes = await fs.readFile(path.join(fixture, fixturePath(logicalPath)));
+      const header = new Headers(init?.headers).get('range');
+      if (!header) {
+        if (isData(url)) wholeReads.push(url);
+        return new Response(bytes, { status: 200 });
+      }
+      if (isData(url) && failures.length > 0) {
+        const failure = failures.shift()!;
+        if (failure === 'network') throw new TypeError('Failed to fetch');
+        return new Response('busy', { status: failure });
+      }
+      const match = /^bytes=(\d+)-(\d+)$/.exec(header)!;
+      const start = Number(match[1]);
+      const end = Math.min(Number(match[2]), bytes.length - 1);
+      return new Response(bytes.subarray(start, end + 1), {
+        status: 206,
+        headers: { 'content-range': `bytes ${start}-${end}/${bytes.length}` },
+      });
+    });
+    const open = async () => {
+      const source = createEpisodeSetDataSource({
+        fps: info.fps,
+        features: info.features,
+        recordings: [await unsized('a')],
+        episodes: [{ recordingId: 'a', task: 'pick', fromRow: 2, toRow: 5, fromS: 0.2, toS: 0.5 }],
+      });
+      const loader = new LeRobotDataLoader(source);
+      await loader.initialize();
+      return loader;
+    };
+    try {
+      // a blip on the size lookup and on the first ranged read: retried, read by Range
+      failures = ['network', 503, 'network'];
+      let loader = await open();
+      const columns = await loader.loadAllNumericalData(0, ['index']);
+      expect(Array.from(columns.index.values)).toEqual([2, 3, 4]);
+      expect(failures).toEqual([]);
+      expect(wholeReads).toEqual([]);
+      await loader.dispose();
+
+      // a failure that outlasts the retries: the load fails, still nothing read whole
+      failures = Array.from({ length: 20 }, () => 500);
+      loader = await open();
+      await expect(loader.loadAllNumericalData(0, ['index'])).rejects.toThrow();
+      expect(wholeReads).toEqual([]);
+      // and the file is not switched to whole reads: once the store recovers, Range again
+      failures = [];
+      const again = await loader.loadAllNumericalData(0, ['index']);
+      expect(Array.from(again.index.values)).toEqual([2, 3, 4]);
+      expect(wholeReads).toEqual([]);
+      await loader.dispose();
+    } finally {
+      RANGE_RETRY_POLICY.delaysMs = saved;
+    }
   });
 
   it('refuses a recording that is not a single-file tree', async () => {
