@@ -27,6 +27,9 @@ const browserInstances = (
 export default defineConfig({
   plugins: [react(), tailwindcss()],
   publicDir: false,
+  // The parquet worker imports hyparquet; Vite's dependency scan does not see worker imports, and a
+  // late discovery re-optimises and reloads the page mid-test (releasing Comlink proxies).
+  optimizeDeps: { include: ['hyparquet'] },
   server: { fs: { allow: [path.resolve(import.meta.dirname)] } },
   resolve: {
     alias: {
