@@ -1,6 +1,7 @@
 import type { FrameData, LeRobotFeature, LeRobotInfo } from '../types/lerobot';
 import type { EpisodeMetadata } from '../types/lerobot';
 import type { NumericalColumnMap } from '../loader/types';
+import { getBudgetedChartFeatureKeys } from '../panels/chartFeatureSelection';
 
 function isNumericalFeature(feature: LeRobotFeature | undefined): boolean {
   if (!feature?.dtype) return false;
@@ -22,16 +23,15 @@ function isChartFeatureKey(featureKey: string): boolean {
   );
 }
 
+/**
+ * Timeline plus the numeric chart features within the default chart budget. Wider datasets load
+ * their other features when a chart selects them (`ensureChartColumns`).
+ */
 export function getEagerEpisodeColumns(info: LeRobotInfo): string[] {
-  const columns = new Set<string>(['timestamp']);
-
-  Object.entries(info.features).forEach(([key, feature]) => {
-    if (isChartFeatureKey(key) && isNumericalFeature(feature)) {
-      columns.add(key);
-    }
-  });
-
-  return Array.from(columns);
+  const chartKeys = Object.entries(info.features)
+    .filter(([key, feature]) => isChartFeatureKey(key) && isNumericalFeature(feature))
+    .map(([key]) => key);
+  return Array.from(new Set(['timestamp', ...getBudgetedChartFeatureKeys(info, chartKeys)]));
 }
 
 export function buildPlaybackFrames(columnData: NumericalColumnMap, fps: number): FrameData[] {

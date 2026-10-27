@@ -18,7 +18,11 @@ import { ChartJointFilterDropdown } from './ChartJointFilterDropdown';
 import { ChartLineStyleKey } from './ChartLineStyleKey';
 import { buildFeatureFilterTree, getVisibleJointNamesFromSelected } from '@/core';
 import { applyGroupSelection } from '@/core';
-import { getChartSeriesKind, getDefaultChartFeatureKeys } from '@/core';
+import {
+  getBudgetedChartFeatureKeys,
+  getChartSeriesKind,
+  getDefaultChartFeatureKeys,
+} from '@/core';
 import {
   buildAggregatePreparedData,
   buildJointColorMap,
@@ -158,7 +162,8 @@ function zoomYAxisFromWheel(u: uPlot, deltaY: number, pointerCssY: number): bool
 const ChartPanelContent: React.FC<ChartPanelProps> = ({ params }) => {
   const { t, i18n } = useTranslation();
   // 使用分离的 context，避免订阅图像/帧状态触发不必要的重渲染
-  const { chartData, currentFrames, setFrameIndex, setPlaying } = useLeRobotPlayback();
+  const { chartData, currentFrames, setFrameIndex, setPlaying, ensureChartColumns } =
+    useLeRobotPlayback();
   const { subscribeFrameIndex, info, isLoading, error } = useLeRobotData();
   const { selectedEpisodeIndex } = useLeRobotSelection();
   const { resolvedTheme } = useTheme();
@@ -275,11 +280,30 @@ const ChartPanelContent: React.FC<ChartPanelProps> = ({ params }) => {
   useEffect(() => {
     userClearedJointsRef.current = false;
   }, [allSeriesIds]);
+  // 默认只选预算内的特征（与 getEagerEpisodeColumns 一致），宽数据集其余特征在筛选中勾选后按需加载
+  const defaultSeriesIds = useMemo(() => {
+    const defaultFeatures = new Set(getBudgetedChartFeatureKeys(info, targetFeatures));
+    return chartDimensions.filter((d) => defaultFeatures.has(d.featureKey)).map((d) => d.id);
+  }, [chartDimensions, info, targetFeatures]);
   useEffect(() => {
     if (selectedSeriesIds.size === 0 && allSeriesIds.length > 0 && !userClearedJointsRef.current) {
-      setSelectedSeriesIds(new Set(allSeriesIds));
+      setSelectedSeriesIds(new Set(defaultSeriesIds));
     }
-  }, [allSeriesIds, selectedSeriesIds.size]);
+  }, [allSeriesIds, defaultSeriesIds, selectedSeriesIds.size]);
+
+  const selectedFeatureKeys = useMemo(() => {
+    const keys = new Set<string>();
+    chartDimensions.forEach((d) => {
+      if (selectedSeriesIds.has(d.id)) keys.add(d.featureKey);
+    });
+    return Array.from(keys);
+  }, [chartDimensions, selectedSeriesIds]);
+  const hasTimeline = Boolean(chartData.timestamp);
+  useEffect(() => {
+    if (isLoading || !hasTimeline) return;
+    const missing = selectedFeatureKeys.filter((key) => chartData[key] === undefined);
+    if (missing.length > 0) ensureChartColumns(missing);
+  }, [isLoading, hasTimeline, selectedFeatureKeys, chartData, ensureChartColumns]);
 
   const getSeriesStrokeColor = useCallback((seriesId: string, baseColor: string) => {
     const hovered = hoveredSeriesIdsRef.current;

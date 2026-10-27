@@ -36,4 +36,11 @@ export interface DataSource {
   listPaths?(): Promise<string[]>;
   /** Invalidate object/blob URL for a logical path when the implementation supports it. */
   invalidateObjectUrl?(path: string): void | Promise<void>;
+  /** File size in bytes without reading the file. Implemented together with `readRange`. */
+  getSize?(path: string): Promise<number>;
+  /**
+   * Read `length` bytes starting at `offset`. Lets the parquet reader fetch only the footer, the row
+   * groups of one episode and the requested column chunks instead of the whole file.
+   */
+  readRange?(path: string, offset: number, length: number): Promise<Uint8Array>;
 }

@@ -67,6 +67,8 @@ export interface LeRobotSelectionContextType {
 export interface LeRobotPlaybackContextType {
   currentFrames: FrameData[];
   chartData: NumericalColumnMap;
+  /** Load numeric columns of the selected episode that `chartData` does not hold yet. */
+  ensureChartColumns: (featureKeys: string[]) => void;
   currentFrameIndex: number;
   isPlaying: boolean;
   playbackMode: PlaybackMode;

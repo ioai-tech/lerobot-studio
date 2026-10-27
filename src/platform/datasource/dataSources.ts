@@ -593,6 +593,15 @@ export class DirectoryDataSource implements DataSource {
     return new Uint8Array(await file.arrayBuffer());
   }
 
+  async getSize(path: string): Promise<number> {
+    return (await (await this.getFileHandle(path)).getFile()).size;
+  }
+
+  async readRange(path: string, offset: number, length: number): Promise<Uint8Array> {
+    const file = await (await this.getFileHandle(path)).getFile();
+    return new Uint8Array(await file.slice(offset, offset + length).arrayBuffer());
+  }
+
   async getObjectUrl(
     path: string,
     mimeType?: string,
@@ -691,6 +700,15 @@ export class FileListDirectoryDataSource implements DataSource {
     const file = this.getFile(path);
     onProgress?.({ phase: 'read', loaded: 0, total: file.size });
     return new Uint8Array(await file.arrayBuffer());
+  }
+
+  async getSize(path: string): Promise<number> {
+    return this.getFile(path).size;
+  }
+
+  async readRange(path: string, offset: number, length: number): Promise<Uint8Array> {
+    const file = this.getFile(path);
+    return new Uint8Array(await file.slice(offset, offset + length).arrayBuffer());
   }
 
   async getObjectUrl(

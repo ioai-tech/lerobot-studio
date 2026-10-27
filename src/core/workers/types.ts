@@ -47,6 +47,27 @@ export interface ParquetWorkerAPI {
   ): Promise<Record<string, unknown[]>>;
 
   /**
+   * Range 版本的 readNumericColumns：通过 `read(start, end)` 只拉取 footer、相关 row group 与所需列块，
+   * 不再整文件下载。`file.key` 标识文件版本，用于缓存 footer 元数据。
+   */
+  readNumericColumnsRange(
+    file: { key: string; byteLength: number },
+    read: (start: number, end: number) => Promise<ArrayBuffer>,
+    columns: string[],
+    startRow: number,
+    endRow: number,
+  ): Promise<Record<string, { values: ArrayBuffer; rows: number; width: number }>>;
+
+  /** Range 版本的 readFeatureData。 */
+  readFeatureDataRange(
+    file: { key: string; byteLength: number },
+    read: (start: number, end: number) => Promise<ArrayBuffer>,
+    columns: string[],
+    startRow: number,
+    endRow: number,
+  ): Promise<Record<string, unknown[]>>;
+
+  /**
    * 清除文件缓存
    */
   clearCache(): Promise<void>;

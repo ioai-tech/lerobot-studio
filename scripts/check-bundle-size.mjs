@@ -40,9 +40,11 @@ const budgets = {
   libDockview: { raw: 680_000, gzip: 160_000 },
   webDockview: { raw: 100_000, gzip: 30_000 },
   libWorkerWasm: { raw: 9_200_000, gzip: 3_000_000 },
-  libWorkers: { raw: 470_000, gzip: 110_000 },
+  // +30 KiB raw / +9 KiB gzip for hyparquet in the parquet worker (HTTP Range reads of
+  // footer, row groups and column chunks; measured 488.9 KiB raw, 115.8 KiB gzip).
+  libWorkers: { raw: 510_000, gzip: 122_000 },
   webWorkerWasm: { raw: 6_900_000, gzip: 2_100_000 },
-  webWorkers: { raw: 470_000, gzip: 110_000 },
+  webWorkers: { raw: 510_000, gzip: 122_000 },
   largestLibJs: { raw: 680_000, gzip: 160_000 },
   largestWebJs: { raw: 1_200_000, gzip: 330_000 },
   npmTarball: { raw: 12_000_000, gzip: 3_500_000 },

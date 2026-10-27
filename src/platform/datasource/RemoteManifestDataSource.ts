@@ -38,6 +38,7 @@ function normalizePath(path: string): string {
 export class RemoteManifestDataSource implements DataSource {
   private readonly entryMap = new Map<string, RemoteFileEntry>();
   private readonly limits: Readonly<DataSourceSafetyLimits>;
+  private readonly sizeLookups = new Map<string, Promise<number>>();
 
   constructor(files: RemoteFileEntry[], limitOverrides?: Partial<DataSourceSafetyLimits>) {
     this.limits = resolveSafetyLimits(limitOverrides);
@@ -149,6 +150,58 @@ export class RemoteManifestDataSource implements DataSource {
       offset += chunk.byteLength;
     }
     return result;
+  }
+
+  /** Size from the manifest, or from a HEAD request when the manifest has none. */
+  async getSize(path: string): Promise<number> {
+    const entry = this.getEntry(path);
+    if (entry.sizeBytes != null) return entry.sizeBytes;
+    const key = normalizePath(path);
+    let lookup = this.sizeLookups.get(key);
+    if (!lookup) {
+      lookup = fetch(entry.presignedUrl, { method: 'HEAD' }).then((res) => {
+        const length = Number(res.headers.get('content-length'));
+        if (!res.ok || !Number.isSafeInteger(length) || length < 0) {
+          throw new Error(`HTTP ${res.status} reading the size of ${path}`);
+        }
+        return length;
+      });
+      lookup.catch(() => this.sizeLookups.delete(key));
+      this.sizeLookups.set(key, lookup);
+    }
+    return lookup;
+  }
+
+  /** One HTTP Range request; a server that ignores Range is refused rather than downloaded whole. */
+  async readRange(path: string, offset: number, length: number): Promise<Uint8Array> {
+    const entry = this.getEntry(path);
+    if (
+      !Number.isSafeInteger(offset) ||
+      !Number.isSafeInteger(length) ||
+      offset < 0 ||
+      length < 0
+    ) {
+      throw new DataSourceSafetyError('MANIFEST_INVALID', 'Invalid byte range', {
+        path,
+        offset,
+        length,
+      });
+    }
+    if (length === 0) return new Uint8Array(0);
+    assertMaterializable(path, length, this.limits);
+    const res = await fetch(entry.presignedUrl, {
+      headers: { Range: `bytes=${offset}-${offset + length - 1}` },
+    });
+    if (res.status === 206) {
+      return new Uint8Array(await res.arrayBuffer());
+    }
+    if (res.ok) {
+      await res.body?.cancel();
+      throw new Error(
+        `HTTP ${res.status} without a byte range fetching ${path}: the server ignored Range`,
+      );
+    }
+    throw new Error(`HTTP ${res.status} fetching ${path}`);
   }
 
   /**

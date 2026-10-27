@@ -488,6 +488,32 @@ export const LeRobotDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
     ],
   );
 
+  // 宽数据集的其余数值列：图表选中时再按 Range 读取，并合并进 chartData。
+  const chartDataRef = useRef(chartData);
+  chartDataRef.current = chartData;
+  const chartColumnLoadsRef = useRef(new Set<string>());
+  const ensureChartColumns = useCallback(
+    (featureKeys: string[]) => {
+      const index = loadingEpisodeRef.current;
+      if (!dataLoader || index === null || index === undefined) return;
+      const loads = chartColumnLoadsRef.current;
+      const missing = featureKeys.filter(
+        (key) => chartDataRef.current[key] === undefined && !loads.has(`${index}:${key}`),
+      );
+      if (missing.length === 0) return;
+      missing.forEach((key) => loads.add(`${index}:${key}`));
+      dataLoader
+        .loadAllNumericalData(index, missing)
+        .then((data) => {
+          if (loadingEpisodeRef.current !== index) return;
+          setChartData((previous) => ({ ...previous, ...data }));
+        })
+        .catch((e) => console.error(`Failed to load chart columns for episode ${index}`, e))
+        .finally(() => missing.forEach((key) => loads.delete(`${index}:${key}`)));
+    },
+    [dataLoader],
+  );
+
   const selectEpisode = useCallback(
     async (index: number) => {
       if (!dataLoader || !info) return false;
@@ -777,6 +803,7 @@ export const LeRobotDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
     () => ({
       currentFrames,
       chartData,
+      ensureChartColumns,
       currentFrameIndex,
       isPlaying,
       playbackMode,
@@ -791,6 +818,7 @@ export const LeRobotDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
     [
       currentFrames,
       chartData,
+      ensureChartColumns,
       currentFrameIndex,
       isPlaying,
       playbackMode,

@@ -10,6 +10,11 @@ import * as Comlink from 'comlink';
 import { tableFromIPC, type Table, type Vector } from 'apache-arrow';
 import init, { readParquet } from 'parquet-wasm';
 import type { ParquetWorkerAPI } from '@/core';
+import {
+  clearRangeMetadataCache,
+  readFeatureRowsRange,
+  readNumericColumnsRange,
+} from './parquetRange';
 
 let wasmInitialized = false;
 let wasmInitPromise: Promise<void> | null = null;
@@ -287,8 +292,27 @@ const api: ParquetWorkerAPI = {
     return result;
   },
 
+  async readNumericColumnsRange(file, read, columns, startRow, endRow) {
+    const result = await readNumericColumnsRange(file, read, columns, startRow, endRow);
+    return Comlink.transfer(
+      result,
+      Object.values(result).map((column) => column.values),
+    );
+  },
+
+  async readFeatureDataRange(file, read, columns, startRow, endRow) {
+    const rows = await readFeatureRowsRange(file, read, columns, startRow, endRow);
+    return Object.fromEntries(
+      Object.entries(rows).map(([column, values]) => [
+        column,
+        values.map((value) => convertFeatureValue(value)),
+      ]),
+    );
+  },
+
   async clearCache(): Promise<void> {
     fileCache = null;
+    clearRangeMetadataCache();
   },
 };
 

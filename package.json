@@ -131,6 +131,7 @@
     "dockview-react": "^7.0.4",
     "fflate": "^0.8.3",
     "framer-motion": "^12.43.0",
+    "hyparquet": "1.31.3",
     "lucide-react": "^1.31.0",
     "mediabunny": "^1.52.3",
     "next-themes": "^0.4.6",

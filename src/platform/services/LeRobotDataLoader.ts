@@ -29,7 +29,7 @@ import {
 import { tableFromIPC, Table } from 'apache-arrow';
 import { LRUCache } from '../utils/MediaCache';
 import type { DataSource } from '../datasource/dataSources';
-import type { Remote } from 'comlink';
+import { proxy, transfer, type Remote } from 'comlink';
 import { createParquetWorker, terminateWorker } from '../workers/workerManager';
 
 export type { NumericalColumnData, NumericalColumnMap };
@@ -283,6 +283,31 @@ export class LeRobotDataLoader {
   }
 
   /**
+   * Range 读取：数据源支持 `readRange` + `getSize` 时（远程清单、本地目录），worker 只拉取 footer、
+   * 该 episode 覆盖的 row group 和所需列块；否则退回整文件读取。
+   */
+  private async rangeFile(path: string): Promise<{
+    file: { key: string; byteLength: number };
+    read: (start: number, end: number) => Promise<ArrayBuffer>;
+  } | null> {
+    const source = this._dataSource;
+    if (!source.readRange || !source.getSize) return null;
+    const byteLength = await source.getSize(path);
+    const read = async (start: number, end: number): Promise<ArrayBuffer> => {
+      const bytes = await source.readRange!(path, start, end - start);
+      const buffer =
+        bytes.byteOffset === 0 && bytes.byteLength === bytes.buffer.byteLength
+          ? (bytes.buffer as ArrayBuffer)
+          : (bytes.buffer as ArrayBuffer).slice(
+              bytes.byteOffset,
+              bytes.byteOffset + bytes.byteLength,
+            );
+      return transfer(buffer, [buffer]);
+    };
+    return { file: { key: `${path}:${byteLength}`, byteLength }, read: proxy(read) };
+  }
+
+  /**
    * 一次性加载所有数值列 - 优化版本
    */
   async loadAllNumericalData(episodeIndex: number, columns: string[]): Promise<NumericalColumnMap> {
@@ -290,12 +315,24 @@ export class LeRobotDataLoader {
     if (columns.length === 0) return {};
 
     const { path, start, end } = this.getEpisodeRange(episodeIndex);
-    const bytes = await this.readFileBytesCached(path);
-    const buffer = (bytes.buffer as ArrayBuffer).slice(
-      bytes.byteOffset,
-      bytes.byteOffset + bytes.byteLength,
-    );
-    const result = await this.worker.readNumericColumns(buffer, columns, start, end);
+    const ranged = await this.rangeFile(path);
+    let result: Awaited<ReturnType<ParquetWorkerAPI['readNumericColumns']>>;
+    if (ranged) {
+      result = await this.worker.readNumericColumnsRange(
+        ranged.file,
+        ranged.read,
+        columns,
+        start,
+        end,
+      );
+    } else {
+      const bytes = await this.readFileBytesCached(path);
+      const buffer = (bytes.buffer as ArrayBuffer).slice(
+        bytes.byteOffset,
+        bytes.byteOffset + bytes.byteLength,
+      );
+      result = await this.worker.readNumericColumns(buffer, columns, start, end);
+    }
 
     return Object.fromEntries(
       Object.entries(result).map(([column, data]) => [
@@ -349,6 +386,10 @@ export class LeRobotDataLoader {
     if (featureNames.length === 0) return {};
 
     const { path, start, end } = this.getEpisodeRange(episodeIndex);
+    const ranged = await this.rangeFile(path);
+    if (ranged) {
+      return this.worker.readFeatureDataRange(ranged.file, ranged.read, featureNames, start, end);
+    }
     const bytes = await this.readFileBytesCached(path);
     const buffer = (bytes.buffer as ArrayBuffer).slice(
       bytes.byteOffset,

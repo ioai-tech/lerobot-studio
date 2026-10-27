@@ -27,6 +27,23 @@ describe('episode load plan helpers', () => {
     expect(getEagerEpisodeColumns(info)).toEqual(['timestamp', 'observation.joint']);
   });
 
+  it('keeps wide numeric features out of the eager read beyond the chart budget', () => {
+    const wide = {
+      ...info,
+      features: {
+        timestamp: { dtype: 'float32', shape: [1], names: null },
+        'observation.imu': { dtype: 'float32', shape: [3], names: null },
+        'observation.body': { dtype: 'float32', shape: [154], names: null },
+        'observation.head_pose': { dtype: 'float32', shape: [7], names: null },
+      },
+    } as unknown as LeRobotInfo;
+    expect(getEagerEpisodeColumns(wide)).toEqual([
+      'timestamp',
+      'observation.imu',
+      'observation.head_pose',
+    ]);
+  });
+
   it('builds lightweight playback frames from timestamp data', () => {
     const columnData: NumericalColumnMap = {
       timestamp: { values: Float64Array.from([0, 0.5, 1]), rows: 3, width: 1 },
