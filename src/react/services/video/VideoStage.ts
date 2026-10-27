@@ -377,6 +377,8 @@ export class VideoStage {
     if (!player) {
       player = new CameraPlayer(featureKey, this.environment());
       this.players.set(featureKey, player);
+      // the notice counts what the cameras show: every promotion or demotion updates it
+      player.subscribe(() => this.updateOriginalCount());
     }
     return player;
   }
@@ -453,6 +455,26 @@ export class VideoStage {
 
   // ---------------------------------------------------------------- renditions and the link
 
+  /**
+   * Visible cameras whose picture on screen is the original: the same snapshot the panels' badges
+   * read, so the playback bar never disagrees with them.
+   */
+  private countOriginal(): number {
+    let count = 0;
+    for (const player of this.players.values()) {
+      if (player.isVisible() && player.getSnapshot().rendition === 'original') count += 1;
+    }
+    return count;
+  }
+
+  private updateOriginalCount(): void {
+    if (!this.quality.limited) return;
+    const originalCount = this.countOriginal();
+    if (originalCount === this.quality.originalCount) return;
+    this.quality = { ...this.quality, originalCount };
+    this.qualityListeners.forEach((listener) => listener());
+  }
+
   /** The rendition `featureKey` should show now. */
   private renditionFor(featureKey: string): Rendition {
     return this.plan?.targets.get(featureKey) ?? this.variant;
@@ -482,10 +504,7 @@ export class VideoStage {
           limited: true,
           neededMbps: plan.neededBps === null ? null : plan.neededBps / 1e6,
           linkMbps: plan.linkBps === null ? null : plan.linkBps / 1e6,
-          // what the cameras show now (the plan's other originals are still loading)
-          originalCount: [...this.players.values()].filter(
-            (player) => player.isVisible() && player.getSnapshot().rendition === 'original',
-          ).length,
+          originalCount: this.countOriginal(),
           visibleCount: plan.visibleCount,
           focusedOriginal: plan.focusedOriginal,
         }

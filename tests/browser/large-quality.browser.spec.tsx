@@ -263,7 +263,32 @@ describe('browser: Original on a link slower than the originals', () => {
     let noticeAt = 0;
     let midMedia = 0;
     let midWall = 0;
+    // the notice's count against the panels: a panel without a Preview / Loading badge is on Original
+    let noticeChecks = 0;
+    let noticeMismatches = 0;
+    let mismatchRun = 0;
+    let longestMismatch = 0;
+    const checkNotice = () => {
+      const match = /Original on (\d+) of (\d+)/.exec(notice() ?? '');
+      if (!match) return;
+      const panels = Array.from(host.querySelectorAll<HTMLElement>('[data-camera]')).filter(
+        (panel) => panel.getBoundingClientRect().width > 8,
+      );
+      const onOriginal = panels.filter(
+        (panel) => !panel.querySelector('[data-camera-rendition]'),
+      ).length;
+      noticeChecks += 1;
+      const agrees = Number(match[1]) === onOriginal && Number(match[2]) === panels.length;
+      if (agrees) {
+        mismatchRun = 0;
+      } else {
+        noticeMismatches += 1;
+        mismatchRun += 1;
+        longestMismatch = Math.max(longestMismatch, mismatchRun);
+      }
+    };
     const playingSamples = await sampleWhile(() => {
+      checkNotice();
       if (!noticeAt && notice()) noticeAt = performance.now();
       if (!midWall && performance.now() - playAt > 15_000) {
         midWall = performance.now();
@@ -276,6 +301,11 @@ describe('browser: Original on a link slower than the originals', () => {
     const lastPlaying = playingSamples[playingSamples.length - 1];
     const playing = {
       noticeMs: noticeAt ? Math.round(noticeAt - playAt) : null,
+      // checked on every animation frame: a mismatch may last one frame (React renders the bar
+      // and the panels in the same commit, so it should not happen at all)
+      noticeChecks,
+      noticeMismatches,
+      longestMismatchFrames: longestMismatch,
       notice: notice(),
       ...judge(playingSamples.filter((sample) => sample.at - playAt > 1_000)),
       renditions: lastPlaying.cameras.map((camera) => camera.rendition),
@@ -344,5 +374,7 @@ describe('browser: Original on a link slower than the originals', () => {
     expect(Object.keys(paused.black)).toHaveLength(0);
     expect(Object.keys(playing.black)).toHaveLength(0);
     expect(playing.stillPlaying).toBe(true);
+    expect(playing.noticeChecks).toBeGreaterThan(0);
+    expect(playing.longestMismatchFrames).toBeLessThanOrEqual(1);
   });
 });
