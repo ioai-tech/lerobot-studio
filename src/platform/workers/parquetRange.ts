@@ -88,7 +88,12 @@ export class RangeBlockCache {
   read(fileKey: string, read: RangeReader, start: number, end: number): Promise<ArrayBuffer> {
     const hit = this.find(fileKey, start, end);
     if (hit) {
-      return hit.data.then((buffer) => buffer.slice(start - hit.start, end - hit.start));
+      // A pending block another load started may fail for that load alone (it was aborted, the
+      // user left that episode): this caller then reads with its own reader.
+      return hit.data.then(
+        (buffer) => buffer.slice(start - hit.start, end - hit.start),
+        () => this.read(fileKey, read, start, end),
+      );
     }
     const id = `${fileKey}\u0000${start}-${end}`;
     const block: Block = { start, end, size: end - start, data: read(start, end) };
@@ -153,7 +158,9 @@ function cachedMetadata(file: RangeFile, buffer: AsyncBuffer): Promise<FileMetaD
     // refresh LRU position
     metadataCache.delete(file.key);
     metadataCache.set(file.key, hit);
-    return hit;
+    // a footer read another load started may fail for that load alone (aborted): read it again
+    // with this caller's reader
+    return hit.catch(() => cachedMetadata(file, buffer));
   }
   const pending = parquetMetadataAsync(buffer).catch((error: unknown) => {
     metadataCache.delete(file.key);

@@ -195,6 +195,46 @@ describe('range block cache and coalescing', () => {
     expect(reads.at(-1)).toEqual([0, 10]);
   });
 
+  it('a pending block aborted for its first reader is read again for a later one', async () => {
+    const { RangeBlockCache } = await import('../src/platform/workers/parquetRange');
+    const cache = new RangeBlockCache(10_000);
+    const bytes = Uint8Array.from({ length: 1_000 }, (_, index) => index % 251);
+    let rejectFirst: (error: unknown) => void = () => {};
+    const aborted = () =>
+      new Promise<ArrayBuffer>((_, reject) => {
+        rejectFirst = reject;
+      });
+    const reads: Array<[number, number]> = [];
+    const own = async (start: number, end: number) => {
+      reads.push([start, end]);
+      return bytes.slice(start, end).buffer as ArrayBuffer;
+    };
+    const first = cache.read('f', aborted, 0, 600);
+    // a second load shares the pending block with its own reader
+    const second = cache.read('f', own, 100, 200);
+    rejectFirst(new DOMException('aborted', 'AbortError'));
+    await expect(first).rejects.toThrow('aborted');
+    const inner = new Uint8Array(await second);
+    expect(inner[0]).toBe(100);
+    expect(reads).toEqual([[100, 200]]);
+  });
+
+  it('a pending footer read aborted for its first reader is read again for a later one', async () => {
+    clearRangeMetadataCache();
+    const bytes = await buildParquet();
+    const { reads, read } = countingReader(bytes);
+    const file = { key: 'shared-footer.parquet:1', byteLength: bytes.byteLength };
+    const abortedRead = async () => {
+      throw new DOMException('aborted', 'AbortError');
+    };
+    const first = readNumericColumnsRange(file, abortedRead, ['timestamp'], 250, 420);
+    const second = readNumericColumnsRange(file, read, ['timestamp'], 250, 420);
+    await expect(first).rejects.toThrow('aborted');
+    const result = await second;
+    expect(reads.length).toBeGreaterThan(0);
+    expect(result).toBeTruthy();
+  });
+
   it('keeps the footer and blocks across episode switches: a revisit reads nothing', async () => {
     clearRangeMetadataCache();
     const bytes = await buildParquet();
