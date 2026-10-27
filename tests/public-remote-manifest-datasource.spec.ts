@@ -68,18 +68,41 @@ describe('remote manifest range reads', () => {
     }
   });
 
-  it('reads a missing size with one HEAD request', async () => {
-    const methods: string[] = [];
+  it('reads a missing size from Content-Range of a one-byte GET (presigned URLs refuse HEAD)', async () => {
+    const requests: Array<{ method: string; range: string | null }> = [];
     vi.stubGlobal('fetch', async (_url: string, init?: RequestInit) => {
-      methods.push(init?.method ?? 'GET');
-      return new Response(null, { status: 200, headers: { 'content-length': '777' } });
+      const method = init?.method ?? 'GET';
+      requests.push({ method, range: new Headers(init?.headers).get('range') });
+      if (method !== 'GET') return new Response(null, { status: 403 });
+      return new Response(new Uint8Array([1]), {
+        status: 206,
+        headers: { 'content-range': 'bytes 0-0/777' },
+      });
     });
     try {
       const source = createRemoteManifestDataSource(files);
       const path = 'meta/episodes/chunk-000/file-000.parquet';
       await expect(source.getSize?.(path)).resolves.toBe(777);
       await expect(source.getSize?.(path)).resolves.toBe(777);
-      expect(methods).toEqual(['HEAD']);
+      expect(requests).toEqual([{ method: 'GET', range: 'bytes=0-0' }]);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('fails a size lookup without Content-Range once, and does not repeat it at once', async () => {
+    let calls = 0;
+    vi.stubGlobal('fetch', async () => {
+      calls += 1;
+      // a cross-origin store that does not expose Content-Range
+      return new Response(new Uint8Array([1]), { status: 206 });
+    });
+    try {
+      const source = createRemoteManifestDataSource(files);
+      const path = 'meta/episodes/chunk-000/file-000.parquet';
+      await expect(source.getSize?.(path)).rejects.toThrow(/no size/);
+      await expect(source.getSize?.(path)).rejects.toThrow(/no size/);
+      expect(calls).toBe(1);
     } finally {
       vi.unstubAllGlobals();
     }
@@ -153,5 +176,61 @@ describe('remote manifest URL refresh', () => {
     expect(await source.getObjectUrl(path)).toMatch(/sig=1$/);
     await source.invalidateObjectUrl?.(path);
     expect(await source.getObjectUrl(path)).toMatch(/sig=2$/);
+  });
+
+  it('renews ahead of the expiry at most every 30 s, and keeps the URL when that fails', async () => {
+    let refreshes = 0;
+    let fail = false;
+    const soon = () => new Date(Date.now() + 60_000).toISOString();
+    const source = createRemoteManifestDataSource([entry(1, soon())], {
+      refresh: async () => {
+        refreshes += 1;
+        if (fail) throw new Error('host down');
+        // a host that hands out URLs as short-lived as before
+        return [entry(1 + refreshes, soon())];
+      },
+    });
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    vi.useFakeTimers({ toFake: ['Date'] });
+    try {
+      expect(await source.getObjectUrl(path)).toMatch(/sig=2$/);
+      for (let i = 0; i < 5; i++) await source.getObjectUrl(path);
+      expect(refreshes).toBe(1);
+      vi.setSystemTime(Date.now() + 31_000);
+      fail = true;
+      // the failed proactive renewal leaves the current URL in use
+      expect(await source.getObjectUrl(path)).toMatch(/sig=2$/);
+      expect(refreshes).toBe(2);
+    } finally {
+      vi.useRealTimers();
+      warn.mockRestore();
+    }
+  });
+
+  it('keeps counting the expiry of paths a refresh left out', async () => {
+    const other = 'data/chunk-000/file-001.parquet';
+    const soon = new Date(Date.now() + 30_000).toISOString();
+    const later = new Date(Date.now() + 3_600_000).toISOString();
+    let refreshes = 0;
+    const source = createRemoteManifestDataSource(
+      [entry(1, later), { ...entry(1, soon), logicalPath: other }],
+      {
+        refresh: async () => {
+          refreshes += 1;
+          return [entry(2, later)];
+        },
+      },
+    );
+    vi.useFakeTimers({ toFake: ['Date'] });
+    try {
+      await source.getObjectUrl(path);
+      expect(refreshes).toBe(1);
+      vi.setSystemTime(Date.now() + 31_000);
+      // `other` still expires soon: the next request renews again
+      await source.getObjectUrl(path);
+      expect(refreshes).toBe(2);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
