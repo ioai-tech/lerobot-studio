@@ -327,6 +327,88 @@ describe('browser: playback switching on a frame-coded dataset', () => {
     );
   });
 
+  it('a main thread stalled near the end of an episode in a shared file still ends it and plays on', async ({
+    skip,
+  }) => {
+    if (!(await frameCodedAvailable())) return skip();
+    await open();
+    await waitFor(() => allShow(0), 30_000, 'first frame');
+    await act(async () => playButton()!.click());
+    await waitFor(() => isPlaying() && frameText() >= 70, 15_000, 'near the end of episode 0');
+    // the main thread is busy for 700 ms (a GC, a heavy render, a busy host): the videos play on,
+    // past the end of episode 0 into episode 1 of the same file, before the clock ticks again
+    const until = performance.now() + 700;
+    while (performance.now() < until) {
+      // busy
+    }
+    // the episode ends and playback goes on into episode 1, every camera on the clock
+    await waitFor(
+      () =>
+        isPlaying() &&
+        frameText() > 5 &&
+        frameText() < FRAMES - 5 &&
+        CAMERAS.every((camera) => {
+          const value = shown(camera);
+          return value !== null && Math.abs(value - (FRAMES + frameText())) <= 3;
+        }),
+      8_000,
+      'episode 1 playing on every camera',
+    );
+  });
+
+  it('a source of the previous dataset that resolves late never shows on a new one', async ({
+    skip,
+  }) => {
+    if (!(await frameCodedAvailable())) return skip();
+    const files = (await (
+      await fetch('/e2e-datasets/framecoded-manifest')
+    ).json()) as RemoteFileEntry[];
+    // the same files under URLs of each dataset, with late preview checks: the first dataset finds
+    // its previews after 4 s; the next one finds none, after 6 s (it plays the originals)
+    const dataset = (name: string, checkMs: number, previews: boolean) => {
+      const source = createRemoteManifestDataSource(
+        files.map((file) => ({
+          ...file,
+          presignedUrl: `${file.presignedUrl}${file.presignedUrl.includes('?') ? '&' : '?'}ds=${name}`,
+        })),
+      );
+      const exists = source.exists.bind(source);
+      source.exists = async (path: string) => {
+        if (!path.startsWith('meta/preview/')) return exists(path);
+        await sleep(checkMs);
+        return previews && exists(path);
+      };
+      return source;
+    };
+    const render = (source: ReturnType<typeof createRemoteManifestDataSource>) =>
+      act(async () => {
+        root.render(
+          <LeRobotViewer dataSource={source} language="en" previewVideoPath={PREVIEW_PATH} />,
+        );
+      });
+    await render(dataset('first', 4_000, true));
+    await waitFor(() => CAMERAS.every((camera) => panel(camera) !== null), 15_000, 'panels');
+    // another dataset, on the same episode index (0), while the first one's sources resolve
+    await requestLog(true);
+    await render(dataset('next', 6_000, false));
+    await waitFor(
+      () =>
+        CAMERAS.every((camera) =>
+          activeVideo(camera)?.getAttribute('src')?.includes('videos/observation'),
+        ) && allIn(0),
+      20_000,
+      'the next dataset on screen',
+    );
+    // the first dataset's preview source never loaded (only originals, of this dataset)
+    const videos = (await requestLog()).filter((entry) => entry.path.endsWith('.mp4'));
+    expect(
+      videos
+        .filter((entry) => entry.path.startsWith('meta/preview/') || entry.query !== 'ds=next')
+        .map((entry) => `${entry.path}?${entry.query}`),
+    ).toEqual([]);
+    expect(videos.length).toBeGreaterThanOrEqual(CAMERAS.length);
+  });
+
   it('a switch made while paused stays paused on the first frame of the new episode', async ({
     skip,
   }) => {

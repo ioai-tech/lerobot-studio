@@ -47,7 +47,6 @@ export class SeekController {
   private inFlightTarget: number | null = null;
   private reapplied = 0;
   private disposed = false;
-  private readonly settledListeners = new Set<() => void>();
   private readonly events = ['seeked', 'loadedmetadata', 'loadeddata', 'canplay'] as const;
 
   private readonly media: SeekableMedia;
@@ -93,24 +92,11 @@ export class SeekController {
     return this.target === null && !this.inFlight && !this.media.seeking;
   }
 
-  /** Resolves once the current target is reached and its frame is decoded (or immediately). */
-  whenSettled(): Promise<void> {
-    if (this.isSettled()) return Promise.resolve();
-    return new Promise((resolve) => {
-      const done = () => {
-        this.settledListeners.delete(done);
-        resolve();
-      };
-      this.settledListeners.add(done);
-    });
-  }
-
   dispose(): void {
     this.disposed = true;
     this.target = null;
     for (const type of this.events) this.media.removeEventListener(type, this.onEvent);
     this.media.removeEventListener('emptied', this.onEmptied);
-    this.flushSettled();
   }
 
   private tolerance(): number {
@@ -128,7 +114,6 @@ export class SeekController {
     if (off < this.tolerance() && !this.force) {
       if (media.readyState >= HAVE_CURRENT_DATA || this.fast) {
         this.target = null;
-        this.flushSettled();
       }
       // else: the frame is not decoded yet; loadeddata / canplay re-check
       return;
@@ -136,7 +121,6 @@ export class SeekController {
     if (this.reapplied >= MAX_REAPPLY) {
       // The element refuses this time (beyond its duration): accept where it is.
       this.target = null;
-      this.flushSettled();
       return;
     }
     this.inFlight = true;
@@ -158,7 +142,6 @@ export class SeekController {
         // a keyframe seek lands near the target by design (the exact seek on release follows);
         // a sync correction is not checked. A newer target set meanwhile is applied below.
         this.target = null;
-        this.flushSettled();
         return;
       }
       if (
@@ -177,9 +160,4 @@ export class SeekController {
     this.inFlight = false;
     this.inFlightTarget = null;
   };
-
-  private flushSettled(): void {
-    if (this.settledListeners.size === 0) return;
-    for (const listener of [...this.settledListeners]) listener();
-  }
 }

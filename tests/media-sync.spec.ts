@@ -269,12 +269,15 @@ describe('MediaSync', () => {
     // another episode of the same file was on screen at 4 s; this one is 0-2.5 s and the seek to
     // it has not landed yet
     video.currentTime = 4;
-    const seeks: number[] = [];
+    let seeking = true;
     sync.register('a', {
       video,
       getStart: () => 0,
       getEnd: () => 2.5,
-      seek: (time) => seeks.push(time),
+      seek: () => {
+        seeking = true;
+      },
+      isSeeking: () => seeking,
     });
     sync.start(0, 1);
     const clock = sync.tick();
@@ -282,6 +285,71 @@ describe('MediaSync', () => {
     expect(clock?.buffering).toBe(true);
     // the seek lands: the clock runs from the episode's first frame
     video.currentTime = 0.5 / 30;
+    seeking = false;
     expect(sync.tick()).toEqual({ frameIndex: 0, buffering: false });
+  });
+
+  it('ends the episode when the master ran past its end between two ticks (no seek on its way)', () => {
+    const sync = new MediaSync();
+    sync.setFps(30);
+    const master = new FakeVideo();
+    const follower = new FakeVideo();
+    const seeks: Array<[string, number]> = [];
+    for (const [id, video] of [
+      ['a', master],
+      ['b', follower],
+    ] as const) {
+      sync.register(id, {
+        video,
+        getStart: () => 0,
+        getEnd: () => 3,
+        seek: (time) => {
+          seeks.push([id, time]);
+          video.currentTime = time;
+        },
+        isSeeking: () => false,
+      });
+    }
+    sync.start(0, 1);
+    master.currentTime = 1;
+    follower.currentTime = 1;
+    expect(sync.tick()?.buffering).toBe(false);
+    // a late tick: both elements are in the next episode of the file
+    master.currentTime = 3.2;
+    follower.currentTime = 3.25;
+    expect(sync.tick()).toEqual({ frameIndex: Number.POSITIVE_INFINITY, buffering: false });
+    // both back on the last frame of the episode, paused
+    expect(master.currentTime).toBeCloseTo(3 - 0.5 / 30, 5);
+    expect(follower.currentTime).toBeCloseTo(3 - 0.5 / 30, 5);
+    expect(master.paused).toBe(true);
+    expect(follower.paused).toBe(true);
+  });
+
+  it('seeks a follower that ran past the episode end back to the clock', () => {
+    const sync = new MediaSync();
+    sync.setFps(30);
+    const master = new FakeVideo();
+    const follower = new FakeVideo();
+    const seeks: number[] = [];
+    sync.register('a', {
+      video: master,
+      getStart: () => 0,
+      getEnd: () => 3,
+      isSeeking: () => false,
+    });
+    sync.register('b', {
+      video: follower,
+      getStart: () => 0,
+      getEnd: () => 3,
+      seek: (time) => seeks.push(time),
+      isSeeking: () => false,
+    });
+    sync.start(0, 1);
+    master.currentTime = 2.9;
+    follower.currentTime = 3.05;
+    const clock = sync.tick();
+    expect(clock?.buffering).toBe(false);
+    expect(clock?.frameIndex).toBe(87);
+    expect(seeks).toEqual([2.9]);
   });
 });

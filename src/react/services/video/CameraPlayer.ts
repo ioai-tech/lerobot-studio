@@ -123,6 +123,8 @@ interface Job {
   deadline: number;
   /** Joining a playing clock without a picture of its own: promote when the clock reaches this frame. */
   clockFrame: number | null;
+  /** The URL, already asked for (a renewal asks before it sets a prefetch aside). */
+  resolved: Promise<string> | null;
 }
 
 /** Cameras that switch together (paused): all promote in the same frame. */
@@ -356,6 +358,7 @@ export class CameraPlayer {
       getEnd: () => this.sourceEnd(),
       seek: (time, options) => this.activeSeeker.seek(time, options),
       isPending: () => this.isPendingSwitch(),
+      isSeeking: () => this.activeSeeker.pendingTarget !== null || this.active.seeking,
     };
     for (const element of this.elements) this.listen(element);
     this.applyRoles();
@@ -525,11 +528,36 @@ export class CameraPlayer {
     });
   }
 
-  /** Swap in the same file under a fresh URL (a renewed presigned URL); keeps time and play state. */
-  private swapUrl(purpose: 'renew' | 'recover'): void {
-    if (!this.source) return;
-    const frame = this.currentFrame();
-    this.startJob(purpose, this.source, frame, null);
+  /**
+   * Renew the URL on screen; keeps time and play state. The source is asked first: only a new URL
+   * swaps (and sets a prefetch of the next episode aside); the same URL again leaves it running.
+   */
+  private renew(): void {
+    const { source, activeUrl, generation } = this;
+    if (!source || !activeUrl) return;
+    const resolved = (async () => this.env.refreshUrl(source.path))();
+    const settle = (url?: string) => {
+      if (this.disposed) return;
+      if (url === activeUrl) {
+        // the source did not re-sign (no refresh, or the same URL again): ask again later, less
+        // and less often (never once per second)
+        this.renewBackoffMs = Math.min(
+          RENEW_BACKOFF_MAX_MS,
+          Math.max(RENEW_BACKOFF_MIN_MS, this.renewBackoffMs * 2),
+        );
+      } else if (
+        generation === this.generation &&
+        this.source === source &&
+        this.activeUrl === activeUrl
+      ) {
+        // a new URL (or a failure, which the job reports): swap
+        this.startJob('renew', source, this.currentFrame(), null, false, resolved);
+        return;
+      }
+      // else something else loaded meanwhile; it renews from there
+      this.scheduleRenewal();
+    };
+    void resolved.then(settle, () => settle());
   }
 
   /** Frame shown by the element on screen. */
@@ -572,6 +600,7 @@ export class CameraPlayer {
     frame: number,
     group: TransitionGroup | null,
     late = false,
+    resolved: Promise<string> | null = null,
   ): void {
     if (purpose !== 'prefetch') this.generation += 1;
     if ((purpose === 'renew' || purpose === 'recover') && this.job?.purpose === 'prefetch') {
@@ -602,6 +631,7 @@ export class CameraPlayer {
       late,
       deadline: 0,
       clockFrame: null,
+      resolved,
     };
     this.job = job;
     if (purpose === 'show' && !late && (!this.activeUrl || this.switchesEpisode(source)))
@@ -644,10 +674,7 @@ export class CameraPlayer {
   private async loadJob(job: Job): Promise<void> {
     let url: string;
     try {
-      url =
-        job.purpose === 'renew'
-          ? await this.env.refreshUrl(job.source.path)
-          : await this.env.getUrl(job.source.path);
+      url = await (job.resolved ?? this.env.getUrl(job.source.path));
     } catch (error) {
       if (this.job !== job) return;
       console.warn(`[lerobot] could not resolve ${job.source.path}`, error);
@@ -657,18 +684,6 @@ export class CameraPlayer {
     if (this.job !== job || this.disposed) return;
     job.url = url;
     job.urlExpiry = this.env.getUrlExpiry(job.source.path);
-    if (job.purpose === 'renew' && url === this.activeUrl) {
-      // the source did not re-sign (no refresh, or the same URL again): nothing to swap; ask
-      // again later, less and less often (never once per second)
-      this.renewBackoffMs = Math.min(
-        RENEW_BACKOFF_MAX_MS,
-        Math.max(RENEW_BACKOFF_MIN_MS, this.renewBackoffMs * 2),
-      );
-      this.cancelJob();
-      this.scheduleRenewal();
-      this.resumeStashedPrefetch();
-      return;
-    }
     const element = job.element;
     this.presented.delete(element);
     const playing = this.env.mediaSync.isPlaying() && Boolean(this.activeUrl);
@@ -1177,8 +1192,9 @@ export class CameraPlayer {
           return;
         }
       }
+      // the same file under a fresh URL: keeps time and play state
       if (this.activeUrl && this.source?.path === source.path && sameEpisode(this.source, source))
-        this.swapUrl('recover');
+        this.startJob('recover', this.source, this.currentFrame(), null);
       // a retry of a switch that failed does not hold the clock again: it joins when it can
       else
         this.startJob(
@@ -1254,7 +1270,7 @@ export class CameraPlayer {
         this.scheduleRenewal(); // a swap is running; it loads a fresh URL anyway
         return;
       }
-      this.swapUrl('renew');
+      this.renew();
     }, delay);
   }
 

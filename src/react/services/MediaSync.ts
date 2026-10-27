@@ -45,6 +45,8 @@ export interface SyncedMedia {
    * does not play, and the clock holds until it can (the timeline never runs ahead of a camera).
    */
   isPending?: () => boolean;
+  /** A seek is on its way: the element's time is not the camera's yet. */
+  isSeeking?: () => boolean;
 }
 
 export interface MediaClock {
@@ -210,7 +212,7 @@ export class MediaSync {
 
     const starving =
       this.pending() ||
-      this.seekable().some((media) => !this.inEpisode(media)) ||
+      this.seekable().some((media) => this.leaving(media)) ||
       this.ready().some((media) => !media.video.ended && media.video.readyState < HAVE_FUTURE_DATA);
     if (starving && !this.held) {
       this.hold();
@@ -223,7 +225,8 @@ export class MediaSync {
       this.emit(false);
     } else if (!this.held) {
       for (const media of this.ready()) {
-        if (media !== master) this.align(media, master, false);
+        // outside its episode (it ran past the end between ticks): back to the clock at once
+        if (media !== master) this.align(media, master, !this.inEpisode(media));
         // paused under the running clock (its element was moved in the page): it plays on
         if (media.video.paused === true && !media.video.ended) this.play(media);
       }
@@ -269,9 +272,20 @@ export class MediaSync {
     }
   }
 
-  /** Cameras that show the selected episode and can play (not switching to it). */
+  /**
+   * Cameras that show the selected episode and can play (not switching to it). One that ran past
+   * its episode (a late tick) stays: as master it ends the episode, as follower it is seeked back.
+   */
   private ready(): SyncedMedia[] {
-    return this.seekable().filter((media) => this.inEpisode(media));
+    return this.seekable().filter((media) => !this.leaving(media));
+  }
+
+  /**
+   * Outside its episode with a seek to it on its way (an episode switch within the file): its time
+   * says nothing about the clock, and the clock waits for the seek.
+   */
+  private leaving(media: SyncedMedia): boolean {
+    return (media.isSeeking?.() ?? false) && !this.inEpisode(media);
   }
 
   /** Cameras showing the selected episode with metadata, wherever their element is. */
@@ -282,11 +296,7 @@ export class MediaSync {
     );
   }
 
-  /**
-   * The element is within its episode. Outside it, a seek to the episode is still on its way (an
-   * episode switch within the file): its time says nothing about the clock, and its end is not the
-   * episode's.
-   */
+  /** The element is within its episode (a frame of slack either side). */
   private inEpisode(media: SyncedMedia): boolean {
     const start = media.getStart() ?? 0;
     const time = media.video.currentTime;

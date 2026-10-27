@@ -411,10 +411,17 @@ export class VideoStage {
   private ensureSource(player: CameraPlayer): void {
     if (player.hasSource() || this.episodeIndex === null) return;
     const episodeIndex = this.episodeIndex;
+    const token = this.token;
     const rendition = this.renditionFor(player.key);
     void Promise.resolve(this.sourceFor(player.key, episodeIndex, rendition)).then((source) => {
-      // a later selection shows it (or skips it while hidden, and this runs again when visible)
-      if (source && this.episodeIndex === episodeIndex && !player.hasSource()) {
+      // a later selection or dataset shows it (or skips it while hidden, and this runs again when
+      // visible): a late source of the old loader never does, even for the same episode index
+      if (
+        source &&
+        token === this.token &&
+        this.episodeIndex === episodeIndex &&
+        !player.hasSource()
+      ) {
         player.show(source, this.getFrameIndex(), null);
       }
     });
@@ -430,11 +437,6 @@ export class VideoStage {
       player.subscribe(() => this.updateOriginalCount());
     }
     return player;
-  }
-
-  /** Cameras created so far (tests and diagnostics). */
-  getPlayers(): CameraPlayer[] {
-    return [...this.players.values()];
   }
 
   /**
@@ -999,13 +1001,15 @@ export class VideoStage {
     const known = this.previewExists.get(preview.path);
     if (known === true) return { ...base, path: preview.path, rendition: 'preview' };
     if (known === false) return base;
-    const pending =
+    const pending: Promise<boolean> =
       known ??
       loader.dataSource
         .exists(preview.path)
         .catch(() => false)
         .then((exists) => {
-          this.previewExists.set(preview.path, exists);
+          // not into the cache of another dataset (or a newer check)
+          if (this.previewExists.get(preview.path) === pending)
+            this.previewExists.set(preview.path, exists);
           return exists;
         });
     this.previewExists.set(preview.path, pending);

@@ -37,6 +37,33 @@ const EPISODES = [
 ] as const;
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+/**
+ * Seeks of `video` take `ms` (the data is not buffered yet): while one is on its way the element
+ * reports `seeking` and the time sought, the way a browser does, and a newer seek waits for it.
+ */
+function slowSeeks(video: HTMLVideoElement, ms: number): void {
+  const time = Object.getOwnPropertyDescriptor(HTMLMediaElement.prototype, 'currentTime')!;
+  const seeking = Object.getOwnPropertyDescriptor(HTMLMediaElement.prototype, 'seeking')!;
+  let sought: number | null = null;
+  let timer = 0;
+  Object.defineProperty(video, 'currentTime', {
+    configurable: true,
+    get: () => sought ?? (time.get!.call(video) as number),
+    set: (value: number) => {
+      sought = value;
+      window.clearTimeout(timer);
+      timer = window.setTimeout(() => {
+        sought = null;
+        time.set!.call(video, value);
+      }, ms);
+    },
+  });
+  Object.defineProperty(video, 'seeking', {
+    configurable: true,
+    get: () => sought !== null || (seeking.get!.call(video) as boolean),
+  });
+}
+
 let describeState: () => string = () => '';
 
 function waitFor(predicate: () => boolean, timeoutMs = 30_000, what = 'condition'): Promise<void> {
@@ -551,6 +578,51 @@ describe('browser: an episode set over two recordings', () => {
       MANIFEST_REFRESH_POLICY.minProactiveMs = saved.minProactiveMs;
       URL_EXPIRY_POLICY.marginMs = saved.loader;
     }
+  });
+
+  it('a renewal that gets the same URL back leaves a prefetched next episode loaded', async ({
+    skip,
+  }) => {
+    if (!(await frameCodedAvailable())) return skip();
+    // URLs that expire within the renewal lead, from a source without refresh: every renewal gets
+    // the same URL back (and backs off: 5 s, then 10 s apart)
+    VIDEO_URL_POLICY.renewLeadMs = 121_000;
+    const nextLoads = async (clear = false) =>
+      (await requestLog(clear)).filter(
+        (entry) =>
+          entry.path.endsWith('.mp4') &&
+          entry.path.includes('file-001') &&
+          (entry.range === null || entry.range === 'bytes=0-'),
+      );
+    await requestLog(true);
+    await open({ manifestQuery: '?expiresInMs=110000&sig=1' });
+    await setPlaying(false);
+    // near the end of episode 0, paused: the next episode (recording b) is prefetched while idle
+    await act(async () => {
+      slider()!.focus();
+    });
+    await press('End');
+    for (let step = 0; step < 15; step++) await press('ArrowLeft');
+    const deadline = performance.now() + 15_000;
+    while ((await nextLoads()).length < CAMERAS.length) {
+      expect(performance.now() < deadline, 'the next episode is prefetched').toBe(true);
+      await sleep(200);
+    }
+    await nextLoads(true);
+    // renewals come and go (5 s, then 10 s apart): the prefetch stays, never torn down and loaded
+    // again (the media cache may hide the reload from the server, not from the element)
+    const reloads: string[] = [];
+    const listeners = [...document.querySelectorAll('video')].flatMap((video) =>
+      ['emptied', 'loadstart'].map((type) => {
+        const listener = () => reloads.push(`${type} ${video.getAttribute('src') ?? ''}`);
+        video.addEventListener(type, listener);
+        return () => video.removeEventListener(type, listener);
+      }),
+    );
+    await sleep(16_000);
+    listeners.forEach((remove) => remove());
+    expect(reloads).toEqual([]);
+    expect((await nextLoads()).map((entry) => `${entry.path} ${entry.range}`)).toEqual([]);
   });
 
   it('Retry loads a camera that failed before it showed anything; one request per attempt', async ({
@@ -1130,16 +1202,36 @@ describe('browser: an episode set over two recordings', () => {
           return value !== null && Math.abs(value - (SAME[episode].first + frameText())) <= 3;
         });
       await waitFor(() => selected() === 0 && isPlaying() && on(0), 20_000, 'first episode');
+      // seeks take 400 ms (data not buffered yet, as on a long recording): the seek to episode 1
+      // is still on its way when episode 0 is selected again, so the element sits in episode 1
+      // (3.5 s on) while the selection is episode 0 (0-2.5 s)
+      for (const video of document.querySelectorAll('video')) slowSeeks(video, 400);
+      const episode0Frames = SAME[0].toRow - SAME[0].fromRow;
       for (let round = 0; round < 4; round++) {
         await sleep(400);
         await selectEpisode(1);
         await sleep(100);
         await selectEpisode(0);
+        // nothing outside the selection drives the bar or ends the episode: the selection stays
+        // and the bar never runs past episode 0 (an element still in episode 1 read against
+        // episode 0 reads as frame 105 on)
+        const wrong: string[] = [];
+        let watching = true;
+        const watch = () => {
+          if (!watching) return;
+          if (selected() !== 0 || frameText() >= episode0Frames - 1)
+            wrong.push(`selected ${selected()} frame ${frameText()}`);
+          requestAnimationFrame(watch);
+        };
+        requestAnimationFrame(watch);
         await waitFor(
           () => selected() === 0 && isPlaying() && frameText() > 5 && on(0),
           10_000,
           `round ${round}: back on episode 0 (selected ${selected()})`,
-        );
+        ).finally(() => {
+          watching = false;
+        });
+        expect(wrong, `round ${round}: ${describeState()}`).toEqual([]);
         expect(selected(), describeState()).toBe(0);
       }
     });

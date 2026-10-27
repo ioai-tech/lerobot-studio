@@ -142,7 +142,7 @@ describe('SeekController', () => {
     expect(controller.isSettled()).toBe(true);
   });
 
-  it('waits for the frame to decode before reporting settled', async () => {
+  it('waits for the frame to decode before reporting settled', () => {
     const { media, controller } = setup();
     controller.seek(3);
     media.readyState = 1;
@@ -150,7 +150,6 @@ describe('SeekController', () => {
     expect(controller.isSettled()).toBe(false);
     media.readyState = 2;
     media.emit('loadeddata');
-    await controller.whenSettled();
     expect(controller.isSettled()).toBe(true);
   });
 
