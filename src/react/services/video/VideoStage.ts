@@ -74,15 +74,29 @@ export const PREFETCH_LEAD_SECONDS = 12;
 /** Paused: prefetch after this long without a new selection or seek (ms). */
 const PREFETCH_IDLE_MS = 800;
 
+/** A probe that has not answered after this long counts as a network failure (ms). */
+const PROBE_TIMEOUT_MS = 5_000;
+
+/** A file size the source could not tell is asked again after this long (ms). */
+const SIZE_RETRY_MS = 60_000;
+
 /** Probe a URL with a one-byte Range request: the HTTP status, or null (network error, not HTTP). */
 async function probeUrl(url: string): Promise<number | null> {
   if (!/^https?:/i.test(url)) return null;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), PROBE_TIMEOUT_MS);
   try {
-    const response = await fetch(url, { headers: { Range: 'bytes=0-0' }, cache: 'no-store' });
+    const response = await fetch(url, {
+      headers: { Range: 'bytes=0-0' },
+      cache: 'no-store',
+      signal: controller.signal,
+    });
     await response.body?.cancel().catch(() => undefined);
     return response.status;
   } catch {
-    return null;
+    return null; // no answer in time: treated as a network failure (backoff, no re-sign)
+  } finally {
+    clearTimeout(timer);
   }
 }
 
@@ -95,7 +109,16 @@ export class VideoStage {
   private readonly players = new Map<string, CameraPlayer>();
   private readonly previewExists = new Map<string, boolean | Promise<boolean>>();
   private scrubbing = false;
-  private resolving = false;
+  /** An episode switch / a rendition change waits for its sources (paused seeks wait for it). */
+  private resolvingEpisode = false;
+  private resolvingPlan = false;
+  /**
+   * Episode switches and rendition changes resolve their sources separately: a rendition change
+   * never cancels an episode switch it does not touch, and an episode switch drops a pending
+   * rendition change (it shows the planned renditions itself).
+   */
+  private planToken = 0;
+  private replanAfterEpisode = false;
   private token = 0;
   private parkingElement: HTMLElement | null = null;
   private prefetchWanted: number | null = null;
@@ -125,6 +148,8 @@ export class VideoStage {
   private settlingSince = 0;
   /** File sizes (bytes) of the originals, or their lookup. */
   private readonly sizes = new Map<string, number | Promise<void>>();
+  /** When a size lookup last failed, per path. */
+  private readonly sizeMisses = new Map<string, number>();
   /** Measures the link (tests replace it). */
   measureLink: (url: string, offset: number) => Promise<number | null> = (url, offset) =>
     measureThroughput(url, { offset });
@@ -175,11 +200,15 @@ export class VideoStage {
   setDataset(loader: LeRobotDataLoader | null, info: LeRobotInfo | null): void {
     if (this.loader === loader && this.info === info) return;
     this.token += 1;
+    this.planToken += 1;
+    this.resolvingEpisode = false;
+    this.resolvingPlan = false;
     this.loader = loader;
     this.info = info;
     this.episodeIndex = null;
     this.previewExists.clear();
     this.sizes.clear();
+    this.sizeMisses.clear();
     this.starved.clear();
     this.linkBps = null;
     this.linkMeasuredAt = 0;
@@ -394,6 +423,9 @@ export class VideoStage {
    */
   dispose(): void {
     this.token += 1;
+    this.planToken += 1;
+    this.resolvingEpisode = false;
+    this.resolvingPlan = false;
     this.cancelPrefetch();
     this.playing = false;
     if (this.stallTimer !== null) clearTimeout(this.stallTimer);
@@ -428,6 +460,9 @@ export class VideoStage {
    */
   private showEpisode(episodeIndex: number): void {
     const token = ++this.token;
+    // a pending rendition change resolved the old episode's files: this switch shows the plan
+    this.planToken += 1;
+    this.resolvingPlan = false;
     const group = new TransitionGroup();
     const players = [...this.players.values()].filter(
       (player) => player.hasSource() || player.isVisible(),
@@ -437,16 +472,21 @@ export class VideoStage {
     );
     const apply = (sources: Array<CameraSource | null>) => {
       if (token !== this.token) return;
-      this.resolving = false;
+      this.resolvingEpisode = false;
       const frame = this.getFrameIndex();
       players.forEach((player, index) => {
         const source = sources[index];
         if (source) player.show(source, frame, group);
       });
       group.seal();
+      if (this.replanAfterEpisode) {
+        // the plan changed while this switch resolved its files
+        this.replanAfterEpisode = false;
+        this.replan();
+      }
     };
     if (resolved.some((source) => source instanceof Promise)) {
-      this.resolving = true;
+      this.resolvingEpisode = true;
       void Promise.all(resolved).then(apply);
     } else {
       apply(resolved as Array<CameraSource | null>);
@@ -591,15 +631,20 @@ export class VideoStage {
       );
     }
     if (changed.length === 0) return;
+    if (this.resolvingEpisode) {
+      // an episode switch resolves its files: it shows every camera; plan again after it
+      this.replanAfterEpisode = true;
+      return;
+    }
     if (!this.playing) this.lastActivity = performance.now();
-    const token = ++this.token;
+    const token = ++this.planToken;
     const group = this.playing ? null : new TransitionGroup();
     const resolved = changed.map((player) =>
       this.sourceFor(player.key, episodeIndex, targets.get(player.key) ?? this.variant),
     );
     const apply = (sources: Array<CameraSource | null>) => {
-      if (token !== this.token) return;
-      this.resolving = false;
+      if (token !== this.planToken || this.episodeIndex !== episodeIndex) return;
+      this.resolvingPlan = false;
       const frame = this.getFrameIndex();
       changed.forEach((player, index) => {
         const source = sources[index];
@@ -608,7 +653,7 @@ export class VideoStage {
       group?.seal();
     };
     if (resolved.some((source) => source instanceof Promise)) {
-      if (!this.playing) this.resolving = true;
+      if (!this.playing) this.resolvingPlan = true;
       void Promise.all(resolved).then(apply);
     } else {
       apply(resolved as Array<CameraSource | null>);
@@ -735,17 +780,27 @@ export class VideoStage {
     for (const path of paths) {
       const known = this.sizes.get(path);
       if (typeof known === 'number') continue;
+      // a size the source could not tell is not asked again for a while (each ask can be a
+      // request, or a manifest refresh, per path)
+      const missedAt = this.sizeMisses.get(path);
+      if (missedAt !== undefined && performance.now() - missedAt < SIZE_RETRY_MS) continue;
       if (known) {
         lookups.push(known);
         continue;
       }
       const lookup = getSize(path)
         .then((size) => {
-          if (size > 0) this.sizes.set(path, size);
-          else this.sizes.delete(path);
+          if (size > 0) {
+            this.sizes.set(path, size);
+            this.sizeMisses.delete(path);
+          } else {
+            this.sizes.delete(path);
+            this.sizeMisses.set(path, performance.now());
+          }
         })
         .catch(() => {
           this.sizes.delete(path);
+          this.sizeMisses.set(path, performance.now());
         });
       this.sizes.set(path, lookup);
       lookups.push(lookup);
@@ -766,7 +821,11 @@ export class VideoStage {
     const path = loader.getEpisodeVideoPath(episodeIndex, key)?.path;
     if (!path) return Promise.resolve();
     const run = async () => {
-      await this.loadSizes(episodeIndex);
+      // bounded: a size lookup that never answers must not hold every later measurement
+      await Promise.race([
+        this.loadSizes(episodeIndex),
+        new Promise((resolve) => setTimeout(resolve, PROBE_TIMEOUT_MS)),
+      ]);
       await this.quiet(loader);
       const url = await loader.getFileUrl(path);
       let bps: number | null;
@@ -915,6 +974,10 @@ export class VideoStage {
     return pending.then((exists) =>
       exists ? { ...base, path: preview.path, rendition: 'preview' as const } : base,
     );
+  }
+
+  private get resolving(): boolean {
+    return this.resolvingEpisode || this.resolvingPlan;
   }
 
   private parking(): HTMLElement {

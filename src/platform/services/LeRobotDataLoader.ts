@@ -642,7 +642,14 @@ export class LeRobotDataLoader {
   async refreshFileUrl(path: string): Promise<string> {
     this.fileUrlCache.delete(path);
     this.fileUrlLoading.delete(path);
-    if (this.getFileUrlExpiry(path) !== null) await this._dataSource.invalidateObjectUrl?.(path);
+    // the source renews ahead of the expiry on its own; force it only when that did not happen
+    const url = await this.getFileUrl(path);
+    const expiry = this.getFileUrlExpiry(path);
+    if (expiry === null || expiry - Date.now() > URL_EXPIRY_MARGIN_MS) return url;
+    if (!this._dataSource.invalidateObjectUrl) return url;
+    this.fileUrlCache.delete(path);
+    this.fileUrlLoading.delete(path);
+    await this._dataSource.invalidateObjectUrl(path);
     return this.getFileUrl(path);
   }
 

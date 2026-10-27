@@ -161,6 +161,8 @@ export const SUSTAIN_AHEAD_SECONDS = 3;
 export const VIDEO_URL_POLICY = { renewLeadMs: 90_000 };
 /** Elements without a panel for this long release their source. */
 const PARK_RELEASE_MS = 3_000;
+const RENEW_BACKOFF_MIN_MS = 5_000;
+const RENEW_BACKOFF_MAX_MS = 60_000;
 /** A camera hidden this long lets go of its element (ms). */
 const HIBERNATE_MS = 1_500;
 /** While playing, a swap is prepared this far ahead of the clock and promoted when it gets there. */
@@ -250,6 +252,10 @@ export class CameraPlayer {
   private readonly mirrors = new Map<HTMLElement, HTMLCanvasElement>();
   private mirrorHandle: number | null = null;
   private hibernateTimer: number | null = null;
+  /** Wait before asking again after a renewal that brought no new URL (ms). */
+  private renewBackoffMs = 0;
+  /** Bumped by every new selection, swap and release: failure handling of older ones stops. */
+  private generation = 0;
   /** Paused swap: the old picture painted on a canvas while its element let go of its connection. */
   private cover: HTMLCanvasElement | null = null;
   private frozenFrame: number | null = null;
@@ -284,7 +290,7 @@ export class CameraPlayer {
       },
       getStart: () => (this.activeUrl ? (this.source?.start ?? null) : null),
       getEnd: () => this.sourceEnd(),
-      seek: (time) => this.activeSeeker.seek(time),
+      seek: (time, options) => this.activeSeeker.seek(time, options),
     };
     for (const element of this.elements) this.listen(element);
     this.applyRoles();
@@ -373,6 +379,7 @@ export class CameraPlayer {
    */
   show(source: CameraSource, frame: number, group: TransitionGroup | null): void {
     if (this.disposed) return;
+    this.generation += 1;
     this.clearRetry();
     if (this.snapshot.status === 'error') this.update({ status: 'loading', errorCode: null });
 
@@ -478,6 +485,7 @@ export class CameraPlayer {
     frame: number,
     group: TransitionGroup | null,
   ): void {
+    if (purpose !== 'prefetch') this.generation += 1;
     this.cancelJob();
     const element = this.standby;
     let resolve: (ok: boolean) => void = () => undefined;
@@ -543,7 +551,12 @@ export class CameraPlayer {
     if (this.job !== job || this.disposed) return;
     job.url = url;
     if (job.purpose === 'renew' && url === this.activeUrl) {
-      // the source did not re-sign (yet): nothing to swap
+      // the source did not re-sign (no refresh, or the same URL again): nothing to swap; ask
+      // again later, less and less often (never once per second)
+      this.renewBackoffMs = Math.min(
+        RENEW_BACKOFF_MAX_MS,
+        Math.max(RENEW_BACKOFF_MIN_MS, this.renewBackoffMs * 2),
+      );
       this.cancelJob();
       this.scheduleRenewal();
       return;
@@ -784,6 +797,7 @@ export class CameraPlayer {
     this.source = job.source;
     this.applyRoles();
     this.unfreeze();
+    this.renewBackoffMs = 0;
     this.active.preload = this.isVisible() ? 'auto' : 'metadata';
     previous.pause();
     // the old element is behind the new one now; free its connection and decoder
@@ -843,6 +857,9 @@ export class CameraPlayer {
     url: string | null,
     purpose: JobPurpose,
   ): Promise<void> {
+    // a new selection, swap or release while this failure is handled makes its retry stale
+    const generation = this.generation;
+    const stale = () => this.disposed || generation !== this.generation;
     const delay = this.retry.next();
     if (delay === null) {
       this.update({
@@ -857,12 +874,12 @@ export class CameraPlayer {
     let refused = expiry !== null && Date.now() >= expiry - 5_000;
     if (!refused && url) {
       const status = await this.env.probe(url);
-      if (this.disposed) return;
+      if (stale()) return;
       refused = status !== null && isSignatureRefused(status);
     }
     const retry = () => {
       this.retryTimer = null;
-      if (this.disposed) return;
+      if (stale()) return;
       if (this.activeUrl && this.source?.path === source.path) this.swapUrl('recover');
       else this.startJob(purpose === 'prefetch' ? 'show' : purpose, source, frame, null);
     };
@@ -874,7 +891,7 @@ export class CameraPlayer {
       } catch {
         // the next getUrl reports it
       }
-      if (this.disposed) return;
+      if (stale()) return;
       this.retryTimer = window.setTimeout(retry, 0);
       return;
     }
@@ -891,6 +908,7 @@ export class CameraPlayer {
 
   /** Try again after the camera gave up (the error state's retry button). */
   retryNow(): void {
+    this.generation += 1;
     this.retry.reset();
     this.clearRetry();
     if (!this.source && !this.job) return;
@@ -905,7 +923,11 @@ export class CameraPlayer {
     if (!this.source || !this.activeUrl) return;
     const expiry = this.env.getUrlExpiry(this.source.path);
     if (expiry === null) return;
-    const delay = Math.max(1_000, expiry - VIDEO_URL_POLICY.renewLeadMs - Date.now());
+    const delay = Math.max(
+      1_000,
+      this.renewBackoffMs,
+      expiry - VIDEO_URL_POLICY.renewLeadMs - Date.now(),
+    );
     this.renewTimer = window.setTimeout(() => {
       this.renewTimer = null;
       if (this.disposed || !this.source) return;
@@ -1198,6 +1220,7 @@ export class CameraPlayer {
 
   /** Drop both sources (no panel shows this camera any more). Showing it again reloads. */
   releaseSources(): void {
+    this.generation += 1;
     this.cancelJob();
     this.clearRetry();
     if (this.renewTimer !== null) clearTimeout(this.renewTimer);
