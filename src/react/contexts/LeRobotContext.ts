@@ -69,6 +69,12 @@ export interface LeRobotSelectionContextType {
 /** 播放控制、帧与 chart 数据 */
 export interface LeRobotPlaybackContextType {
   currentFrames: FrameData[];
+  /** Episode whose frames / charts / subtasks are loaded; lags the selection while it loads. */
+  loadedEpisodeIndex?: number | null;
+  /** The selected episode while it is still loading (the old data stays on screen, dimmed). */
+  pendingEpisodeIndex?: number | null;
+  /** The timeline is being dragged: cameras use fast seeks and land exactly on release. */
+  setScrubbing?: (scrubbing: boolean) => void;
   chartData: NumericalColumnMap;
   /** Load numeric columns of the selected episode that `chartData` does not hold yet. */
   ensureChartColumns: (featureKeys: string[]) => void;

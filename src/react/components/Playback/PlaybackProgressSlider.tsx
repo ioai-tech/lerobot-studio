@@ -38,6 +38,10 @@ export interface PlaybackProgressSliderProps {
   onFillGap?: (startFrame: number, endFrame: number) => void;
   onDeleteSegment?: (index: number) => void;
   onRenameSegment?: (index: number) => void;
+  /** Dragging the playhead started / ended (cameras seek fast while dragging, exactly on release). */
+  onScrubbingChange?: (scrubbing: boolean) => void;
+  /** Keep the subtask lane's height while it is empty (no layout jump between episodes). */
+  reserveSubtaskLane?: boolean;
 }
 
 const PlaybackProgressSliderComponent: React.FC<PlaybackProgressSliderProps> = ({
@@ -59,6 +63,8 @@ const PlaybackProgressSliderComponent: React.FC<PlaybackProgressSliderProps> = (
   onFillGap,
   onDeleteSegment,
   onRenameSegment,
+  onScrubbingChange,
+  reserveSubtaskLane = false,
 }) => {
   const { t } = useTranslation();
   const currentTimeRef = useRef<HTMLSpanElement>(null);
@@ -211,6 +217,7 @@ const PlaybackProgressSliderComponent: React.FC<PlaybackProgressSliderProps> = (
 
       dragCleanupRef.current?.();
       isDraggingRef.current = true;
+      onScrubbingChange?.(true);
       updateDraggingVisual(true);
       trackRef.current.setPointerCapture(e.pointerId);
 
@@ -230,6 +237,7 @@ const PlaybackProgressSliderComponent: React.FC<PlaybackProgressSliderProps> = (
 
       const handlePointerUp = (event: PointerEvent) => {
         isDraggingRef.current = false;
+        onScrubbingChange?.(false);
         updateDraggingVisual(false);
         if (trackRef.current?.hasPointerCapture(event.pointerId)) {
           trackRef.current.releasePointerCapture(event.pointerId);
@@ -242,7 +250,7 @@ const PlaybackProgressSliderComponent: React.FC<PlaybackProgressSliderProps> = (
       window.addEventListener('pointerup', handlePointerUp);
       window.addEventListener('pointercancel', handlePointerUp);
     },
-    [isDisabled, totalFrames, updateDraggingVisual, updatePositionFromClientX],
+    [isDisabled, onScrubbingChange, totalFrames, updateDraggingVisual, updatePositionFromClientX],
   );
 
   useEffect(() => {
@@ -325,6 +333,8 @@ const PlaybackProgressSliderComponent: React.FC<PlaybackProgressSliderProps> = (
           onDelete={editRanges ? onDeleteSegment : undefined}
           onRename={editRanges ? onRenameSegment : undefined}
         />
+      ) : reserveSubtaskLane ? (
+        <div className="h-4 w-full rounded-md bg-muted/40" aria-hidden data-subtask-lane="empty" />
       ) : null}
 
       <div

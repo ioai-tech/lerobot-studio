@@ -162,8 +162,14 @@ function zoomYAxisFromWheel(u: uPlot, deltaY: number, pointerCssY: number): bool
 const ChartPanelContent: React.FC<ChartPanelProps> = ({ params }) => {
   const { t, i18n } = useTranslation();
   // 使用分离的 context，避免订阅图像/帧状态触发不必要的重渲染
-  const { chartData, currentFrames, setFrameIndex, setPlaying, ensureChartColumns } =
-    useLeRobotPlayback();
+  const {
+    chartData,
+    currentFrames,
+    setFrameIndex,
+    setPlaying,
+    ensureChartColumns,
+    pendingEpisodeIndex,
+  } = useLeRobotPlayback();
   const { subscribeFrameIndex, info, isLoading, error } = useLeRobotData();
   const { selectedEpisodeIndex } = useLeRobotSelection();
   const { resolvedTheme } = useTheme();
@@ -1345,7 +1351,11 @@ const ChartPanelContent: React.FC<ChartPanelProps> = ({ params }) => {
         </div>
       </div>
 
-      <div className="flex-1 min-h-0 relative">
+      <div
+        className="flex-1 min-h-0 relative transition-opacity duration-150"
+        style={pendingEpisodeIndex != null ? { opacity: 0.45 } : undefined}
+        data-episode-pending={pendingEpisodeIndex != null ? 'true' : undefined}
+      >
         {/* chart-uplot 始终渲染，防止 episode 切换时从 0x0 扩展导致 CLS */}
         <div className="absolute inset-0">
           <div ref={chartRef} className="chart-uplot w-full h-full" />

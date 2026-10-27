@@ -3,6 +3,7 @@ import type { MutableRefObject } from 'react';
 import type { EpisodeMetadata, PlaybackMode, EpisodeTrimRange } from '@/core';
 import { PlaybackEngine } from '../services/PlaybackEngine';
 import type { MediaSync } from '../services/MediaSync';
+import type { VideoStage } from '../services/video/VideoStage';
 
 export class PendingPlaybackIntent {
   private target: boolean | null = null;
@@ -46,6 +47,8 @@ type UsePlaybackBridgeOptions = {
   onNaturalEndRef?: MutableRefObject<() => void>;
   /** Native video clock; without it the engine's timer drives every panel. */
   mediaSync?: MediaSync;
+  /** The cameras: a loop restarts through their prefetched standby elements. */
+  videoStage?: VideoStage;
 };
 
 export function usePlaybackBridge({
@@ -64,6 +67,7 @@ export function usePlaybackBridge({
   shouldHoldAtEpisodeEndRef,
   onNaturalEndRef,
   mediaSync,
+  videoStage,
 }: UsePlaybackBridgeOptions) {
   const previewRangeRef = useRef(previewRange);
   previewRangeRef.current = previewRange;
@@ -79,14 +83,49 @@ export function usePlaybackBridge({
     return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
   }, []);
 
+  // Scrubbing notifies the frame subscribers (videos, chart cursor) at once, but re-renders React at
+  // most once per animation frame.
+  const pendingRenderRef = useRef<{ index: number; handle: number | null }>({
+    index: 0,
+    handle: null,
+  });
+  const renderFrameIndex = useCallback((index: number) => {
+    const pending = pendingRenderRef.current;
+    pending.index = index;
+    if (typeof requestAnimationFrame !== 'function') {
+      setCurrentFrameIndex(index);
+      return;
+    }
+    if (pending.handle !== null) return;
+    pending.handle = requestAnimationFrame(() => {
+      pending.handle = null;
+      setCurrentFrameIndex(pending.index);
+    });
+  }, []);
+  useEffect(
+    () => () => {
+      const pending = pendingRenderRef.current;
+      if (pending.handle !== null && typeof cancelAnimationFrame === 'function') {
+        cancelAnimationFrame(pending.handle);
+      }
+      pending.handle = null;
+    },
+    [],
+  );
+
   const setFrameIndex = useCallback(
     (index: number) => {
       if (index < 0 || index >= frameCount) return;
       frameIndexRef.current = index;
-      if (!isPlaying) setCurrentFrameIndex(index);
+      if (isPlaying) {
+        // playing: move every camera (master and followers); the clock continues from there
+        mediaSync?.seekFrame(index);
+      } else {
+        renderFrameIndex(index);
+      }
       notifyFrameSubscribers(index);
     },
-    [frameCount, frameIndexRef, isPlaying, notifyFrameSubscribers],
+    [frameCount, frameIndexRef, isPlaying, mediaSync, notifyFrameSubscribers, renderFrameIndex],
   );
 
   const togglePlay = useCallback(() => {
@@ -173,7 +212,20 @@ export function usePlaybackBridge({
               mediaSync.setFps(latest().fps);
               mediaSync.start(frameIndex, rate);
             },
-            onPlaybackStop: () => mediaSync.stop(),
+            onPlaybackStop: () => {
+              mediaSync.stop();
+              videoStage?.alignToPlayhead();
+            },
+            ...(videoStage
+              ? {
+                  onLoopRestart: (rate: number) => {
+                    mediaSync.stop();
+                    videoStage.restartEpisode();
+                    mediaSync.setFps(latest().fps);
+                    mediaSync.start(0, rate);
+                  },
+                }
+              : {}),
           }
         : {}),
     });
@@ -182,7 +234,21 @@ export function usePlaybackBridge({
       engine.dispose();
       playbackEngineRef.current = null;
     };
-  }, [frameIndexRef, selectEpisodeRef, shouldHoldAtEpisodeEndRef, onNaturalEndRef, mediaSync]);
+  }, [
+    frameIndexRef,
+    selectEpisodeRef,
+    shouldHoldAtEpisodeEndRef,
+    onNaturalEndRef,
+    mediaSync,
+    videoStage,
+  ]);
+
+  /** The episode playback continues with after the selected one (loop: itself; -1: none). */
+  const peekNextEpisode = useCallback((): number => {
+    if (latestRef.current.playbackMode === 'loop')
+      return latestRef.current.selectedEpisodeIndex ?? -1;
+    return playbackEngineRef.current?.peekNextEpisode() ?? -1;
+  }, []);
 
   // speed changes apply to the running videos without restarting playback
   useEffect(() => {
@@ -212,5 +278,6 @@ export function usePlaybackBridge({
     togglePlay,
     setPlaying,
     seek,
+    peekNextEpisode,
   };
 }

@@ -528,6 +528,15 @@
         "clipRange": "クリップ範囲",
         "yes": "あり",
         "no": "なし"
+      },
+      "cameraLabel": "カメラ {{name}}",
+      "maximize": "このカメラに集中",
+      "restore": "すべてのカメラを表示",
+      "fullscreen": "全画面表示",
+      "exitFullscreen": "全画面表示を終了",
+      "errors": {
+        "unavailable": "この動画を読み込めませんでした。",
+        "urlRefused": "この動画のリンクの有効期限が切れ、更新できませんでした。"
       }
     },
     "image": {
@@ -625,6 +634,14 @@
       "lastFrame": {
         "action": "最終フレーム",
         "key": "End"
+      },
+      "maximize": {
+        "action": "カメラに集中 / すべて表示",
+        "key": "M"
+      },
+      "fullscreen": {
+        "action": "カメラを全画面表示",
+        "key": "F"
       }
     },
     "welcome": {

@@ -524,6 +524,15 @@
         "clipRange": "Clip range",
         "yes": "Yes",
         "no": "No"
+      },
+      "cameraLabel": "Camera {{name}}",
+      "maximize": "Focus this camera",
+      "restore": "Show all cameras",
+      "fullscreen": "Full screen",
+      "exitFullscreen": "Exit full screen",
+      "errors": {
+        "unavailable": "This video could not be loaded.",
+        "urlRefused": "The link to this video expired and could not be renewed."
       }
     },
     "image": {
@@ -623,6 +632,14 @@
       "lastFrame": {
         "action": "Last frame",
         "key": "End"
+      },
+      "maximize": {
+        "action": "Focus / show all cameras",
+        "key": "M"
+      },
+      "fullscreen": {
+        "action": "Full screen camera",
+        "key": "F"
       }
     },
     "welcome": {

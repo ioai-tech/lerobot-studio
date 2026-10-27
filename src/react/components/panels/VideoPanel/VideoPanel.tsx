@@ -1,455 +1,210 @@
-import React, { useEffect, useRef, useState, useCallback, useMemo, useId } from 'react';
-import { AlertTriangle } from 'lucide-react';
+import React, {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from 'react';
+import { AlertTriangle, Maximize, Maximize2, Minimize, Minimize2, RotateCw } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
-import { useLeRobotData, useLeRobotSelection } from '../../../contexts/LeRobotContext';
+import type { DockviewApi, DockviewPanelApi } from 'dockview-react';
+import { useLeRobotData } from '../../../contexts/LeRobotContext';
 import { buildMediaDebugMetadata } from '@/core';
-import { VideoUrlCache } from '@/platform';
 import { getFeatureDisplayType, getFirstVisualFeatureName } from '@/core';
 import { ImagePanel } from '../ImagePanel/ImagePanel';
 import { MediaDebugOverlay } from '../Common/MediaDebugOverlay';
-import { useVideoVariant } from '../../../contexts/VideoVariantContext';
+import { useVideoStage } from '../../../contexts/VideoStageContext';
+import type { CameraPlayer, CameraSnapshot } from '../../../services/video/CameraPlayer';
 
 interface VideoPanelProps {
   params?: {
     featureKey?: string;
   };
+  /** The dockview panel (focus / maximize); absent outside dockview. */
+  panelApi?: DockviewPanelApi;
+  containerApi?: DockviewApi;
+}
+
+const EMPTY_SNAPSHOT: CameraSnapshot = {
+  status: 'empty',
+  buffering: false,
+  switching: false,
+  errorCode: null,
+  path: null,
+  width: 0,
+  height: 0,
+  start: null,
+  end: null,
+};
+const noopSubscribe = () => () => undefined;
+
+/** `flag`, but only after it stayed true for `delayMs` (no spinner flash on fast operations). */
+function useDelayedFlag(flag: boolean, delayMs: number): boolean {
+  const [shown, setShown] = useState(false);
+  useEffect(() => {
+    if (!flag) {
+      setShown(false);
+      return;
+    }
+    const timer = window.setTimeout(() => setShown(true), delayMs);
+    return () => window.clearTimeout(timer);
+  }, [flag, delayMs]);
+  return flag && shown;
+}
+
+function useCameraSnapshot(player: CameraPlayer | null): CameraSnapshot {
+  return useSyncExternalStore(
+    player?.subscribe ?? noopSubscribe,
+    player?.getSnapshot ?? (() => EMPTY_SNAPSHOT),
+    () => EMPTY_SNAPSHOT,
+  );
+}
+
+function useMaximized(panelApi?: DockviewPanelApi, containerApi?: DockviewApi): boolean {
+  const [maximized, setMaximized] = useState(() => panelApi?.isMaximized() ?? false);
+  useEffect(() => {
+    if (!panelApi || !containerApi) return;
+    const update = () => setMaximized(panelApi.isMaximized());
+    update();
+    const disposable = containerApi.onDidMaximizedGroupChange(update);
+    return () => disposable.dispose();
+  }, [panelApi, containerApi]);
+  return maximized;
+}
+
+function useFullscreen(element: React.RefObject<HTMLElement | null>): boolean {
+  const [fullscreen, setFullscreen] = useState(false);
+  useEffect(() => {
+    const update = () =>
+      setFullscreen(Boolean(element.current) && document.fullscreenElement === element.current);
+    document.addEventListener('fullscreenchange', update);
+    return () => document.removeEventListener('fullscreenchange', update);
+  }, [element]);
+  return fullscreen;
 }
 
 /**
- * 彻底优化的 VideoPanel - 零闪烁视频播放
- *
- * 关键设计：
- * 1. 视频元素始终可见，不使用 opacity 切换
- * 2. 只在真正需要加载新文件时才显示加载状态
- * 3. Episode 切换只是纯 seek，不触发任何 UI 更新
- * 4. 完全利用浏览器视频缓冲机制
+ * One camera. The <video> elements belong to the viewer's video stage and outlive this panel: a
+ * layout rebuild moves them into the new panel instead of reloading them.
  */
-const VideoPanelContent: React.FC<VideoPanelProps> = ({ params }) => {
+const VideoPanelContent: React.FC<VideoPanelProps> = ({ params, panelApi, containerApi }) => {
   const { t } = useTranslation();
-  const { info, dataLoader, subscribeFrameIndex, getFrameIndex, mediaSync } = useLeRobotData();
-  const { previewVideoPath, variant } = useVideoVariant();
-  const panelId = useId();
-  const { selectedEpisodeIndex } = useLeRobotSelection();
-
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const [hasVideo, setHasVideo] = useState(false); // 是否有可用的视频
-
-  const [isInitialLoading, setIsInitialLoading] = useState(false); // 仅用于初始加载
-  const [loadError, setLoadError] = useState<string | null>(null);
-  const [videoDimensions, setVideoDimensions] = useState<{ width: number; height: number } | null>(
-    null,
-  );
-  const [timelineRange, setTimelineRange] = useState<{ startSec: number; endSec: number } | null>(
-    null,
-  );
-  const [currentVideoPath, setCurrentVideoPath] = useState<string>('');
-  const [isBuffering, setIsBuffering] = useState(false);
-
-  // 当前加载的视频文件（文件级别）
-  const currentVideoFileRef = useRef<{
-    path: string;
-    url: string;
-    duration: number;
-  } | null>(null);
-
-  // 当前 episode 时间范围
-  const episodeRangeRef = useRef<{
-    start: number;
-    end: number;
-  } | null>(null);
-
-  /** 容量保持较小；blob 生命周期以 DataSource 为准，避免与 OBJECT_URL_CACHE_SIZE 脱节 */
-  const videoCacheRef = useRef<VideoUrlCache>(new VideoUrlCache(8));
-  const lastSeekTimeRef = useRef<number>(0);
-  const requestTokenRef = useRef(0);
-  const mountedRef = useRef(true);
-
+  const { info } = useLeRobotData();
+  const stage = useVideoStage();
   const featureKey = params?.featureKey || 'observation.images.up';
+  const rootRef = useRef<HTMLDivElement>(null);
+  const hostRef = useRef<HTMLDivElement>(null);
+  const [player, setPlayer] = useState<CameraPlayer | null>(null);
+  const snapshot = useCameraSnapshot(player);
+  const maximized = useMaximized(panelApi, containerApi);
+  const fullscreen = useFullscreen(rootRef);
+
+  useLayoutEffect(() => {
+    const host = hostRef.current;
+    if (!stage || !host) return;
+    const detach = stage.attach(featureKey, host);
+    // the camera is looked up on every attach: a remount may get a new one
+    setPlayer(stage.player(featureKey));
+    return detach;
+  }, [stage, featureKey]);
+
+  const toggleMaximize = useCallback(() => {
+    if (!panelApi) return;
+    if (panelApi.isMaximized()) panelApi.exitMaximized();
+    else panelApi.maximize();
+  }, [panelApi]);
+
+  const toggleFullscreen = useCallback(() => {
+    const root = rootRef.current;
+    if (!root) return;
+    if (document.fullscreenElement === root) {
+      void document.exitFullscreen?.().catch(() => undefined);
+    } else {
+      void root.requestFullscreen?.().catch(() => undefined);
+    }
+  }, []);
+
+  const onKeyDown = useCallback(
+    (event: React.KeyboardEvent<HTMLDivElement>) => {
+      if (event.altKey || event.ctrlKey || event.metaKey) return;
+      const key = event.key.toLowerCase();
+      if (key === 'f') {
+        event.preventDefault();
+        toggleFullscreen();
+      } else if (key === 'm' && panelApi) {
+        event.preventDefault();
+        toggleMaximize();
+      } else if (event.key === 'Escape' && panelApi?.isMaximized()) {
+        event.preventDefault();
+        panelApi.exitMaximized();
+      }
+    },
+    [panelApi, toggleFullscreen, toggleMaximize],
+  );
 
   const debugMetadata = useMemo(
     () =>
       buildMediaDebugMetadata(info, featureKey, {
-        runtimeDimensions: videoDimensions,
-        timeline: timelineRange,
+        runtimeDimensions:
+          snapshot.width && snapshot.height
+            ? { width: snapshot.width, height: snapshot.height }
+            : null,
+        timeline:
+          snapshot.start !== null
+            ? { startSec: snapshot.start, endSec: snapshot.end ?? snapshot.start }
+            : null,
       }),
-    [featureKey, info, timelineRange, videoDimensions],
+    [featureKey, info, snapshot.end, snapshot.height, snapshot.start, snapshot.width],
   );
 
-  /**
-   * 获取 episode 的视频文件信息（版本无关，由 dataLoader 委托适配器解析）
-   */
-  const getVideoFileInfo = useCallback(
-    async (episodeIndex: number) => {
-      if (!dataLoader) return null;
-      const result = dataLoader.getEpisodeVideoPath(episodeIndex, featureKey);
-      if (!result) return null;
-      let path = result.path;
-      // 预览副本与原视频同帧、同时间戳，只是分辨率/码率更低；不存在时回退原视频
-      if (variant === 'preview' && previewVideoPath) {
-        const preview = dataLoader.getEpisodeVideoPath(episodeIndex, featureKey, previewVideoPath);
-        if (preview && (await dataLoader.dataSource.exists(preview.path).catch(() => false))) {
-          path = preview.path;
-        }
-      }
-      return {
-        path,
-        start: result.fromSec ?? 0,
-        end: result.toSec ?? 0,
-      };
-    },
-    [dataLoader, featureKey, previewVideoPath, variant],
-  );
-
-  /**
-   * 加载视频文件（静默加载，不显示 loading UI）
-   */
-  const loadVideoFileSilent = useCallback(
-    async (path: string, allowRetry = true): Promise<boolean> => {
-      const requestToken = requestTokenRef.current;
-      if (!dataLoader) return false;
-
-      const resolvePlay = (url: string, suppressErrorUi: boolean): Promise<boolean> => {
-        return new Promise<boolean>((resolve) => {
-          const video = videoRef.current;
-          if (!video) {
-            resolve(false);
-            return;
-          }
-
-          const isFirstLoad = !currentVideoFileRef.current;
-          if (isFirstLoad) {
-            if (mountedRef.current && requestToken === requestTokenRef.current) {
-              setIsInitialLoading(true);
-              setLoadError(null);
-            }
-          }
-
-          const handleLoadedMetadata = () => {
-            if (!mountedRef.current || requestToken !== requestTokenRef.current) {
-              return;
-            }
-            currentVideoFileRef.current = {
-              path,
-              url,
-              duration: video.duration,
-            };
-            setCurrentVideoPath(path);
-            setVideoDimensions({
-              width: video.videoWidth,
-              height: video.videoHeight,
-            });
-          };
-
-          const handleCanPlay = () => {
-            if (mountedRef.current && requestToken === requestTokenRef.current) {
-              setHasVideo(true);
-              setLoadError(null);
-              if (isFirstLoad) {
-                setIsInitialLoading(false);
-              }
-            }
-            resolve(true);
-          };
-
-          const handleError = () => {
-            video.removeEventListener('loadedmetadata', handleLoadedMetadata);
-            video.removeEventListener('canplay', handleCanPlay);
-            video.removeEventListener('error', handleError);
-
-            console.error('Video load error:', path);
-            if (
-              !suppressErrorUi &&
-              mountedRef.current &&
-              requestToken === requestTokenRef.current
-            ) {
-              setHasVideo(false);
-              setLoadError(t('sidebar.errorLoading'));
-              if (isFirstLoad) {
-                setIsInitialLoading(false);
-              }
-            }
-            resolve(false);
-          };
-
-          video.addEventListener('loadedmetadata', handleLoadedMetadata, { once: true });
-          video.addEventListener('canplay', handleCanPlay, { once: true });
-          video.addEventListener('error', handleError, { once: true });
-
-          video.src = url;
-          video.preload = 'auto';
-          video.load();
-        });
-      };
-
-      try {
-        let url = videoCacheRef.current.get(path);
-        if (!url) {
-          url = await dataLoader.getFileUrl(path);
-          videoCacheRef.current.getUrl(path, url);
-        }
-
-        let ok = await resolvePlay(url, allowRetry);
-        if (!ok && allowRetry) {
-          try {
-            videoCacheRef.current.invalidate(path);
-            await dataLoader.invalidateFileUrl(path);
-            const freshUrl = await dataLoader.getFileUrl(path);
-            videoCacheRef.current.getUrl(path, freshUrl);
-            ok = await resolvePlay(freshUrl, false);
-          } catch (retryErr) {
-            console.error('Failed to recover video after invalidate:', retryErr);
-            if (mountedRef.current && requestToken === requestTokenRef.current) {
-              setLoadError(t('sidebar.errorLoading'));
-              setIsInitialLoading(false);
-            }
-            return false;
-          }
-        }
-        return ok;
-      } catch (e) {
-        console.error('Failed to load video:', e);
-        if (mountedRef.current && requestToken === requestTokenRef.current) {
-          setLoadError(t('sidebar.errorLoading'));
-          setIsInitialLoading(false);
-        }
-        return false;
-      }
-    },
-    [dataLoader, t],
-  );
-
-  /**
-   * Episode 切换处理
-   */
-  useEffect(() => {
-    const handleEpisodeChange = async () => {
-      const requestToken = ++requestTokenRef.current;
-      if (!info || selectedEpisodeIndex === null || !dataLoader) {
-        if (mountedRef.current && requestToken === requestTokenRef.current) {
-          setCurrentVideoPath('');
-          setTimelineRange(null);
-        }
-        return;
-      }
-
-      const videoInfo = await getVideoFileInfo(selectedEpisodeIndex);
-      if (requestToken !== requestTokenRef.current) return;
-      if (!videoInfo) {
-        if (mountedRef.current && requestToken === requestTokenRef.current) {
-          setCurrentVideoPath('');
-          setTimelineRange(null);
-        }
-        return;
-      }
-
-      const { path, start, end } = videoInfo;
-      const video = videoRef.current;
-      if (!video) return;
-      if (mountedRef.current && requestToken === requestTokenRef.current) {
-        setVideoDimensions(null);
-      }
-
-      // 检查是否需要加载新文件
-      const isSameFile = currentVideoFileRef.current?.path === path;
-
-      if (!isSameFile) {
-        // 加载新文件（静默，除非是第一次）
-        const loaded = await loadVideoFileSilent(path);
-        if (!loaded || requestToken !== requestTokenRef.current) return;
-      }
-
-      // 更新 episode 时间范围
-      if (currentVideoFileRef.current) {
-        const episodeEnd = end > 0 ? end : currentVideoFileRef.current.duration;
-        episodeRangeRef.current = { start, end: episodeEnd };
-        if (mountedRef.current && requestToken === requestTokenRef.current) {
-          setTimelineRange({ startSec: start, endSec: episodeEnd });
-        }
-
-        // 纯 seek：新 episode 帧号已归零；切换清晰度时保持当前帧
-        const target = Math.min(start + getFrameIndex() / (info.fps || 30), episodeEnd);
-        if (video.readyState >= 2) {
-          video.currentTime = target;
-        } else {
-          const handleReady = () => {
-            if (requestToken !== requestTokenRef.current) {
-              video.removeEventListener('canplay', handleReady);
-              return;
-            }
-            video.currentTime = Math.min(start + getFrameIndex() / (info.fps || 30), episodeEnd);
-            video.removeEventListener('canplay', handleReady);
-          };
-          video.addEventListener('canplay', handleReady, { once: true });
-        }
-      }
-    };
-
-    handleEpisodeChange();
-  }, [
-    selectedEpisodeIndex,
-    info,
-    dataLoader,
-    featureKey,
-    getVideoFileInfo,
-    getFrameIndex,
-    loadVideoFileSilent,
-  ]);
-
-  /**
-   * 播放中途失败（典型：预签名 URL 过期后浏览器的下一次 Range 请求被拒）：换新 URL，保持时间点。
-   * 暂停中的视频由 MediaSync 在下一次缓冲恢复时重新 play。
-   */
-  useEffect(() => {
-    const video = videoRef.current;
-    if (!hasVideo || !video || !dataLoader) return;
-    let recovering = false;
-    const onError = () => {
-      const file = currentVideoFileRef.current;
-      // 只处理已加载文件的失败；切换文件时的失败由 loadVideoFileSilent 自己重试
-      if (
-        recovering ||
-        !file ||
-        video.currentSrc !== new URL(file.url, window.location.href).href
-      ) {
-        return;
-      }
-      recovering = true;
-      const resumeAt = video.currentTime;
-      void (async () => {
-        try {
-          videoCacheRef.current.invalidate(file.path);
-          await dataLoader.invalidateFileUrl(file.path);
-          const url = await dataLoader.getFileUrl(file.path);
-          videoCacheRef.current.getUrl(file.path, url);
-          currentVideoFileRef.current = { ...file, url };
-          video.src = url;
-          video.load();
-          video.addEventListener(
-            'loadedmetadata',
-            () => {
-              video.currentTime = resumeAt;
-            },
-            { once: true },
-          );
-        } catch (e) {
-          console.error('Failed to recover video after a playback error:', e);
-          setLoadError(t('sidebar.errorLoading'));
-        } finally {
-          recovering = false;
-        }
-      })();
-    };
-    video.addEventListener('error', onError);
-    return () => video.removeEventListener('error', onError);
-  }, [hasVideo, dataLoader, t]);
-
-  useEffect(() => {
-    mountedRef.current = true;
-    return () => {
-      mountedRef.current = false;
-      requestTokenRef.current += 1;
-    };
-  }, []);
-
-  /**
-   * 播放时由 MediaSync 驱动原生 play()（主视频即时钟），暂停/拖动/逐帧时仍按帧 seek。
-   */
-  useEffect(() => {
-    const video = videoRef.current;
-    if (!hasVideo || !video) return;
-    return mediaSync.register(panelId, {
-      video,
-      getStart: () => episodeRangeRef.current?.start ?? null,
-    });
-  }, [hasVideo, mediaSync, panelId]);
-
-  /** 缓冲提示：数据不足以继续播放（或 seek 到未缓冲位置）时显示 */
-  useEffect(() => {
-    const video = videoRef.current;
-    if (!hasVideo || !video) return;
-    const HAVE_FUTURE_DATA = 3;
-    const onWaiting = () => setIsBuffering(true);
-    const onSeeking = () => {
-      if (video.readyState < HAVE_FUTURE_DATA) setIsBuffering(true);
-    };
-    const onReady = () => setIsBuffering(false);
-    video.addEventListener('waiting', onWaiting);
-    video.addEventListener('seeking', onSeeking);
-    for (const event of ['canplay', 'canplaythrough', 'playing', 'seeked'] as const) {
-      video.addEventListener(event, onReady);
-    }
-    return () => {
-      video.removeEventListener('waiting', onWaiting);
-      video.removeEventListener('seeking', onSeeking);
-      for (const event of ['canplay', 'canplaythrough', 'playing', 'seeked'] as const) {
-        video.removeEventListener(event, onReady);
-      }
-    };
-  }, [hasVideo]);
-
-  /**
-   * 帧同步 - 纯 seek，零开销
-   */
-  useEffect(() => {
-    if (!hasVideo || !episodeRangeRef.current) return;
-
-    const unsubscribe = subscribeFrameIndex((frameIndex) => {
-      const video = videoRef.current;
-      const range = episodeRangeRef.current;
-
-      if (!video || !range || video.readyState < 1) return;
-
-      const fps = info?.fps ?? 30;
-      const targetTime = Math.max(range.start, Math.min(range.start + frameIndex / fps, range.end));
-
-      if (mediaSync.isActive()) {
-        // 原生播放中：帧号来自主视频，只跟随跳转（点击时间轴、逐帧）
-        if (Math.abs(video.currentTime - targetTime) > 0.3) video.currentTime = targetTime;
-        return;
-      }
-      if (video.readyState < 2) return;
-
-      // 节流
-      const now = Date.now();
-      if (now - lastSeekTimeRef.current < 16) return;
-
-      // Seek
-      const timeDiff = Math.abs(video.currentTime - targetTime);
-      if (timeDiff > 0.033) {
-        video.currentTime = targetTime;
-        lastSeekTimeRef.current = now;
-      }
-    });
-
-    return unsubscribe;
-  }, [hasVideo, info, mediaSync, subscribeFrameIndex]);
+  const hasFrame = snapshot.status === 'ready';
+  const showBusy = useDelayedFlag(hasFrame && (snapshot.buffering || snapshot.switching), 250);
+  const title = featureKey.split('.').pop() || featureKey;
 
   return (
-    <div className="group relative flex h-full w-full items-center justify-center overflow-hidden bg-black">
+    <div
+      ref={rootRef}
+      className="group relative flex h-full w-full items-center justify-center overflow-hidden bg-black outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      data-camera={featureKey}
+      data-camera-status={snapshot.status}
+      data-video-error={snapshot.errorCode ?? undefined}
+      tabIndex={0}
+      onKeyDown={onKeyDown}
+      aria-label={t('panels.video.cameraLabel', { name: title })}
+    >
+      {/* The stage appends this camera's <video> elements here; React renders no children in it. */}
+      <div ref={hostRef} className="absolute inset-0" />
+
       <MediaDebugOverlay metadata={debugMetadata} translationPrefix="panels.video.debug" />
 
-      {/* Video - 始终可见，无过渡效果 */}
-      <video
-        ref={videoRef}
-        className="h-full w-full object-contain"
-        style={{
-          display: hasVideo ? 'block' : 'none',
-          transform: 'translateZ(0)',
-          backfaceVisibility: 'hidden' as const,
-        }}
-        crossOrigin="anonymous"
-        muted
-        playsInline
-        preload="auto"
-        disablePictureInPicture
-        disableRemotePlayback
-      />
+      {!hasFrame && snapshot.status !== 'error' && (
+        <div
+          className="absolute inset-0 z-[2] flex items-center justify-center bg-muted/40 text-center text-muted-foreground"
+          role="status"
+          aria-live="polite"
+        >
+          <div className="flex flex-col items-center gap-3">
+            {snapshot.status === 'loading' ? (
+              <div
+                className="h-6 w-6 rounded-full border-2 border-primary border-t-transparent animate-spin motion-reduce:animate-none"
+                aria-hidden
+              />
+            ) : null}
+            <p className="text-xs font-medium opacity-70">{title}</p>
+            <p className="text-[10px] uppercase tracking-widest opacity-50">
+              {t('panels.video.placeholder')}
+            </p>
+          </div>
+        </div>
+      )}
 
-      {hasVideo && isBuffering && (
+      {showBusy && (
         <div
           role="status"
           aria-live="polite"
-          className="pointer-events-none absolute inset-0 flex items-center justify-center"
+          className="pointer-events-none absolute inset-0 z-[3] flex items-center justify-center"
         >
           <div className="flex items-center gap-2 rounded-md bg-black/60 px-3 py-2 text-xs text-white">
             <div
@@ -461,36 +216,64 @@ const VideoPanelContent: React.FC<VideoPanelProps> = ({ params }) => {
         </div>
       )}
 
-      {/* 占位符 - 只在没有视频时显示 */}
-      {!hasVideo && (
-        <div className="absolute inset-0 flex items-center justify-center text-center text-muted-foreground">
-          <div>
-            {isInitialLoading ? (
-              <div role="status" aria-live="polite">
-                <div
-                  className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin motion-reduce:animate-none mx-auto mb-4"
-                  aria-hidden
-                />
-                <p className="text-sm opacity-50">{t('panels.video.placeholder')}</p>
-              </div>
-            ) : loadError ? (
-              <div className="text-destructive max-w-xs mx-auto">
-                <div className="flex justify-center mb-2">
-                  <AlertTriangle className="h-8 w-8" />
-                </div>
-                <p className="font-medium">{loadError}</p>
-                <p className="text-xs mt-2 opacity-70 break-all">{currentVideoPath}</p>
-              </div>
-            ) : (
-              <>
-                <p className="text-lg font-semibold">{t('panels.video.title')}</p>
-                <p className="text-sm mt-2">{featureKey}</p>
-                <p className="text-xs mt-4 opacity-50">{t('panels.video.placeholder')}</p>
-              </>
-            )}
+      {snapshot.status === 'error' && (
+        <div className="absolute inset-0 z-[3] flex items-center justify-center bg-black/70 p-4 text-center">
+          <div className="max-w-xs text-destructive-foreground">
+            <div className="mb-2 flex justify-center text-destructive">
+              <AlertTriangle className="h-8 w-8" aria-hidden />
+            </div>
+            <p className="font-medium text-white">
+              {snapshot.errorCode === 'VIDEO_URL_REFUSED'
+                ? t('panels.video.errors.urlRefused')
+                : t('panels.video.errors.unavailable')}
+            </p>
+            {snapshot.path ? (
+              <p className="mt-2 break-all text-xs text-white/60">{snapshot.path}</p>
+            ) : null}
+            <button
+              type="button"
+              className="mt-3 inline-flex items-center gap-1.5 rounded-md bg-white/15 px-3 py-1.5 text-xs text-white hover:bg-white/25"
+              onClick={() => player?.retryNow()}
+            >
+              <RotateCw className="h-3.5 w-3.5" aria-hidden />
+              {t('common.retry')}
+            </button>
           </div>
         </div>
       )}
+
+      <div className="absolute right-2 top-2 z-[4] flex gap-1 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100 focus-within:opacity-100">
+        {panelApi ? (
+          <button
+            type="button"
+            className="inline-flex h-7 w-7 items-center justify-center rounded-md bg-black/50 text-white hover:bg-black/70"
+            onClick={toggleMaximize}
+            aria-label={maximized ? t('panels.video.restore') : t('panels.video.maximize')}
+            aria-pressed={maximized}
+            title={`${maximized ? t('panels.video.restore') : t('panels.video.maximize')} (M)`}
+          >
+            {maximized ? (
+              <Minimize2 className="h-3.5 w-3.5" aria-hidden />
+            ) : (
+              <Maximize2 className="h-3.5 w-3.5" aria-hidden />
+            )}
+          </button>
+        ) : null}
+        <button
+          type="button"
+          className="inline-flex h-7 w-7 items-center justify-center rounded-md bg-black/50 text-white hover:bg-black/70"
+          onClick={toggleFullscreen}
+          aria-label={fullscreen ? t('panels.video.exitFullscreen') : t('panels.video.fullscreen')}
+          aria-pressed={fullscreen}
+          title={`${fullscreen ? t('panels.video.exitFullscreen') : t('panels.video.fullscreen')} (F)`}
+        >
+          {fullscreen ? (
+            <Minimize className="h-3.5 w-3.5" aria-hidden />
+          ) : (
+            <Maximize className="h-3.5 w-3.5" aria-hidden />
+          )}
+        </button>
+      </div>
     </div>
   );
 };
@@ -498,7 +281,7 @@ const VideoPanelContent: React.FC<VideoPanelProps> = ({ params }) => {
 /**
  * 智能视频/图像面板 - 自动检测并使用正确的显示组件
  */
-export const VideoPanel: React.FC<VideoPanelProps> = ({ params }) => {
+export const VideoPanel: React.FC<VideoPanelProps> = ({ params, panelApi, containerApi }) => {
   const { info } = useLeRobotData();
 
   // 自动检测featureKey：优先使用params中指定的，否则自动检测第一个可视化特征
@@ -512,7 +295,6 @@ export const VideoPanel: React.FC<VideoPanelProps> = ({ params }) => {
     return getFeatureDisplayType(info, featureKey);
   }, [info, featureKey]);
 
-  // 创建新的params对象，包含自动检测的featureKey
   const effectiveParams = useMemo(
     () => ({
       ...params,
@@ -521,11 +303,12 @@ export const VideoPanel: React.FC<VideoPanelProps> = ({ params }) => {
     [params, featureKey],
   );
 
-  // 根据类型选择正确的组件
   if (displayType === 'image') {
     return <ImagePanel params={effectiveParams} />;
   }
 
   // 默认使用视频播放器（包括 'video' 和 'none' 类型）
-  return <VideoPanelContent params={effectiveParams} />;
+  return (
+    <VideoPanelContent params={effectiveParams} panelApi={panelApi} containerApi={containerApi} />
+  );
 };

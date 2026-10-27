@@ -38,6 +38,8 @@ import { useEpisodeView } from './useEpisodeView';
 import { materializeNumericFeatureRows, useFeatureSubscriptions } from './useFeatureSubscriptions';
 import { usePlaybackBridge } from './usePlaybackBridge';
 import { MediaSync } from '../services/MediaSync';
+import { VideoStage } from '../services/video/VideoStage';
+import { VideoStageContext } from './VideoStageContext';
 
 /**
  * 规范化 info.features 中的 names 字段
@@ -117,6 +119,8 @@ export const LeRobotDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
   const [previewTrim, setPreviewTrim] = useState(false);
   const [episodeEditMode, setEpisodeEditMode] = useState(false);
   const [selectedEpisodeIndex, setSelectedEpisodeIndex] = useState<number | null>(null);
+  /** The episode whose frames, charts and subtasks are loaded (lags the selection while loading). */
+  const [loadedEpisodeIndex, setLoadedEpisodeIndex] = useState<number | null>(null);
   const [currentFrames, setCurrentFrames] = useState<FrameData[]>([]);
   const [chartData, setChartData] = useState<NumericalColumnMap>({});
   const [featureData, setFeatureData] = useState<Record<string, unknown[]>>({});
@@ -169,7 +173,8 @@ export const LeRobotDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
 
   const subtask = useSubtaskAnnotation({
     versionCapability,
-    selectedEpisodeIndex,
+    // the segments belong to the frames on screen: the old episode's until the new one loaded
+    selectedEpisodeIndex: loadedEpisodeIndex,
     episodeLength: currentFrames.length,
     sourceTable: sourceSubtasks,
     sourceIndices: sourceSubtaskIndices,
@@ -187,6 +192,14 @@ export const LeRobotDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
   // 高性能播放：使用ref存储帧索引，避免触发React渲染
   const frameIndexRef = useRef(0);
   const [mediaSync] = useState(() => new MediaSync());
+  const [videoStage] = useState(() => new VideoStage(mediaSync, () => frameIndexRef.current));
+  const episodeLoadAbortRef = useRef<AbortController | null>(null);
+  /** Numeric columns of the next episode, read ahead while the current one plays. */
+  const prefetchedEpisodeRef = useRef<{
+    index: number;
+    loader: LeRobotDataLoader;
+    data: Promise<NumericalColumnMap>;
+  } | null>(null);
   const frameSubscribersRef = useRef<Set<FrameIndexSubscriber>>(new Set());
   const selectEpisodeRef = useRef<(episodeIndex: number) => Promise<boolean>>(async () => false);
   const shouldHoldAtEpisodeEndRef = useRef<() => boolean>(() => false);
@@ -246,6 +259,15 @@ export const LeRobotDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
     });
   }, []);
 
+  // The cameras follow the playhead (paused seeks, scrubbing) and live as long as the provider.
+  useEffect(() => videoStage.connectFrames(subscribeFrameIndex), [videoStage, subscribeFrameIndex]);
+  useEffect(() => () => videoStage.dispose(), [videoStage]);
+
+  const setScrubbing = useCallback(
+    (scrubbing: boolean) => videoStage.setScrubbing(scrubbing),
+    [videoStage],
+  );
+
   const {
     subscribeFeature,
     unsubscribeFeature,
@@ -270,8 +292,10 @@ export const LeRobotDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
     togglePlay,
     setPlaying,
     seek,
+    peekNextEpisode,
   } = usePlaybackBridge({
     mediaSync,
+    videoStage,
     isBusy,
     frameCount: currentFrames.length,
     frameIndexRef,
@@ -331,6 +355,9 @@ export const LeRobotDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
     setModifiedEpisodes(new Map());
     setDeletedEpisodes(new Set());
     setSelectedEpisodeIndex(null);
+    setLoadedEpisodeIndex(null);
+    episodeLoadAbortRef.current?.abort();
+    prefetchedEpisodeRef.current = null;
     setSelectedEpisodeIndices(new Set());
     setCurrentFrames([]);
     setChartData({});
@@ -409,6 +436,9 @@ export const LeRobotDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
         setModifiedEpisodes(new Map());
         setDeletedEpisodes(new Set());
         setSelectedEpisodeIndex(null);
+        setLoadedEpisodeIndex(null);
+        episodeLoadAbortRef.current?.abort();
+        prefetchedEpisodeRef.current = null;
         setCurrentFrames([]);
         setChartData({});
         setFeatureData({});
@@ -522,6 +552,14 @@ export const LeRobotDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
   const selectEpisode = useCallback(
     async (index: number) => {
       if (!dataLoader || !info) return false;
+      // The previous episode's load is no longer needed: cancel its Range requests.
+      episodeLoadAbortRef.current?.abort();
+      const controller = new AbortController();
+      episodeLoadAbortRef.current = controller;
+      const { signal } = controller;
+      // the latest call owns the loading state (two calls for the same episode: auto-advance + click)
+      const isCurrent = () => episodeLoadAbortRef.current === controller && !signal.aborted;
+
       setIsLoading(true);
       setIsPlaying(false);
       setError(null);
@@ -532,20 +570,19 @@ export const LeRobotDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
         message: tRef.current('loading.message.loadEpisode', { index }),
       });
 
-      setSelectedEpisodeIndex(index);
-      setCurrentFrames([]);
-      setCurrentFrameIndex(0);
-      frameIndexRef.current = 0;
-      notifyFrameSubscribers(0);
-      setChartData({});
-      setFeatureData({});
-      setSourceSubtaskIndices([]);
+      // The cameras switch first (their ranges change before the frame index is announced), so no
+      // camera seeks the old episode's file to the new episode's frame. Charts, frames and subtasks
+      // keep showing the old episode (dimmed) until the new one is loaded, then swap at once.
       loadingEpisodeRef.current = index;
       episodeLoadingRef.current = true;
+      frameIndexRef.current = 0;
+      videoStage.selectEpisode(index);
+      setSelectedEpisodeIndex(index);
+      setCurrentFrameIndex(0);
+      notifyFrameSubscribers(0);
 
-      // 若新 episode 对应的 parquet 与当前缓存不同（v3 分片 / v2.1 多文件），主动释放
-      // 旧文件的解析缓存（主线程 Arrow Table + worker 内部 fileCache），避免叠加式内存占用。
-      // ParquetImageService 的预加载 Map 也一并清空，防止图像 bitmap 残留。
+      // 若新 episode 对应的 parquet 与当前缓存不同（v3 分片 / v2.1 多文件），释放整文件解析缓存
+      // （主线程 Arrow Table + worker 整文件表）；Range footer 与块缓存保留，切换保持温热。
       try {
         const nextPath = dataLoader.getEpisodeDataPath(index)?.path ?? null;
         if (nextPath && !dataLoader.isFileBytesCached(nextPath)) {
@@ -558,16 +595,33 @@ export const LeRobotDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
 
       try {
         const eagerColumns = getEagerEpisodeColumns(info);
-
-        // 只预取播放和图表所需的时间轴/数值列，其他特征继续按需加载。
+        const eagerSet = new Set(eagerColumns);
         upsertTask({
           id: taskId,
           phase: 'read',
           message: tRef.current('loading.message.fetchFrames', { index }),
         });
-        const numericalData = await dataLoader.loadAllNumericalData(index, eagerColumns);
 
-        if (loadingEpisodeRef.current !== index) return false;
+        const prefetched = prefetchedEpisodeRef.current;
+        prefetchedEpisodeRef.current = null;
+        const numericLoad =
+          prefetched && prefetched.index === index && prefetched.loader === dataLoader
+            ? prefetched.data.catch(() =>
+                dataLoader.loadAllNumericalData(index, eagerColumns, { signal }),
+              )
+            : dataLoader.loadAllNumericalData(index, eagerColumns, { signal });
+        // Subscribed features outside the eager columns load in parallel with them.
+        const subscribedFeatures = getSubscribedFeatureNames(info);
+        const extraFeatures = subscribedFeatures.filter((name) => !eagerSet.has(name));
+        const [numericalData, subtaskSource, extraFeatureData] = await Promise.all([
+          numericLoad,
+          dataLoader.loadEpisodeSubtaskSource(index, { signal }),
+          extraFeatures.length > 0
+            ? dataLoader.loadFeatureData(index, extraFeatures, { signal })
+            : Promise.resolve({} as Record<string, unknown[]>),
+        ]);
+
+        if (!isCurrent()) return false;
 
         upsertTask({
           id: taskId,
@@ -575,71 +629,47 @@ export const LeRobotDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
           message: tRef.current('loading.message.processCharts'),
         });
         const frames = buildPlaybackFrames(numericalData, info.fps ?? 30);
-        setCurrentFrames(frames);
-        const subtaskSource = await dataLoader.loadEpisodeSubtaskSource(index);
-        if (loadingEpisodeRef.current === index) {
-          setSourceSubtaskIndices(subtaskSource.indices);
-          setSourceSubtasks((previous) => ({ ...previous, ...subtaskSource.table }));
-        }
-
-        if (loadingEpisodeRef.current === index) {
-          setChartData(numericalData);
-        }
-
-        // 已订阅特征优先复用已加载的数值列，剩余列再按需补读。
-        const subscribedFeatures = getSubscribedFeatureNames(info);
-
-        if (subscribedFeatures.length > 0) {
-          const eagerFeatureData: Record<string, unknown[]> = {};
-          const missingFeatures: string[] = [];
-
-          subscribedFeatures.forEach((name) => {
-            if (name in numericalData) {
-              eagerFeatureData[name] = materializeNumericFeatureRows(numericalData[name]);
-            } else {
-              missingFeatures.push(name);
-            }
-          });
-
-          const extraFeatureData =
-            missingFeatures.length > 0
-              ? await dataLoader.loadFeatureData(index, missingFeatures)
-              : {};
-
-          if (loadingEpisodeRef.current === index) {
-            setFeatureData({ ...eagerFeatureData, ...extraFeatureData });
+        const featureRows: Record<string, unknown[]> = { ...extraFeatureData };
+        for (const name of subscribedFeatures) {
+          if (name in numericalData) {
+            featureRows[name] = materializeNumericFeatureRows(numericalData[name]);
           }
         }
+        // one render: frames, charts, subtasks and raw rows of the new episode together
+        setCurrentFrames(frames);
+        setChartData(numericalData);
+        setSourceSubtaskIndices(subtaskSource.indices);
+        setSourceSubtasks((previous) => ({ ...previous, ...subtaskSource.table }));
+        setFeatureData(featureRows);
+        setLoadedEpisodeIndex(index);
         completeTask(taskId);
 
         // 触发图像预加载（后台异步，不阻塞播放）
         // 仅对 image dtype 的特征有效（video dtype 使用 <video> 元素，无需预加载）
-        if (loadingEpisodeRef.current === index) {
-          const imageFeatureNames = getImageFeatureNames(info);
-          if (imageFeatureNames.length > 0) {
-            const pathResult = dataLoader.getEpisodeDataPath(index);
-            if (pathResult) {
-              const { path, startRow, endRow } = pathResult;
-              const firstColumn = imageFeatureNames[0];
-              const episodeKey = `${index}:${firstColumn}`;
+        const imageFeatureNames = getImageFeatureNames(info);
+        if (imageFeatureNames.length > 0) {
+          const pathResult = dataLoader.getEpisodeDataPath(index);
+          if (pathResult) {
+            const { path, startRow, endRow } = pathResult;
+            const firstColumn = imageFeatureNames[0];
+            const episodeKey = `${index}:${firstColumn}`;
 
-              // 先确保 Worker 已加载文件（Comlink 路径），再触发预加载
-              imageService
-                .ensureFileLoaded(path, firstColumn)
-                .then(() => {
-                  if (loadingEpisodeRef.current !== index) return;
-                  return imageService.preloadEpisode(firstColumn, startRow, endRow, episodeKey);
-                })
-                .catch((e) => {
-                  // 预加载失败不影响正常播放，回退到按需加载
-                  console.warn('Image preload failed, falling back to on-demand loading:', e);
-                });
-            }
+            // 先确保 Worker 已加载文件（Comlink 路径），再触发预加载
+            imageService
+              .ensureFileLoaded(path, firstColumn)
+              .then(() => {
+                if (loadingEpisodeRef.current !== index) return;
+                return imageService.preloadEpisode(firstColumn, startRow, endRow, episodeKey);
+              })
+              .catch((e) => {
+                // 预加载失败不影响正常播放，回退到按需加载
+                console.warn('Image preload failed, falling back to on-demand loading:', e);
+              });
           }
         }
-        return loadingEpisodeRef.current === index;
+        return isCurrent();
       } catch (e) {
-        if (loadingEpisodeRef.current === index) {
+        if (isCurrent()) {
           console.error('Failed to load episode data', e);
           const msg = e instanceof Error ? e.message : 'Unknown error while loading episode';
           setError(msg);
@@ -647,7 +677,7 @@ export const LeRobotDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
         }
         return false;
       } finally {
-        if (loadingEpisodeRef.current === index) {
+        if (isCurrent()) {
           episodeLoadingRef.current = false;
           setIsLoading(false);
         }
@@ -664,9 +694,58 @@ export const LeRobotDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
       getSubscribedFeatureNames,
       setCurrentFrameIndex,
       setIsPlaying,
+      videoStage,
     ],
   );
   selectEpisodeRef.current = selectEpisode;
+
+  useEffect(() => {
+    videoStage.setDataset(dataLoader, info);
+  }, [videoStage, dataLoader, info]);
+
+  // Read the next episode ahead: its footer and numeric columns now, its videos when playback gets
+  // close to the end (or after a short idle while paused).
+  useEffect(() => {
+    if (!dataLoader || !info || loadedEpisodeIndex === null || isLoading) return;
+    if (loadedEpisodeIndex !== selectedEpisodeIndex) return;
+    const next = peekNextEpisode();
+    if (next < 0) {
+      videoStage.schedulePrefetch(null);
+      return;
+    }
+    videoStage.schedulePrefetch(next);
+    if (next === loadedEpisodeIndex) return; // loop: the data is already here
+    const current = prefetchedEpisodeRef.current;
+    if (current && current.index === next && current.loader === dataLoader) return;
+    const controller = new AbortController();
+    const timer = window.setTimeout(() => {
+      void dataLoader.prefetchEpisode(next, { signal: controller.signal });
+      const data = dataLoader.loadAllNumericalData(next, getEagerEpisodeColumns(info), {
+        signal: controller.signal,
+      });
+      data.catch(() => {
+        if (prefetchedEpisodeRef.current?.data === data) prefetchedEpisodeRef.current = null;
+      });
+      prefetchedEpisodeRef.current = { index: next, loader: dataLoader, data };
+    }, 300);
+    return () => {
+      window.clearTimeout(timer);
+      // keep a finished or running prefetch for the episode it belongs to; drop the rest
+      const pending = prefetchedEpisodeRef.current;
+      if (!pending || pending.index !== next) controller.abort();
+    };
+  }, [
+    dataLoader,
+    info,
+    loadedEpisodeIndex,
+    selectedEpisodeIndex,
+    isLoading,
+    playbackMode,
+    episodes,
+    deletedEpisodes,
+    peekNextEpisode,
+    videoStage,
+  ]);
 
   const clearError = useCallback(() => {
     setError(null);
@@ -687,6 +766,7 @@ export const LeRobotDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
         selectEpisode(firstNonDeleted.episode_index);
       } else {
         setSelectedEpisodeIndex(null);
+        setLoadedEpisodeIndex(null);
         setCurrentFrames([]);
         setChartData({});
         setFeatureData({});
@@ -808,9 +888,17 @@ export const LeRobotDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
     ],
   );
 
+  const pendingEpisodeIndex =
+    selectedEpisodeIndex !== null && selectedEpisodeIndex !== loadedEpisodeIndex
+      ? selectedEpisodeIndex
+      : null;
+
   const playbackValue = useMemo(
     () => ({
       currentFrames,
+      loadedEpisodeIndex,
+      pendingEpisodeIndex,
+      setScrubbing,
       chartData,
       ensureChartColumns,
       currentFrameIndex,
@@ -826,6 +914,9 @@ export const LeRobotDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
     }),
     [
       currentFrames,
+      loadedEpisodeIndex,
+      pendingEpisodeIndex,
+      setScrubbing,
       chartData,
       ensureChartColumns,
       currentFrameIndex,
@@ -908,7 +999,11 @@ export const LeRobotDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
         <LeRobotSelectionContext.Provider value={selectionValue}>
           <LeRobotPlaybackContext.Provider value={playbackValue}>
             <LeRobotSubtaskContext.Provider value={subtaskValue}>
-              <LeRobotUiContext.Provider value={uiValue}>{children}</LeRobotUiContext.Provider>
+              <LeRobotUiContext.Provider value={uiValue}>
+                <VideoStageContext.Provider value={videoStage}>
+                  {children}
+                </VideoStageContext.Provider>
+              </LeRobotUiContext.Provider>
             </LeRobotSubtaskContext.Provider>
           </LeRobotPlaybackContext.Provider>
         </LeRobotSelectionContext.Provider>

@@ -524,6 +524,15 @@
         "clipRange": "片段范围",
         "yes": "有",
         "no": "无"
+      },
+      "cameraLabel": "相机 {{name}}",
+      "maximize": "专注此相机",
+      "restore": "显示全部相机",
+      "fullscreen": "全屏",
+      "exitFullscreen": "退出全屏",
+      "errors": {
+        "unavailable": "无法加载此视频。",
+        "urlRefused": "此视频的链接已过期且无法续期。"
       }
     },
     "image": {
@@ -623,6 +632,14 @@
       "lastFrame": {
         "action": "跳到结尾",
         "key": "End"
+      },
+      "maximize": {
+        "action": "专注 / 显示全部相机",
+        "key": "M"
+      },
+      "fullscreen": {
+        "action": "相机全屏",
+        "key": "F"
       }
     },
     "welcome": {

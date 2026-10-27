@@ -15,6 +15,7 @@ import {
 } from '../../platform/datasource/remotePreflight';
 import { useLeRobotData } from '../contexts/LeRobotContext';
 import { VideoVariantContext, type VideoVariant } from '../contexts/VideoVariantContext';
+import { useVideoStage } from '../contexts/VideoStageContext';
 import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts';
 import { ViewerLayout } from '../features/viewer/ViewerLayout';
 import { ErrorState } from './Commons/ErrorState';
@@ -101,6 +102,11 @@ export function LeRobotViewerContent({
     [previewVideoPath, videoVariant],
   );
   const { initialize, error, isLoading, clearError } = useLeRobotData();
+  const videoStage = useVideoStage();
+  // The cameras switch rendition through their standby elements; a toggle while one loads wins.
+  useEffect(() => {
+    videoStage?.setVariant(previewVideoPath?.trim() || null, videoVariant);
+  }, [videoStage, previewVideoPath, videoVariant]);
 
   useKeyboardShortcuts(enableKeyboardShortcuts);
 

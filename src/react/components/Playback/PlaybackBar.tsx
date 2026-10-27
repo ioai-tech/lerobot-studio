@@ -11,7 +11,11 @@ import { EpisodeTrimControls } from './EpisodeTrimControls';
 import { EditSubtaskDialog } from '../dialogs/EditSubtaskDialog';
 import { useLoading } from '../../contexts/LoadingContext';
 import { useVideoVariant } from '../../contexts/VideoVariantContext';
-import { shouldStartAutoplay } from '@/core';
+import {
+  resolveSubtaskIndexFeatureKey,
+  resolveSubtaskLabelFeatureKey,
+  shouldStartAutoplay,
+} from '@/core';
 import { PlaybackProgressSlider } from './PlaybackProgressSlider';
 import { Button } from '@/ui';
 import { Badge } from '@/ui';
@@ -36,9 +40,18 @@ export const PlaybackBar: React.FC = () => {
     setPlaybackMode,
     playbackSpeed,
     setPlaybackSpeed,
+    setScrubbing,
+    pendingEpisodeIndex,
   } = useLeRobotPlayback();
-  const { info, versionCapability, subscribeFrameIndex, getFrameIndex, isLoading } =
+  const { info, versionCapability, subscribeFrameIndex, getFrameIndex, isLoading, subtasks } =
     useLeRobotData();
+  const datasetHasSubtasks =
+    Object.keys(subtasks ?? {}).length > 0 ||
+    Boolean(
+      info &&
+      (resolveSubtaskIndexFeatureKey(info.features) ||
+        resolveSubtaskLabelFeatureKey(info.features)),
+    );
   const { previewVideoPath, variant, setVariant } = useVideoVariant();
   const { selectedEpisodeIndex, trimRanges, trimEpisode } = useLeRobotSelection();
   const {
@@ -307,7 +320,7 @@ export const PlaybackBar: React.FC = () => {
                     size="sm"
                     className="h-8 px-2 text-xs"
                     onClick={() => setVariant(variant === 'preview' ? 'original' : 'preview')}
-                    disabled={isLoading || totalFrames === 0}
+                    disabled={selectedEpisodeIndex === null}
                     aria-label={t('playback.quality.label')}
                     aria-pressed={variant === 'original'}
                   />
@@ -393,7 +406,11 @@ export const PlaybackBar: React.FC = () => {
           className="h-8 mx-2 bg-border @max-[640px]/viewer:hidden"
         />
 
-        <div className="min-w-0 flex-1 @max-[640px]/viewer:order-1 @max-[640px]/viewer:basis-full">
+        <div
+          className="min-w-0 flex-1 transition-opacity duration-150 @max-[640px]/viewer:order-1 @max-[640px]/viewer:basis-full"
+          style={pendingEpisodeIndex != null ? { opacity: 0.55 } : undefined}
+          data-episode-pending={pendingEpisodeIndex != null ? 'true' : undefined}
+        >
           {trimSuggestion ? (
             <div className="flex min-w-0 flex-wrap items-center gap-2 px-2">
               <p className="text-xs text-primary">{t('batchTrim.previewNotice')}</p>
@@ -462,6 +479,8 @@ export const PlaybackBar: React.FC = () => {
             setFrameIndex={setFrameIndex}
             getFrameIndex={getFrameIndex}
             subscribeFrameIndex={subscribeFrameIndex}
+            onScrubbingChange={setScrubbing}
+            reserveSubtaskLane={datasetHasSubtasks}
             segments={currentSegments}
             pendingRange={annotationEnabled ? pendingRange : null}
             editRanges={annotationEnabled && !subtaskDialogOpen}
