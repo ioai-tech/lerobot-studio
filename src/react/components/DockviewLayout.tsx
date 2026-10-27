@@ -1,4 +1,4 @@
-import React, { useRef, createContext, useContext, useEffect, useState } from 'react';
+import React, { useRef, createContext, useContext, useEffect, useMemo, useState } from 'react';
 import { DockviewReact } from 'dockview-react';
 import type { DockviewReadyEvent, IDockviewPanelProps, DockviewApi } from 'dockview-react';
 import { useTranslation } from 'react-i18next';
@@ -9,17 +9,7 @@ import 'dockview-react/dist/styles/dockview.css';
 import { VideoPanel, ImagePanel, ChartPanel, RawPanel, PanelErrorBoundary } from './panels';
 import { PanelTitle } from './PanelTitle';
 import { getAutoLayoutVisualRows, getVisualMaxPerRow, isStackedPanelsWidth } from '@/core';
-import { safeAddPanel } from '../utils/dockviewPanelId';
-
-type DockviewSerializedGrid = {
-  grid?: {
-    root?: GridNode;
-  };
-};
-
-type GridNode =
-  | { type: 'leaf'; data: { id: string; activePanel: string; panels: string[] }; size: number }
-  | { type: 'branch'; data: GridNode[]; size: number };
+import { autoLayoutSignature, buildAutoLayout, type AutoPanel } from './dockviewAutoLayout';
 
 /** Minimum height of each panel in the stacked (narrow) column; the column scrolls. */
 const STACKED_PANEL_MIN_HEIGHT_PX = 220;
@@ -39,7 +29,7 @@ const components = {
   video: (props: IDockviewPanelProps<{ featureKey: string }>) => {
     return (
       <PanelErrorBoundary panelName="Video">
-        <VideoPanel params={props.params} />
+        <VideoPanel params={props.params} panelApi={props.api} containerApi={props.containerApi} />
       </PanelErrorBoundary>
     );
   },
@@ -98,139 +88,6 @@ export const DockviewLayout: React.FC = () => {
     return () => observer.disconnect();
   }, []);
 
-  /**
-   * 将当前布局 split size 重新均分，保证三层布局稳定：
-   * - 顶部视觉区 + 底部 chart/raw 约 2:1 高度
-   * - 视觉区若有两行，行高均分
-   * - 每一行视觉面板宽度均分
-   * - 底部 chart/raw 宽度均分
-   */
-  const rebalanceLayout = (api: DockviewApi, row1PanelIds: string[], row2PanelIds: string[]) => {
-    const visualPanelIds = [...row1PanelIds, ...row2PanelIds];
-    if (visualPanelIds.length === 0) return;
-
-    const containsAnyPanel = (node: GridNode, panelIds: Set<string>): boolean => {
-      if (node.type === 'leaf') return node.data.panels.some((p) => panelIds.has(p));
-      return node.data.some((c) => containsAnyPanel(c, panelIds));
-    };
-
-    const countVisualLeaves = (node: GridNode, panelIds: Set<string>): number => {
-      if (node.type === 'leaf') return node.data.panels.some((p) => panelIds.has(p)) ? 1 : 0;
-      return node.data.reduce((acc, c) => acc + countVisualLeaves(c, panelIds), 0);
-    };
-
-    const distributeSizes = (
-      branch: Extract<GridNode, { type: 'branch' }>,
-      weights: number[],
-    ): void => {
-      const total = weights.reduce((a, b) => a + b, 0);
-      if (total <= 0) return;
-      let remaining = branch.size;
-      const n = branch.data.length;
-      for (let i = 0; i < n; i++) {
-        const w =
-          i === n - 1 ? remaining : Math.max(1, Math.round((branch.size * weights[i]) / total));
-        branch.data[i].size = w;
-        remaining -= w;
-      }
-    };
-
-    const findDeepestBranchContainingAny = (
-      node: GridNode,
-      panelIds: Set<string>,
-    ): Extract<GridNode, { type: 'branch' }> | null => {
-      if (node.type !== 'branch') return null;
-      if (!containsAnyPanel(node, panelIds)) return null;
-      for (const child of node.data) {
-        const inner = findDeepestBranchContainingAny(child, panelIds);
-        if (inner) return inner;
-      }
-      return node;
-    };
-
-    const equalizeBottom = (node: GridNode): void => {
-      // 找到包含 chart/raw 的分支并将两个叶子均分
-      const hasChartOrRaw = (n: GridNode): boolean =>
-        containsAnyPanel(n, new Set(['chart-panel', 'raw-panel']));
-
-      const dfs = (n: GridNode): Extract<GridNode, { type: 'branch' }> | null => {
-        if (n.type === 'branch') {
-          if (hasChartOrRaw(n)) {
-            // 优先选择“更靠近叶子”的分支
-            for (const c of n.data) {
-              const inner = dfs(c);
-              if (inner) return inner;
-            }
-            return n;
-          }
-        }
-        return null;
-      };
-
-      const bottomBranch = dfs(node);
-      if (!bottomBranch) return;
-      if (bottomBranch.data.length >= 2) {
-        distributeSizes(
-          bottomBranch,
-          bottomBranch.data.map((_) => 1),
-        );
-      }
-    };
-
-    const equalizeRow = (node: GridNode, rowSet: Set<string>): void => {
-      const rowBranch = findDeepestBranchContainingAny(node, rowSet);
-      if (!rowBranch) return;
-      const weights = rowBranch.data.map((c) => Math.max(0, countVisualLeaves(c, rowSet)));
-      const sum = weights.reduce((a, b) => a + b, 0);
-      if (sum > 0) distributeSizes(rowBranch, weights);
-    };
-
-    try {
-      const state = api.toJSON() as DockviewSerializedGrid;
-      const root = state.grid?.root;
-      if (!root || root.type !== 'branch' || !Array.isArray(root.data)) return;
-
-      const visualSet = new Set(visualPanelIds);
-      const row1Set = new Set(row1PanelIds);
-      const row2Set = new Set(row2PanelIds);
-      const bottomSet = new Set(['chart-panel', 'raw-panel']);
-
-      const children: GridNode[] = root.data;
-      if (children.length >= 2) {
-        const bottomIdx = children.findIndex((c) => containsAnyPanel(c, bottomSet));
-        const topIdx = children.findIndex((c) => containsAnyPanel(c, visualSet));
-        if (bottomIdx !== -1 && topIdx !== -1 && bottomIdx !== topIdx) {
-          const topWeight = 2;
-          const bottomWeight = 1;
-          const total = topWeight + bottomWeight;
-          const topSize = Math.max(1, Math.round((root.size * topWeight) / total));
-          children[topIdx].size = topSize;
-          children[bottomIdx].size = Math.max(1, root.size - topSize);
-        }
-      }
-
-      const topBranch = findDeepestBranchContainingAny(root, visualSet);
-      if (topBranch && row2PanelIds.length > 0 && topBranch.data.length >= 2) {
-        const rowWeights = topBranch.data.map((c): number =>
-          containsAnyPanel(c, row1Set) || containsAnyPanel(c, row2Set) ? 1 : 0,
-        );
-        if (rowWeights.reduce((a, b) => a + b, 0) > 1) {
-          distributeSizes(topBranch, rowWeights);
-        }
-      }
-
-      equalizeRow(root, row1Set);
-      if (row2PanelIds.length > 0) {
-        equalizeRow(root, row2Set);
-      }
-      equalizeBottom(root);
-
-      api.fromJSON(state as Parameters<DockviewApi['fromJSON']>[0]);
-    } catch {
-      // fromJSON/toJSON 失败时保持原布局（Dockview 会自恢复）
-    }
-  };
-
   useEffect(() => {
     if (dockviewRef.current) {
       const container = dockviewRef.current.querySelector('.dockview-react');
@@ -243,17 +100,11 @@ export const DockviewLayout: React.FC = () => {
     }
   }, [resolvedTheme]);
 
-  // Handle dynamic panel creation when info changes
-  useEffect(() => {
-    if (!apiRef.current || !info) return;
-
-    const api = apiRef.current;
-    api.panels.forEach((p) => p.api.close());
-
-    const visualFeaturesByKey = new Map<
-      string,
-      { id: string; component: 'video' | 'image'; title: string; params: { featureKey: string } }
-    >(
+  // The automatic layout for this dataset and width. Panel ids name their feature, so a panel whose
+  // feature is unchanged keeps its id across arrangements.
+  const arrangement = useMemo(() => {
+    if (!info) return null;
+    const visualByKey = new Map<string, AutoPanel>(
       Object.entries(info.features)
         .filter((entry): entry is [string, LeRobotFeature] => {
           const feature = entry[1];
@@ -272,145 +123,66 @@ export const DockviewLayout: React.FC = () => {
           ] as const;
         }),
     );
+    const { row1, row2 } = getAutoLayoutVisualRows(Array.from(visualByKey.keys()), 6, maxPerRow);
+    const toPanels = (keys: string[]) =>
+      keys.map((key) => visualByKey.get(key)).filter((v): v is AutoPanel => Boolean(v));
+    const visualRows = [toPanels(row1), toPanels(row2)].filter((panels) => panels.length > 0);
+    const bottom: AutoPanel[] = [
+      { id: 'chart-panel', component: 'chart', title: 'chart', params: {} },
+      { id: 'raw-panel', component: 'raw', title: 'raw', params: {} },
+    ];
+    return { visualRows, bottom, stacked };
+  }, [info, maxPerRow, stacked]);
 
-    const { row1: row1Keys, row2: row2Keys } = getAutoLayoutVisualRows(
-      Array.from(visualFeaturesByKey.keys()),
-      6,
-      maxPerRow,
+  const tRef = useRef(t);
+  tRef.current = t;
+  const builtRef = useRef<{ info: unknown; signature: string } | null>(null);
+
+  // Build only when the dataset or the arrangement changes: a width change inside a breakpoint or
+  // a locale switch never recreates panels (and video elements outlive panels in the video stage).
+  useEffect(() => {
+    const api = dockviewApi;
+    if (!api || !arrangement || !info) return;
+    const signature = autoLayoutSignature(arrangement);
+    const built = builtRef.current;
+    if (built && built.info === info && built.signature === signature) return;
+    const translate = (panel: AutoPanel): AutoPanel =>
+      panel.component === 'chart'
+        ? { ...panel, title: tRef.current('common.chart') }
+        : panel.component === 'raw'
+          ? { ...panel, title: tRef.current('panels.raw.title') }
+          : panel;
+    const element = dockviewRef.current;
+    const layout = buildAutoLayout({
+      visualRows: arrangement.visualRows.map((panels) => panels.map(translate)),
+      bottom: arrangement.bottom.map(translate),
+      stacked: arrangement.stacked,
+      width: element?.clientWidth || 1200,
+      height: arrangement.stacked
+        ? Math.max(
+            element?.clientHeight || 800,
+            (arrangement.visualRows.flat().length + arrangement.bottom.length) *
+              STACKED_PANEL_MIN_HEIGHT_PX,
+          )
+        : element?.clientHeight || 800,
+    });
+    try {
+      api.fromJSON(layout);
+      builtRef.current = { info, signature };
+    } catch (error) {
+      console.warn('[dockview] could not apply the automatic layout', error);
+    }
+    setPanelCount(
+      arrangement.stacked ? arrangement.visualRows.flat().length + arrangement.bottom.length : 0,
     );
-    const row1Visual = row1Keys
-      .map((key) => visualFeaturesByKey.get(key))
-      .filter((v): v is NonNullable<typeof v> => Boolean(v));
-    const row2Visual = row2Keys
-      .map((key) => visualFeaturesByKey.get(key))
-      .filter((v): v is NonNullable<typeof v> => Boolean(v));
-    const visibleVisual = [...row1Visual, ...row2Visual];
+  }, [dockviewApi, arrangement, info]);
 
-    setPanelCount(0);
-
-    // 如果没有视觉源，降级为 chart + raw 横向均分（避免空白）
-    if (visibleVisual.length === 0) {
-      safeAddPanel(api, {
-        id: 'chart-panel',
-        component: 'chart',
-        title: t('common.chart'),
-        params: {},
-        tabComponent: 'default',
-      });
-      safeAddPanel(api, {
-        id: 'raw-panel',
-        component: 'raw',
-        title: t('panels.raw.title'),
-        params: {},
-        tabComponent: 'default',
-        position: { referencePanel: 'chart-panel', direction: stacked ? 'below' : 'right' },
-      });
-      return;
-    }
-
-    if (stacked) {
-      let previousId: string | null = null;
-      const stackedPanels = [
-        ...visibleVisual.map((v) => ({
-          id: v.id,
-          component: v.component,
-          title: v.title,
-          params: v.params as { featureKey?: string },
-        })),
-        { id: 'chart-panel', component: 'chart' as const, title: t('common.chart'), params: {} },
-        { id: 'raw-panel', component: 'raw' as const, title: t('panels.raw.title'), params: {} },
-      ];
-      for (const p of stackedPanels) {
-        safeAddPanel(api, {
-          ...p,
-          tabComponent: 'default',
-          ...(previousId ? { position: { referencePanel: previousId, direction: 'below' } } : {}),
-        });
-        previousId = p.id;
-      }
-      setPanelCount(stackedPanels.length);
-      return;
-    }
-
-    const firstVisualId = row1Visual[0].id;
-
-    // 先创建首个视觉面板
-    safeAddPanel(api, {
-      id: firstVisualId,
-      component: visibleVisual[0].component,
-      title: visibleVisual[0].title,
-      params: visibleVisual[0].params,
-      tabComponent: 'default',
-    });
-
-    // 第一行视觉区：其余面板均匀分布在右侧（同一行）
-    let row1TailId = firstVisualId;
-    for (const v of row1Visual.slice(1)) {
-      safeAddPanel(api, {
-        id: v.id,
-        component: v.component,
-        title: v.title,
-        params: v.params,
-        tabComponent: 'default',
-        // 始终追加到当前行尾，避免固定锚点导致中间插入而出现顺序反转
-        position: { referencePanel: row1TailId, direction: 'right' },
-      });
-      row1TailId = v.id;
-    }
-
-    // 第二行视觉区：depth 等关键词优先落在此行
-    if (row2Visual.length > 0) {
-      const secondRowFirst = row2Visual[0];
-      safeAddPanel(api, {
-        id: secondRowFirst.id,
-        component: secondRowFirst.component,
-        title: secondRowFirst.title,
-        params: secondRowFirst.params,
-        tabComponent: 'default',
-        // 关键：使用绝对 below，先切“整行”再在行内加列，避免三角嵌套
-        position: { direction: 'below' },
-      });
-
-      let row2TailId = secondRowFirst.id;
-      for (const v of row2Visual.slice(1)) {
-        safeAddPanel(api, {
-          id: v.id,
-          component: v.component,
-          title: v.title,
-          params: v.params,
-          tabComponent: 'default',
-          position: { referencePanel: row2TailId, direction: 'right' },
-        });
-        row2TailId = v.id;
-      }
-    }
-
-    // 第三行：Chart + Raw
-    safeAddPanel(api, {
-      id: 'chart-panel',
-      component: 'chart',
-      title: t('common.chart'),
-      params: {},
-      tabComponent: 'default',
-      // 再次使用绝对 below：确保 chart/raw 落在完整视觉区下方
-      position: { direction: 'below' },
-    });
-
-    safeAddPanel(api, {
-      id: 'raw-panel',
-      component: 'raw',
-      title: t('panels.raw.title'),
-      params: {},
-      tabComponent: 'default',
-      position: { referencePanel: 'chart-panel', direction: 'right' },
-    });
-
-    rebalanceLayout(
-      api,
-      row1Visual.map((v) => v.id),
-      row2Visual.map((v) => v.id),
-    );
-  }, [info, t, maxPerRow, stacked]);
+  // A locale switch renames the panels in place.
+  useEffect(() => {
+    if (!dockviewApi) return;
+    dockviewApi.getPanel('chart-panel')?.api.setTitle(t('common.chart'));
+    dockviewApi.getPanel('raw-panel')?.api.setTitle(t('panels.raw.title'));
+  }, [dockviewApi, t]);
 
   const onReady = (event: DockviewReadyEvent) => {
     const { api } = event;
