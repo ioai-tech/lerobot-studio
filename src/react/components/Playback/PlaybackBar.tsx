@@ -177,6 +177,15 @@ export const PlaybackBar: React.FC = () => {
   const userPausedRef = useRef(false);
   useEffect(() => {
     const currentId = `${selectedEpisodeIndex}-${totalFrames}`;
+    if (isPlaying && !isLoading && totalFrames > 0) {
+      // playing already (playing on into this episode, or started by hand): its autoplay is used
+      // up, so a pause stays a pause
+      if (didAutoPlayRef.current !== currentId) {
+        didAutoPlayRef.current = currentId;
+        consumeEpisodeAutoplay?.(selectedEpisodeIndex);
+      }
+      return;
+    }
     if (
       shouldStartAutoplay({
         totalFrames,

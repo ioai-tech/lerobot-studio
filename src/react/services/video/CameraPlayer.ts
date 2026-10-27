@@ -99,9 +99,6 @@ interface Job {
   failed: boolean;
   /** A readiness check loop is running. */
   watching: boolean;
-  /** Resolves when the job is ready (true) or failed / superseded (false). */
-  settled: Promise<boolean>;
-  resolve: (ok: boolean) => void;
   /** While playing: promote when the clock reaches this time of the old element. */
   rendezvous: number | null;
   /** When the standby was last aimed at its target (ms), to learn how long it takes to get ready. */
@@ -115,7 +112,6 @@ interface Job {
   /** When it first started to (ms): a buffer that does not grow in `PREROLL_MAX_MS` gives up. */
   prerollSince: number | null;
   group: TransitionGroup | null;
-  startedAt: number;
   /** Expiry of `url` when it was loaded (epoch ms), null when it does not expire. */
   urlExpiry: number | null;
   /**
@@ -162,6 +158,11 @@ export class TransitionGroup {
     this.maybeFlush();
   }
 
+  /** Promoted (or emptied): later readiness of a member is its own. */
+  isClosed(): boolean {
+    return this.closed;
+  }
+
   private maybeFlush(): void {
     if (!this.sealed || this.closed || this.pending.size > 0) return;
     this.closed = true;
@@ -183,6 +184,8 @@ export const VIDEO_URL_POLICY = { renewLeadMs: 90_000 };
 const PARK_RELEASE_MS = 3_000;
 const RENEW_BACKOFF_MIN_MS = 5_000;
 const RENEW_BACKOFF_MAX_MS = 60_000;
+/** A visible panel detached counts as visible this long (a layout rebuild attaches a new one; ms). */
+const LAYOUT_GRACE_MS = 800;
 /** A camera hidden this long lets go of its element (ms). */
 const HIBERNATE_MS = 1_500;
 /** While playing, a swap is prepared this far ahead of the clock and promoted when it gets there. */
@@ -308,6 +311,12 @@ export class CameraPlayer {
   /** Paused swap: the old picture painted on a canvas while its element let go of its connection. */
   private cover: HTMLCanvasElement | null = null;
   private frozenFrame: number | null = null;
+  /** A visible panel was detached: the camera counts as visible until then (ms, a layout rebuild). */
+  private layoutGraceUntil = 0;
+  /** A prefetch the renewal of the URL on screen took the standby from: loaded again after it. */
+  private resumePrefetch: { source: CameraSource; frame: number } | null = null;
+  /** The visibility last acted on (`onVisibilityChange`). */
+  private wasVisible = false;
   /**
    * The picture of the previous episode was let go (a switch that came late or failed): the camera
    * neither holds nor drives the playing clock until a picture of the selected episode is promoted
@@ -401,7 +410,9 @@ export class CameraPlayer {
   }
 
   isVisible(): boolean {
-    return this.visibleHosts.size > 0;
+    // a layout rebuild detaches the panel and attaches a new one, which the observers report a
+    // moment later: the camera stays visible meanwhile (no pause, no reload)
+    return this.visibleHosts.size > 0 || performance.now() < this.layoutGraceUntil;
   }
 
   /** Panels showing this camera. */
@@ -443,7 +454,7 @@ export class CameraPlayer {
     // A prefetched (or in-flight) standby already loads this file: take it over.
     const job = this.job;
     if (job && !job.failed && job.source.path === source.path && !this.urlStale(job)) {
-      const switching = this.switchesEpisode(source);
+      const switching = !this.activeUrl || this.switchesEpisode(source);
       job.source = source;
       // a new selection: it holds the clock again (also when the job had come late for another one)
       if (switching && (job.purpose !== 'show' || job.late)) {
@@ -491,6 +502,7 @@ export class CameraPlayer {
   }
 
   cancelPrefetch(): void {
+    this.resumePrefetch = null;
     if (this.job?.purpose === 'prefetch') this.cancelJob();
   }
 
@@ -562,10 +574,13 @@ export class CameraPlayer {
     late = false,
   ): void {
     if (purpose !== 'prefetch') this.generation += 1;
+    if ((purpose === 'renew' || purpose === 'recover') && this.job?.purpose === 'prefetch') {
+      this.resumePrefetch = { source: this.job.source, frame: this.job.frame };
+    } else if (purpose === 'show' || purpose === 'prefetch') {
+      this.resumePrefetch = null;
+    }
     this.cancelJob();
     const element = this.standby;
-    let resolve: (ok: boolean) => void = () => undefined;
-    const settled = new Promise<boolean>((done) => (resolve = done));
     const job: Job = {
       id: nextJobId++,
       purpose,
@@ -576,8 +591,6 @@ export class CameraPlayer {
       ready: false,
       failed: false,
       watching: false,
-      settled,
-      resolve,
       rendezvous: null,
       aimedAt: performance.now(),
       readyLatency: null,
@@ -585,16 +598,17 @@ export class CameraPlayer {
       prerolling: false,
       prerollSince: null,
       group: null,
-      startedAt: performance.now(),
       urlExpiry: null,
       late,
       deadline: 0,
       clockFrame: null,
     };
     this.job = job;
-    if (purpose === 'show' && !late && this.switchesEpisode(source)) this.armSwitchDeadline(job);
-    // a camera that let its picture go joins the playing group again while this switch holds it
-    if (this.pictureDropped) this.refreshSyncRegistration();
+    if (purpose === 'show' && !late && (!this.activeUrl || this.switchesEpisode(source)))
+      this.armSwitchDeadline(job);
+    // a camera without a picture (the first one, or let go) joins the playing group while this
+    // switch holds it
+    this.refreshSyncRegistration();
     if (group) this.joinGroup(job, group);
     // Paused, or switching to another episode (the clock waits for it anyway): the old picture
     // stays on a canvas and its element lets go of its connection, so the new file gets the
@@ -652,6 +666,7 @@ export class CameraPlayer {
       );
       this.cancelJob();
       this.scheduleRenewal();
+      this.resumeStashedPrefetch();
       return;
     }
     const element = job.element;
@@ -735,14 +750,12 @@ export class CameraPlayer {
   private onJobReady(job: Job): void {
     job.ready = true;
     job.readyLatency = performance.now() - job.aimedAt;
-    if (job.purpose === 'prefetch') {
-      job.resolve(true);
-      return; // promoted when the episode is selected
-    }
-    if (job.group) {
+    if (job.purpose === 'prefetch') return; // promoted when the episode is selected
+    if (job.group && !job.group.isClosed()) {
       job.group.settle(this, true);
       return;
     }
+    job.group = null;
     this.finishWhenReady(job);
   }
 
@@ -896,7 +909,9 @@ export class CameraPlayer {
   /** Called by a transition group once every member is ready. */
   promoteGroupJob(group: TransitionGroup): void {
     const job = this.job;
-    if (!job || job.group !== group || !job.ready) return;
+    if (!job || job.group !== group) return;
+    // the group is done; a member that is not ready (aimed again since it settled) promotes on its
+    // own once it is, instead of waiting for a group that never flushes again
     job.group = null;
     this.finishWhenReady(job);
   }
@@ -936,8 +951,15 @@ export class CameraPlayer {
     if (wasPlaying || this.env.mediaSync.isPlaying()) this.env.mediaSync.refresh(this.key);
     this.scheduleRenewal();
     this.paintMirrors();
-    job.resolve(true);
     this.env.onPromoted?.(this);
+    if (job.purpose === 'renew' || job.purpose === 'recover') this.resumeStashedPrefetch();
+    else this.resumePrefetch = null;
+  }
+
+  private resumeStashedPrefetch(): void {
+    const resume = this.resumePrefetch;
+    this.resumePrefetch = null;
+    if (resume && !this.job) this.prefetch(resume.source, resume.frame);
   }
 
   /** `source` is another episode (or file) than the one on screen. */
@@ -952,7 +974,8 @@ export class CameraPlayer {
   private isPendingSwitch(): boolean {
     const job = this.job;
     if (!job || job.late || job.failed || job.purpose === 'prefetch') return false;
-    if (job.purpose === 'show' && this.switchesEpisode(job.source)) return true;
+    if (job.purpose === 'show' && (!this.activeUrl || this.switchesEpisode(job.source)))
+      return true;
     return this.frozenFrame !== null;
   }
 
@@ -1027,12 +1050,15 @@ export class CameraPlayer {
       return;
     }
     const fps = this.env.fps();
+    const rate = Math.max(1, this.env.mediaSync.getRate());
+    // the clock moves this many frames per tick at most (faster rates step further)
+    const window = Math.ceil(rate) + 1;
     const target = job.clockFrame !== null && job.frame === job.clockFrame ? job.clockFrame : null;
-    if (target !== null && now >= target && now <= target + 1) {
+    if (target !== null && now >= target && now <= target + window) {
       this.promote(job);
       return;
     }
-    const passed = target !== null && now > target + 1;
+    const passed = target !== null && now > target + window;
     // the clock jumped back (a seek) far behind what the job aims at
     const jumpedBack = target !== null && now < target - Math.ceil(11 * fps);
     if (target === null || passed || jumpedBack) {
@@ -1046,7 +1072,7 @@ export class CameraPlayer {
         this.promote(job);
         return;
       }
-      const lead = Math.min(10, this.reaimLead(job, 1) * 2 ** job.overtaken);
+      const lead = Math.min(10, this.reaimLead(job, rate) * 2 ** job.overtaken);
       job.clockFrame = now + Math.ceil(lead * fps);
       this.retarget(job, job.clockFrame);
       return;
@@ -1084,7 +1110,6 @@ export class CameraPlayer {
     if (!job) return;
     this.job = null;
     job.group?.drop(this);
-    job.resolve(false);
     this.seekerOf(job.element).cancel();
     releaseMediaElement(job.element);
     if (this.snapshot.switching || this.snapshot.pendingRendition)
@@ -1099,10 +1124,10 @@ export class CameraPlayer {
     // the old picture was frozen for this job, or it was another episode: either way it is not
     // what the timeline shows, and the camera must not hold the others while it retries
     const dropOld =
-      purpose !== 'prefetch' && (this.frozenFrame !== null || this.switchesEpisode(job.source));
+      purpose !== 'prefetch' &&
+      (this.frozenFrame !== null || !this.activeUrl || this.switchesEpisode(job.source));
     this.job = null;
     if (this.snapshot.pendingRendition) this.update({ pendingRendition: null });
-    job.resolve(false);
     releaseMediaElement(job.element);
     if (purpose === 'prefetch') return; // the real switch loads it again
     if (dropOld) this.dropPicture();
@@ -1136,21 +1161,18 @@ export class CameraPlayer {
     }
     const expiry = this.env.getUrlExpiry(source.path);
     let refused = expiry !== null && Date.now() >= expiry - 5_000;
-    let status = knownStatus ?? null;
-    if (!refused && url && knownStatus === undefined) {
-      status = await this.env.probe(url);
-      if (stale()) return;
-    }
-    refused = refused || (status !== null && isSignatureRefused(status));
+    // the element's failure tells no status: the server is asked at the retry (one small request
+    // before the element loads the file again), so each attempt costs one request, not two
+    let status: number | null | undefined = knownStatus;
+    refused = refused || (status != null && isSignatureRefused(status));
     const retry = async () => {
       this.retryTimer = null;
       if (stale()) return;
-      if (url && status !== null && status >= 400 && !isSignatureRefused(status)) {
-        // the server answered with an error: ask it again (one small request) before the video
-        // element loads the file again, so each attempt costs one request, not two
+      if (url && (status === undefined || (status !== null && status >= 400))) {
         const again = await this.env.probe(url);
         if (stale()) return;
         if (again !== null && again >= 400) {
+          // still failing (an expired signature is re-signed at once)
           void this.handleFailure(source, frame, url, purpose, again);
           return;
         }
@@ -1303,7 +1325,7 @@ export class CameraPlayer {
       this.mirrors.delete(host);
     }
     this.placeElements();
-    this.onVisibilityChange();
+    this.visibilityMayHaveChanged();
     if (this.hosts.length === 0 && !this.disposed) {
       // a layout rebuild re-attaches within a frame; a closed panel releases the source
       this.releaseTimer = window.setTimeout(() => {
@@ -1368,17 +1390,10 @@ export class CameraPlayer {
     }
     if (this.cover && this.cover.parentElement !== owner) moveInto(owner, this.cover);
     // a media element taken out of the document pauses (where the state-preserving move is not
-    // supported), and only once the move settled: a layout rebuild while playing must not leave
-    // the camera paused
-    if (moved && this.activeUrl) {
-      const resume = () => {
-        if (this.disposed || !this.env.mediaSync.isPlaying() || !this.active.paused) return;
-        if (this.pictureDropped || this.frozenFrame !== null) return;
-        this.env.mediaSync.refresh(this.key);
-      };
-      resume();
-      window.setTimeout(resume, 0);
-      requestAnimationFrame(resume);
+    // supported): a layout rebuild while playing must not leave the camera paused (a pause that
+    // lands later is undone by MediaSync's tick)
+    if (moved && this.activeUrl && this.env.mediaSync.isPlaying() && this.active.paused) {
+      this.env.mediaSync.refresh(this.key);
     }
     for (const host of this.hosts.slice(1)) {
       if (!this.mirrors.has(host)) {
@@ -1475,12 +1490,29 @@ export class CameraPlayer {
     }
     const same =
       before === this.visibleHosts.size && [...this.visibleHosts].every((host) => had.has(host));
-    if (!same) this.onVisibilityChange();
+    if (!same) this.visibilityMayHaveChanged();
+  }
+
+  private visibilityMayHaveChanged(): void {
+    if (this.visibleHosts.size === 0 && this.wasVisible && this.layoutGraceUntil === 0) {
+      // Hidden just now: a layout rebuild detaches the panel (or sizes it to nothing for a frame)
+      // and shows it again a moment later. The camera stays visible meanwhile: no pause, no
+      // reload. Still hidden after the grace: hidden.
+      this.layoutGraceUntil = performance.now() + LAYOUT_GRACE_MS;
+      window.setTimeout(() => {
+        this.layoutGraceUntil = 0;
+        if (!this.disposed && this.visibleHosts.size === 0) this.onVisibilityChange();
+      }, LAYOUT_GRACE_MS);
+      return;
+    }
+    // still visible (another panel of the camera, or shown again within the grace): nothing to do
+    if (!(this.isVisible() && this.wasVisible)) this.onVisibilityChange();
   }
 
   /** Visible cameras download ahead and join playback; hidden ones only keep metadata. */
   private onVisibilityChange(): void {
     const visible = this.isVisible();
+    this.wasVisible = visible;
     if (this.hibernateTimer !== null) {
       clearTimeout(this.hibernateTimer);
       this.hibernateTimer = null;
@@ -1494,10 +1526,14 @@ export class CameraPlayer {
         this.hibernateTimer = null;
         if (this.disposed || this.isVisible() || this.hosts.length === 0 || !this.activeUrl) return;
         if (this.job && this.job.purpose !== 'show') this.cancelJob();
-        if (!this.job) this.freeze(true);
+        if (!this.job) {
+          this.freeze(true);
+          // no element of its own any more: shown again, it joins the clock instead of holding it
+          if (this.frozenFrame !== null) this.pictureDropped = true;
+        }
       }, HIBERNATE_MS);
     } else if (visible && this.frozenFrame !== null && !this.job && this.source) {
-      this.startJob('show', this.source, this.env.frameIndex(), null);
+      this.startJob('show', this.source, this.env.frameIndex(), null, this.pictureDropped);
     }
     this.active.preload = visible ? 'auto' : 'metadata';
     if (this.job && this.job.purpose !== 'prefetch')
@@ -1508,9 +1544,13 @@ export class CameraPlayer {
 
   /** Join MediaSync while a source is on screen and the camera is visible. */
   private refreshSyncRegistration(): void {
-    // a camera that let its picture go and gave up has nothing to play or wait for
-    const gaveUp = this.pictureDropped && this.snapshot.status === 'error';
-    const shouldRegister = Boolean(this.activeUrl && this.source && this.isVisible() && !gaveUp);
+    // a camera without a picture of its own that gave up has nothing to play or wait for
+    const gaveUp = (this.pictureDropped || !this.activeUrl) && this.snapshot.status === 'error';
+    // the first picture loading: the playing clock waits for it too
+    const loadingFirst = !this.activeUrl && this.job?.purpose === 'show';
+    const shouldRegister = Boolean(
+      ((this.activeUrl && this.source) || loadingFirst) && this.isVisible() && !gaveUp,
+    );
     if (shouldRegister && !this.unregisterSync) {
       if (!this.env.mediaSync.isPlaying() && !this.job) {
         // shown again while paused: catch up with the playhead
@@ -1546,6 +1586,7 @@ export class CameraPlayer {
     for (const element of this.elements) releaseMediaElement(element);
     this.unfreeze();
     this.pictureDropped = false;
+    this.resumePrefetch = null;
     this.activeUrl = null;
     this.failed = null;
     this.update({ status: this.source ? 'empty' : this.snapshot.status, buffering: false });

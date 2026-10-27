@@ -122,6 +122,11 @@ export class MediaSync {
     return this.playing;
   }
 
+  /** The playback rate. */
+  getRate(): number {
+    return this.rate;
+  }
+
   isBuffering(): boolean {
     return this.held;
   }
@@ -140,7 +145,7 @@ export class MediaSync {
     this.held = false;
     // a camera still switching to this episode: everyone waits for it (on the frame to start from)
     const wait = this.pending();
-    for (const media of this.ready()) {
+    for (const media of this.seekable()) {
       const start = media.getStart() ?? 0;
       const time = media.video.currentTime;
       // seek unless the element already shows that frame (a time before the episode shows none)
@@ -158,7 +163,7 @@ export class MediaSync {
    */
   seekFrame(frameIndex: number): void {
     this.atEnd = false;
-    for (const media of this.ready()) {
+    for (const media of this.seekable()) {
       const start = media.getStart() ?? 0;
       this.seekMedia(media, frameCentreTime(start, frameIndex, this.fps));
     }
@@ -205,6 +210,7 @@ export class MediaSync {
 
     const starving =
       this.pending() ||
+      this.seekable().some((media) => !this.inEpisode(media)) ||
       this.ready().some((media) => !media.video.ended && media.video.readyState < HAVE_FUTURE_DATA);
     if (starving && !this.held) {
       this.hold();
@@ -218,6 +224,8 @@ export class MediaSync {
     } else if (!this.held) {
       for (const media of this.ready()) {
         if (media !== master) this.align(media, master, false);
+        // paused under the running clock (its element was moved in the page): it plays on
+        if (media.video.paused === true && !media.video.ended) this.play(media);
       }
     }
 
@@ -263,13 +271,28 @@ export class MediaSync {
 
   /** Cameras that show the selected episode and can play (not switching to it). */
   private ready(): SyncedMedia[] {
-    return [...this.media.values()].filter((media) => this.canDrive(media));
+    return this.seekable().filter((media) => this.inEpisode(media));
   }
 
-  private canDrive(media: SyncedMedia): boolean {
-    return (
-      !isPending(media) && media.getStart() !== null && media.video.readyState >= HAVE_METADATA
+  /** Cameras showing the selected episode with metadata, wherever their element is. */
+  private seekable(): SyncedMedia[] {
+    return [...this.media.values()].filter(
+      (media) =>
+        !isPending(media) && media.getStart() !== null && media.video.readyState >= HAVE_METADATA,
     );
+  }
+
+  /**
+   * The element is within its episode. Outside it, a seek to the episode is still on its way (an
+   * episode switch within the file): its time says nothing about the clock, and its end is not the
+   * episode's.
+   */
+  private inEpisode(media: SyncedMedia): boolean {
+    const start = media.getStart() ?? 0;
+    const time = media.video.currentTime;
+    const slack = 1 / this.fps;
+    const end = media.getEnd?.() ?? Infinity;
+    return time >= start - slack && time <= end + slack;
   }
 
   private pending(): boolean {
@@ -285,16 +308,14 @@ export class MediaSync {
   }
 
   private master(): SyncedMedia | null {
-    const current = this.masterId !== null ? this.media.get(this.masterId) : undefined;
-    if (current && this.canDrive(current)) return current;
-    for (const [id, media] of this.media) {
-      if (this.canDrive(media)) {
-        this.masterId = id;
-        return media;
-      }
+    const ready = this.ready();
+    let master = this.masterId === null ? undefined : this.media.get(this.masterId);
+    if (!master || !ready.includes(master)) {
+      master = ready[0];
+      this.masterId = null;
+      for (const [id, media] of this.media) if (media === master) this.masterId = id;
     }
-    this.masterId = null;
-    return null;
+    return master ?? null;
   }
 
   private seekMedia(media: SyncedMedia, time: number, options?: { once?: boolean }): void {

@@ -261,4 +261,27 @@ describe('MediaSync', () => {
     expect(clock?.frameIndex).toBe(42);
     expect(front.currentTime).toBeCloseTo(wrist.currentTime, 6);
   });
+
+  it('never takes an element still outside its episode (a seek on its way) for the clock or its end', () => {
+    const sync = new MediaSync();
+    sync.setFps(30);
+    const video = new FakeVideo();
+    // another episode of the same file was on screen at 4 s; this one is 0-2.5 s and the seek to
+    // it has not landed yet
+    video.currentTime = 4;
+    const seeks: number[] = [];
+    sync.register('a', {
+      video,
+      getStart: () => 0,
+      getEnd: () => 2.5,
+      seek: (time) => seeks.push(time),
+    });
+    sync.start(0, 1);
+    const clock = sync.tick();
+    expect(clock?.frameIndex).not.toBe(Number.POSITIVE_INFINITY);
+    expect(clock?.buffering).toBe(true);
+    // the seek lands: the clock runs from the episode's first frame
+    video.currentTime = 0.5 / 30;
+    expect(sync.tick()).toEqual({ frameIndex: 0, buffering: false });
+  });
 });

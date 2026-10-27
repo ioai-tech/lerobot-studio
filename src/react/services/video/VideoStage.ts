@@ -400,22 +400,24 @@ export class VideoStage {
   attach(featureKey: string, host: HTMLElement): () => void {
     const player = this.player(featureKey);
     const detach = player.attach(host);
-    if (!player.hasSource() && this.episodeIndex !== null) {
-      const episodeIndex = this.episodeIndex;
-      const token = this.token;
-      const rendition = this.renditionFor(featureKey);
-      void Promise.resolve(this.sourceFor(featureKey, episodeIndex, rendition)).then((source) => {
-        if (
-          source &&
-          token === this.token &&
-          this.episodeIndex === episodeIndex &&
-          !player.hasSource()
-        ) {
-          player.show(source, this.getFrameIndex(), null);
-        }
-      });
-    }
+    this.ensureSource(player);
     return detach;
+  }
+
+  /**
+   * A camera without a source (attached, or shown again, after the selection's switch skipped it)
+   * loads the selected episode.
+   */
+  private ensureSource(player: CameraPlayer): void {
+    if (player.hasSource() || this.episodeIndex === null) return;
+    const episodeIndex = this.episodeIndex;
+    const rendition = this.renditionFor(player.key);
+    void Promise.resolve(this.sourceFor(player.key, episodeIndex, rendition)).then((source) => {
+      // a later selection shows it (or skips it while hidden, and this runs again when visible)
+      if (source && this.episodeIndex === episodeIndex && !player.hasSource()) {
+        player.show(source, this.getFrameIndex(), null);
+      }
+    });
   }
 
   /** The camera of `featureKey` (created on first use). */
@@ -1055,7 +1057,8 @@ export class VideoStage {
       },
       getUrlExpiry: (path) => this.loader?.getFileUrlExpiry(path) ?? null,
       parking: () => this.parking(),
-      onVisibilityChange: () => {
+      onVisibilityChange: (player) => {
+        if (player.isVisible()) this.ensureSource(player);
         if (this.episodeIndex !== null) this.replan();
       },
       onSwitchStarved: (player) => {

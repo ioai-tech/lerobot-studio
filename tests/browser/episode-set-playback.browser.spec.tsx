@@ -1,7 +1,7 @@
 import React, { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { page } from 'vitest/browser';
+import { page, userEvent } from 'vitest/browser';
 import {
   LeRobotViewer,
   createEpisodeSetDataSource,
@@ -97,6 +97,8 @@ interface LogEntry {
   query: string;
   range: string | null;
   status: number;
+  /** When the server got it (epoch ms). */
+  at: number;
 }
 
 async function requestLog(clear = false): Promise<LogEntry[]> {
@@ -200,6 +202,8 @@ describe('browser: an episode set over two recordings', () => {
       refreshQuery?: string | (() => string);
       mutate?: (sets: EpisodeSetRecording[]) => EpisodeSetRecording[];
       waitFirst?: boolean;
+      /** The manifest refresh answers this late (ms). */
+      refreshDelayMs?: number;
       /** Other episodes than `EPISODES` (rows of the recordings' data files). */
       episodes?: ReadonlyArray<{ recordingId: string; fromRow: number; toRow: number }>;
     } = {},
@@ -232,6 +236,7 @@ describe('browser: an episode set over two recordings', () => {
         ? {
             refresh: async () => {
               refreshes += 1;
+              if (options.refreshDelayMs) await sleep(options.refreshDelayMs);
               const query =
                 typeof options.refreshQuery === 'function'
                   ? options.refreshQuery()
@@ -422,10 +427,49 @@ describe('browser: an episode set over two recordings', () => {
       await open({
         manifestQuery: '?expiresInMs=15000&sig=1',
         refreshQuery: () => `?expiresInMs=15000&sig=${(signature += 1)}`,
+        // a refresh takes a round trip to the server (slow under load)
+        refreshDelayMs: 1_500,
       });
       const startedAt = performance.now();
       await setPlaying(true);
       const errors = new Set<string>();
+      // the clock never runs while a camera shows a picture of another episode
+      let wrong = 0;
+      let lastFrame = frameText();
+      const wrongTrace: string[] = [];
+      let watching = true;
+      const watch = () => {
+        if (!watching) return;
+        const frame = frameText();
+        const current = Number(
+          host
+            .querySelector('[aria-current="true"][aria-label^="Select Episode"]')
+            ?.getAttribute('aria-label')
+            ?.replace(/\D+/g, '') ?? '-1',
+        );
+        // (the frames around a switch excepted: the selection and the pictures change a frame apart)
+        if (
+          lastFrame > 2 &&
+          frame > lastFrame &&
+          frame - lastFrame < 10 &&
+          frame < FRAMES - 3 &&
+          current >= 0 &&
+          isPlaying()
+        ) {
+          const first = EPISODES[current].first;
+          for (const camera of CAMERAS) {
+            const value = shown(camera);
+            if (value !== null && (value < first || value >= first + FRAMES)) {
+              wrong += frame - lastFrame;
+              if (wrongTrace.length < 20)
+                wrongTrace.push(`${camera}@ep${current}:${frame}=${value}`);
+            }
+          }
+        }
+        lastFrame = frame;
+        requestAnimationFrame(watch);
+      };
+      requestAnimationFrame(watch);
       // play the set through, three times, past several URL lifetimes
       for (let round = 0; round < 3; round++) {
         for (let episode = 0; episode < EPISODES.length; episode++) {
@@ -452,6 +496,56 @@ describe('browser: an episode set over two recordings', () => {
       );
       expect(refused.map((entry) => `${entry.path}?${entry.query}`)).toEqual([]);
       expect([...errors]).toEqual([]);
+      watching = false;
+      expect(wrong, wrongTrace.join(' ')).toBeLessThanOrEqual(2);
+    } finally {
+      MANIFEST_REFRESH_POLICY.marginMs = saved.marginMs;
+      MANIFEST_REFRESH_POLICY.minProactiveMs = saved.minProactiveMs;
+      URL_EXPIRY_POLICY.marginMs = saved.loader;
+    }
+  });
+
+  it('a prefetched next episode kept past its URL renewal is renewed, and the switch takes it over', async ({
+    skip,
+  }) => {
+    if (!(await frameCodedAvailable())) return skip();
+    // scaled lifetimes (see above): URLs live 15 s, renewed 9 s ahead
+    const { MANIFEST_REFRESH_POLICY } =
+      await import('../../src/platform/datasource/RemoteManifestDataSource');
+    const { URL_EXPIRY_POLICY } = await import('../../src/platform/services/LeRobotDataLoader');
+    const saved = { ...MANIFEST_REFRESH_POLICY, loader: URL_EXPIRY_POLICY.marginMs };
+    MANIFEST_REFRESH_POLICY.marginMs = 6_000;
+    MANIFEST_REFRESH_POLICY.minProactiveMs = 2_000;
+    URL_EXPIRY_POLICY.marginMs = 4_500;
+    VIDEO_URL_POLICY.renewLeadMs = 9_000;
+    let signature = 1;
+    try {
+      await open({
+        manifestQuery: '?expiresInMs=15000&sig=1',
+        refreshQuery: () => `?expiresInMs=15000&sig=${(signature += 1)}`,
+      });
+      await setPlaying(false);
+      // near the end of episode 0, paused: the next episode (recording b) is prefetched while idle
+      await act(async () => {
+        slider()!.focus();
+      });
+      await press('End');
+      for (let step = 0; step < 15; step++) await press('ArrowLeft');
+      // idle past the prefetched URL's renewal time
+      await sleep(14_000);
+      await requestLog(true);
+      await setPlaying(true);
+      await waitFor(() => allIn(1) && isPlaying(), 15_000, 'episode 1 playing');
+      // the switch took the prefetched standby over: no video of recording b loaded from its start
+      const reloads = (await requestLog()).filter(
+        (entry) =>
+          entry.path.endsWith('.mp4') &&
+          entry.path.includes('file-001') &&
+          (entry.range === null || entry.range === 'bytes=0-'),
+      );
+      expect(reloads.map((entry) => `${entry.path} ${entry.range}`)).toEqual([]);
+      const refused = (await requestLog()).filter((entry) => entry.status === 403);
+      expect(refused.map((entry) => entry.path)).toEqual([]);
     } finally {
       MANIFEST_REFRESH_POLICY.marginMs = saved.marginMs;
       MANIFEST_REFRESH_POLICY.minProactiveMs = saved.minProactiveMs;
@@ -494,8 +588,10 @@ describe('browser: an episode set over two recordings', () => {
       'wrist camera gives up with a named error',
     );
     const brokenRequests = (await requestLog()).filter((entry) => entry.path === broken);
-    // the first load, its probe, then one request per retry (5 attempts in the budget)
-    expect(brokenRequests.length, JSON.stringify(brokenRequests)).toBeLessThanOrEqual(7);
+    // the first load, then one request per retry (5 attempts in the budget); never two at once
+    expect(brokenRequests.length, JSON.stringify(brokenRequests)).toBeLessThanOrEqual(6);
+    const gaps = brokenRequests.slice(1).map((entry, index) => entry.at - brokenRequests[index].at);
+    expect(Math.min(...gaps), JSON.stringify(gaps)).toBeGreaterThanOrEqual(80);
     // Retry: the camera loads (the server works by now)
     const retry = Array.from(wrist()!.querySelectorAll<HTMLButtonElement>('button')).find(
       (button) => /retry/i.test(button.textContent ?? ''),
@@ -792,5 +888,297 @@ describe('browser: an episode set over two recordings', () => {
       5_000,
       `bar at the end: ${barText()}`,
     );
+  });
+
+  it('a paused step while a switch loads: every camera lands on the stepped frame', async ({
+    skip,
+  }) => {
+    if (!(await frameCodedAvailable())) return skip();
+    // the wrist camera's videos of recording b answer late
+    await open({ mutate: patchFiles('b', videoOf(CAMERAS[1]), 'delayMs=1500') });
+    await setPlaying(false);
+    await selectEpisode(2);
+    // the front camera is ready (and waits for the wrist one to switch together); step meanwhile
+    await sleep(500);
+    await act(async () => {
+      slider()!.focus();
+    });
+    for (let step = 0; step < 3; step++) {
+      await press('ArrowRight');
+      await sleep(60);
+    }
+    await waitFor(
+      () => frameText() === 3 && CAMERAS.every((camera) => shown(camera) === EPISODES[2].first + 3),
+      10_000,
+      'both cameras on frame 3 of episode 2',
+    );
+  });
+
+  it('layout changes while playing do not stall or pause the cameras on screen', async ({
+    skip,
+  }) => {
+    if (!(await frameCodedAvailable())) return skip();
+    await open({
+      waitFirst: false,
+      episodes: [
+        { recordingId: 'a', fromRow: 0, toRow: 180 },
+        { recordingId: 'b', fromRow: 0, toRow: 180 },
+      ],
+    });
+    await waitFor(() => CAMERAS.every((camera) => shown(camera) !== null), 30_000, 'first picture');
+    await setPlaying(true);
+    await sleep(500);
+    const events: string[] = [];
+    const listen = (event: Event) => {
+      const video = event.target as HTMLVideoElement;
+      if (video.dataset.lerobotRole === 'active')
+        events.push(
+          `${event.type}:${video.dataset.lerobotCamera?.split('.').pop()}@${Math.round(performance.now())}`,
+        );
+    };
+    for (const type of ['waiting', 'pause', 'seeking'])
+      document.addEventListener(type, listen, true);
+    try {
+      for (const width of ['900px', '520px', '1400px', '700px', '1400px']) {
+        host.style.width = width;
+        await sleep(500);
+      }
+      expect(isPlaying()).toBe(true);
+      // (a panel moved in the page pauses its element for a moment: it plays on at once)
+      expect(
+        events.filter((event) => !event.startsWith('pause:')),
+        describeState(),
+      ).toEqual([]);
+      await sleep(300);
+      expect(
+        CAMERAS.filter((camera) => activeVideo(camera)?.paused !== false),
+        describeState(),
+      ).toEqual([]);
+    } finally {
+      for (const type of ['waiting', 'pause', 'seeking'])
+        document.removeEventListener(type, listen, true);
+    }
+  });
+
+  it('a camera hidden for a while joins the playing clock when shown again, without holding the others', async ({
+    skip,
+  }) => {
+    if (!(await frameCodedAvailable())) return skip();
+    await open({
+      waitFirst: false,
+      episodes: [
+        { recordingId: 'a', fromRow: 0, toRow: 180 },
+        { recordingId: 'b', fromRow: 0, toRow: 180 },
+      ],
+    });
+    await waitFor(() => CAMERAS.every((camera) => shown(camera) !== null), 30_000, 'first picture');
+    await setPlaying(true);
+    const hidden = CAMERAS.find((camera) => panel(camera)!.getBoundingClientRect().left < 400);
+    expect(hidden, 'a camera on the left half').toBeDefined();
+    const visible = CAMERAS.find((camera) => camera !== hidden)!;
+    // the left half leaves the viewport for longer than a camera stays loaded while hidden
+    host.style.transform = 'translateX(-880px)';
+    await sleep(3_200);
+    // it let go of its element (a cover holds its last picture)
+    expect(
+      panel(hidden!)!.querySelector('canvas[data-lerobot-cover]'),
+      describeState(),
+    ).not.toBeNull();
+    const events: string[] = [];
+    const listen = (event: Event) => {
+      const video = event.target as HTMLVideoElement;
+      if (video.dataset.lerobotCamera === visible && video.dataset.lerobotRole === 'active')
+        events.push(`${event.type}@${frameText()}`);
+    };
+    for (const type of ['waiting', 'pause', 'seeking'])
+      document.addEventListener(type, listen, true);
+    try {
+      const before = frameText();
+      host.style.transform = '';
+      // it joins in sync
+      await waitFor(
+        () => {
+          const values = CAMERAS.map(shown);
+          return (
+            !panel(hidden!)!.querySelector('canvas[data-lerobot-cover]') &&
+            activeVideo(hidden!)?.paused === false &&
+            values.every((value) => value !== null) &&
+            Math.abs(values[0]! - values[1]!) <= 2 &&
+            frameText() > before + 10
+          );
+        },
+        10_000,
+        'the hidden camera back in sync',
+      );
+      // the camera on screen played on meanwhile
+      expect(events, describeState()).toEqual([]);
+    } finally {
+      for (const type of ['waiting', 'pause', 'seeking'])
+        document.removeEventListener(type, listen, true);
+    }
+  });
+
+  it('after playing on into the next episode, a pause stays paused', async ({ skip }) => {
+    if (!(await frameCodedAvailable())) return skip();
+    await open();
+    await setPlaying(true);
+    // episode 0 plays on into episode 1
+    await waitFor(() => allIn(1) && isPlaying() && frameText() > 10, 15_000, 'episode 1 playing');
+    // the keyboard's pause (and the button's)
+    for (const how of ['key', 'button'] as const) {
+      if (how === 'key') {
+        (document.activeElement as HTMLElement | null)?.blur();
+        await userEvent.keyboard(' ');
+      } else {
+        await act(async () => playButton()!.click());
+      }
+      await waitFor(() => !isPlaying(), 5_000, `${how}: paused`);
+      const at = frameText();
+      await sleep(1_500);
+      expect(isPlaying(), `${how}: ${describeState()}`).toBe(false);
+      expect(frameText()).toBe(at);
+      if (how === 'key') {
+        // on into the next episode again
+        await setPlaying(true);
+        await waitFor(() => allIn(2) && isPlaying() && frameText() > 10, 15_000, 'episode 2');
+      }
+    }
+  });
+
+  describe('quick reselection', () => {
+    // long episodes (5-6 s) over both recordings, each told apart by its first dataset frame
+    const LONG = [
+      { recordingId: 'a', fromRow: 0, toRow: 180, first: 0 },
+      { recordingId: 'b', fromRow: 0, toRow: 180, first: 180 },
+      { recordingId: 'a', fromRow: 30, toRow: 180, first: 30 },
+      { recordingId: 'b', fromRow: 30, toRow: 180, first: 210 },
+      { recordingId: 'a', fromRow: 60, toRow: 180, first: 60 },
+    ];
+    const selected = () =>
+      Number(
+        host
+          .querySelector('[aria-current="true"][aria-label^="Select Episode"]')
+          ?.getAttribute('aria-label')
+          ?.replace(/\D+/g, '') ?? '-1',
+      );
+    /** Every camera shows `episode` at the clock's frame. */
+    const onClock = (episode: number) =>
+      CAMERAS.every((camera) => {
+        const value = shown(camera);
+        return value !== null && Math.abs(value - (LONG[episode].first + frameText())) <= 3;
+      });
+    const slow = (sets: EpisodeSetRecording[]) =>
+      ['a', 'b'].reduce(
+        (all, id) =>
+          patchFiles(
+            id,
+            (path) => path.startsWith('data/'),
+            'delayMs=800',
+          )(patchFiles(id, (path) => path.endsWith('.mp4'), 'delayMs=1500')(all)),
+        sets,
+      );
+
+    async function settlesOn(episode: number, what: string) {
+      await waitFor(
+        () => selected() === episode && isPlaying() && frameText() > 5 && onClock(episode),
+        10_000,
+        `${what}: episode ${episode} playing on every camera (selected ${selected()})`,
+      );
+      // and stays there, playing
+      const at = frameText();
+      await sleep(600);
+      expect(selected(), `${what}: ${describeState()}`).toBe(episode);
+      expect(frameText(), `${what}: the clock runs ${describeState()}`).toBeGreaterThan(at + 5);
+    }
+
+    it('the first episode: a camera slower than the others still joins, and the clock waits for it', async ({
+      skip,
+    }) => {
+      if (!(await frameCodedAvailable())) return skip();
+      // the wrist camera's videos of recording a answer late; the first episode autoplays
+      await open({
+        waitFirst: false,
+        episodes: LONG,
+        mutate: patchFiles('a', videoOf(CAMERAS[1]), 'delayMs=2500'),
+      });
+      let ranAhead = 0;
+      await waitFor(
+        () => {
+          if (shown(CAMERAS[1]) === null) ranAhead = Math.max(ranAhead, frameText());
+          return selected() === 0 && isPlaying() && frameText() > 5 && onClock(0);
+        },
+        20_000,
+        `both cameras on the first episode (selected ${selected()})`,
+      );
+      expect(ranAhead, describeState()).toBeLessThanOrEqual(1);
+    });
+
+    it('back and forth between episodes of one file never runs into the next episode', async ({
+      skip,
+    }) => {
+      if (!(await frameCodedAvailable())) return skip();
+      // two episodes of recording a (0-2.5 s and 3.5-6 s), then one of b
+      const SAME = [
+        { recordingId: 'a', fromRow: 0, toRow: 75, first: 0 },
+        { recordingId: 'a', fromRow: 105, toRow: 180, first: 105 },
+        { recordingId: 'b', fromRow: 0, toRow: 90, first: 180 },
+      ];
+      await open({ waitFirst: false, episodes: SAME });
+      const on = (episode: number) =>
+        CAMERAS.every((camera) => {
+          const value = shown(camera);
+          return value !== null && Math.abs(value - (SAME[episode].first + frameText())) <= 3;
+        });
+      await waitFor(() => selected() === 0 && isPlaying() && on(0), 20_000, 'first episode');
+      for (let round = 0; round < 4; round++) {
+        await sleep(400);
+        await selectEpisode(1);
+        await sleep(100);
+        await selectEpisode(0);
+        await waitFor(
+          () => selected() === 0 && isPlaying() && frameText() > 5 && on(0),
+          10_000,
+          `round ${round}: back on episode 0 (selected ${selected()})`,
+        );
+        expect(selected(), describeState()).toBe(0);
+      }
+    });
+
+    it('a second click 100 ms after the first lands on the second episode, every camera on it', async ({
+      skip,
+    }) => {
+      if (!(await frameCodedAvailable())) return skip();
+      await open({ waitFirst: false, episodes: LONG, mutate: slow });
+      await settlesOn(0, 'first episode');
+      for (const [first, second] of [
+        [0, 3],
+        [4, 1],
+        [3, 0],
+        [2, 3],
+        [0, 1],
+        [4, 2],
+      ] as const) {
+        await selectEpisode(first);
+        await sleep(100 + ((first * 7 + second * 13) % 4) * 100);
+        await selectEpisode(second);
+        await settlesOn(second, `${first}→${second}`);
+      }
+    });
+
+    it('on a fresh page, a second click 100 ms after the first loads every camera', async ({
+      skip,
+    }) => {
+      if (!(await frameCodedAvailable())) return skip();
+      await open({ waitFirst: false, episodes: LONG, mutate: slow });
+      await waitFor(
+        () => host.querySelector('[aria-label="Select Episode 1"]') !== null,
+        30_000,
+        'episode list',
+      );
+      await selectEpisode(0);
+      await sleep(100);
+      await selectEpisode(1);
+      await settlesOn(1, 'fresh 0→1');
+    });
   });
 });
