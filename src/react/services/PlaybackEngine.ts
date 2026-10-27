@@ -27,6 +27,11 @@ export type PlaybackEngineCallbacks = {
   getMediaClock?: () => { frameIndex: number; buffering: boolean } | null;
   onPlaybackStart?: (frameIndex: number, rate: number) => void;
   onPlaybackStop?: () => void;
+  /**
+   * Loop mode with the native clock: show the episode from frame 0 again (a prefetched standby when
+   * there is one) and keep playing. Without it the videos are stopped and restarted.
+   */
+  onLoopRestart?: (rate: number) => void;
 };
 
 /**
@@ -38,6 +43,8 @@ export class PlaybackEngine {
   private timerId: number | null = null;
   private lastTickTime = 0;
   private running = false;
+  /** The shuffle pick for the episode it was made from, so a prefetch and the advance agree. */
+  private nextPick: { from: number | null; mode: PlaybackMode; next: number } | null = null;
   private readonly callbacks: PlaybackEngineCallbacks;
 
   constructor(callbacks: PlaybackEngineCallbacks) {
@@ -98,6 +105,21 @@ export class PlaybackEngine {
       this.animationFrameId = requestAnimationFrame(this.tick);
     }, delay);
   };
+
+  /**
+   * The episode playback advances to after the selected one (-1: none). Stable until the selection
+   * or the mode changes, so the next episode can be prefetched.
+   */
+  peekNextEpisode(): number {
+    const from = this.callbacks.getSelectedEpisodeIndex();
+    const mode = this.callbacks.getPlaybackMode();
+    if (this.nextPick && this.nextPick.from === from && this.nextPick.mode === mode) {
+      return this.nextPick.next;
+    }
+    const next = this.resolveNextEpisode();
+    this.nextPick = { from, mode, next };
+    return next;
+  }
 
   private resolveNextEpisode(): number {
     const { getPlaybackMode, getEpisodes, getSelectedEpisodeIndex, getDeletedEpisodes } =
@@ -201,17 +223,20 @@ export class PlaybackEngine {
         this.callbacks.setFrameIndexSilent(newIndex);
         this.callbacks.notifyFrame(newIndex);
         if (this.callbacks.getMediaClock) {
-          // restart the videos at the first frame
-          this.callbacks.onPlaybackStop?.();
-          this.callbacks.onPlaybackStart?.(
-            newIndex,
-            Math.max(0.1, this.callbacks.getPlaybackSpeed()),
-          );
+          const rate = Math.max(0.1, this.callbacks.getPlaybackSpeed());
+          if (this.callbacks.onLoopRestart) {
+            this.callbacks.onLoopRestart(rate);
+          } else {
+            // restart the videos at the first frame
+            this.callbacks.onPlaybackStop?.();
+            this.callbacks.onPlaybackStart?.(newIndex, rate);
+          }
         }
         return false;
       }
       this.callbacks.onStop();
-      const next = this.resolveNextEpisode();
+      const next = this.peekNextEpisode();
+      this.nextPick = null;
       if (next !== -1) {
         void this.callbacks.onAdvanceEpisode(next).then((loaded) => {
           if (loaded) this.callbacks.onResumeAfterEpisode();

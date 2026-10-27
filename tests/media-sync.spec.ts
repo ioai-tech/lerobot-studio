@@ -49,8 +49,9 @@ describe('MediaSync', () => {
   it('seeks every video to the episode frame and plays them at the requested rate', () => {
     const { sync, videos } = setup([10, 0]);
     sync.start(30, 2);
-    expect(videos[0].currentTime).toBeCloseTo(11);
-    expect(videos[1].currentTime).toBeCloseTo(1);
+    // the centre of frame 30, robust against float rounding to frame 29
+    expect(videos[0].currentTime).toBeCloseTo(11 + 0.5 / 30, 6);
+    expect(videos[1].currentTime).toBeCloseTo(1 + 0.5 / 30, 6);
     expect(videos.every((video) => !video.paused && video.playbackRate === 2)).toBe(true);
     expect(sync.isActive()).toBe(true);
   });
@@ -114,6 +115,80 @@ describe('MediaSync', () => {
     expect(videos[0].paused).toBe(true);
     expect(withVideo.tick()).toBeNull();
     expect(withVideo.isActive()).toBe(false);
+  });
+
+  it('stops every camera on the last frame before the next episode of the file can show', () => {
+    const sync = new MediaSync();
+    sync.setFps(30);
+    const master = tracked(new FakeVideo());
+    const follower = tracked(new FakeVideo());
+    // a 2-second episode at 10 s in the master's file, at 0 s in the follower's
+    sync.register('a', { video: master, getStart: () => 10, getEnd: () => 12 });
+    sync.register('b', { video: follower, getStart: () => 0, getEnd: () => 2 });
+    sync.start(0, 1);
+    advance(master, 1.9);
+    advance(follower, 1.9);
+    expect(sync.tick()?.frameIndex).toBe(57);
+    // the last frame (59) starts at 11.9667: the next tick would be too late
+    advance(master, 0.06);
+    advance(follower, 0.06);
+    expect(sync.tick()?.frameIndex).toBe(Number.POSITIVE_INFINITY);
+    expect(master.paused && follower.paused).toBe(true);
+    // both show frame 59 (already inside it: no seek needed)
+    expect(Math.floor((master.currentTime - 10) * 30)).toBe(59);
+    expect(Math.floor(follower.currentTime * 30)).toBe(59);
+
+    // paused on frame 58 by the lookahead: seeks to the centre of the last frame
+    const early = new MediaSync();
+    early.setFps(30);
+    const video = tracked(new FakeVideo());
+    early.register('a', { video, getStart: () => 0, getEnd: () => 2 });
+    early.start(0, 1);
+    advance(video, 1.95);
+    expect(early.tick()?.frameIndex).toBe(Number.POSITIVE_INFINITY);
+    expect(video.currentTime).toBeCloseTo(59.5 / 30, 6);
+    expect(sync.tick()?.frameIndex).toBe(Number.POSITIVE_INFINITY);
+  });
+
+  it('moves the master and the followers together on a step while playing', () => {
+    const { sync, videos } = setup([10, 0]);
+    sync.start(0, 1);
+    advance(videos[0], 1);
+    advance(videos[1], 1);
+    sync.seekFrame(31);
+    expect(videos[0].currentTime).toBeCloseTo(10 + 31.5 / 30, 6);
+    expect(videos[1].currentTime).toBeCloseTo(31.5 / 30, 6);
+    expect(sync.tick()?.frameIndex).toBe(31);
+  });
+
+  it('hands the play state to a camera whose element was swapped', () => {
+    const sync = new MediaSync();
+    sync.setFps(30);
+    const first = tracked(new FakeVideo());
+    const second = tracked(new FakeVideo());
+    let current: FakeVideo = first;
+    sync.register('cam', {
+      get video() {
+        return current;
+      },
+      getStart: () => 0,
+    });
+    sync.start(0, 1.5);
+    expect(first.paused).toBe(false);
+    current = second;
+    sync.refresh('cam');
+    expect(second.paused).toBe(false);
+    expect(second.playbackRate).toBe(1.5);
+    sync.stop();
+    expect(second.paused).toBe(true);
+  });
+
+  it('pauses a camera that leaves the group', () => {
+    const { sync, videos } = setup([0, 0]);
+    const leave = sync.register('extra', { video: videos[0], getStart: () => 0 });
+    sync.start(0, 1);
+    leave();
+    expect(videos[0].paused).toBe(true);
   });
 
   it('skips videos whose episode range is not set yet', () => {

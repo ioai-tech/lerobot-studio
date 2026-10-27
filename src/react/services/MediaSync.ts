@@ -7,8 +7,14 @@
  * runs short of data, all pause until every one can play again, so cameras and charts never drift
  * apart and the timeline never runs ahead of the pixels.
  *
- * Paused, scrubbing and frame stepping keep the per-frame seek in VideoPanel.
+ * The master stops on the last frame of the episode (`getEnd`), before the next episode of a shared
+ * file can show. A camera can swap its element (a preview / original switch, a renewed URL) without
+ * leaving the group: `refresh(id)` hands the play state over to the new element.
+ *
+ * Paused, scrubbing and frame stepping are seeked by the video stage.
  */
+
+import { frameAtTime, frameCentreTime } from './video/SeekController';
 
 /** The part of HTMLVideoElement the controller drives (a plain object in tests). */
 export interface SyncedVideo {
@@ -16,18 +22,24 @@ export interface SyncedVideo {
   playbackRate: number;
   readonly readyState: number;
   readonly ended: boolean;
+  readonly paused?: boolean;
   play(): Promise<void> | void;
   pause(): void;
 }
 
 export interface SyncedMedia {
-  video: SyncedVideo;
+  /** The element on screen; may change between calls (the camera swapped sources). */
+  readonly video: SyncedVideo;
   /** Start of the selected episode in this file, in seconds; null while the episode is not set. */
   getStart: () => number | null;
+  /** End (`to_timestamp`) of the selected episode in this file, in seconds, when known. */
+  getEnd?: () => number | null;
+  /** Exact seek (coalescing); defaults to writing `currentTime`. */
+  seek?: (time: number) => void;
 }
 
 export interface MediaClock {
-  /** Frame index of the master video; `Infinity` once the master video ended. */
+  /** Frame index of the master video; `Infinity` once the master reached the episode end. */
   frameIndex: number;
   /** True while playback waits for a video to buffer. */
   buffering: boolean;
@@ -40,34 +52,62 @@ const HARD_SYNC_SECONDS = 0.5;
 /** Followers within this many frames run at the master rate. */
 const SOFT_SYNC_FRAMES = 1.5;
 const RATE_NUDGE = 0.05;
+/** The clock ticks per animation frame; stop this far (scaled by rate) before the next frame. */
+const TICK_LOOKAHEAD_SECONDS = 0.025;
 
 export class MediaSync {
   private readonly media = new Map<string, SyncedMedia>();
   private readonly bufferingListeners = new Set<(buffering: boolean) => void>();
   private playing = false;
   private held = false;
+  private atEnd = false;
   private rate = 1;
   private fps = 30;
 
   register(id: string, media: SyncedMedia): () => void {
     this.media.set(id, media);
-    if (this.playing && !this.held) {
+    if (this.playing && !this.held && !this.atEnd) {
       const master = this.master();
       if (master && master !== media) this.align(media, master, true);
+      media.video.playbackRate = this.rate;
       this.play(media);
     }
     return () => {
-      if (this.media.get(id) === media) this.media.delete(id);
+      if (this.media.get(id) === media) {
+        this.media.delete(id);
+        media.video.pause();
+      }
     };
+  }
+
+  /**
+   * The camera `id` now shows another element (`media.video` changed): give it the play state.
+   * The previous element is paused by its owner.
+   */
+  refresh(id: string): void {
+    const media = this.media.get(id);
+    if (!media) return;
+    media.video.playbackRate = this.rate;
+    if (!this.playing || this.held || this.atEnd) {
+      media.video.pause();
+      return;
+    }
+    const master = this.master();
+    if (master && master !== media) this.align(media, master, false);
+    this.play(media);
   }
 
   setFps(fps: number | null | undefined): void {
     this.fps = fps && fps > 0 ? fps : 30;
   }
 
-  /** True while videos drive the clock; VideoPanel then leaves frame-by-frame seeking alone. */
+  /** True while videos drive the clock; frame-by-frame seeking is then left to `seekFrame`. */
   isActive(): boolean {
     return this.playing && this.master() !== null;
+  }
+
+  isPlaying(): boolean {
+    return this.playing;
   }
 
   isBuffering(): boolean {
@@ -82,16 +122,29 @@ export class MediaSync {
   /** Begin native playback at `frameIndex` (the engine's current frame). */
   start(frameIndex: number, rate: number): void {
     this.playing = true;
+    this.atEnd = false;
     this.rate = rate > 0 ? rate : 1;
     this.held = false;
     for (const media of this.ready()) {
       const start = media.getStart() ?? 0;
-      const target = start + frameIndex / this.fps;
-      if (Math.abs(media.video.currentTime - target) > 1 / this.fps) {
-        media.video.currentTime = target;
-      }
+      const time = media.video.currentTime;
+      // seek unless the element already shows that frame (a time before the episode shows none)
+      const shown = time < start - 1e-6 ? -1 : frameAtTime(start, time, this.fps);
+      if (shown !== frameIndex) this.seekMedia(media, frameCentreTime(start, frameIndex, this.fps));
       media.video.playbackRate = this.rate;
       this.play(media);
+    }
+  }
+
+  /**
+   * Jump every camera to `frameIndex` while playing (timeline click, arrow-key step): the master
+   * and the followers move together and the clock continues from there.
+   */
+  seekFrame(frameIndex: number): void {
+    this.atEnd = false;
+    for (const media of this.ready()) {
+      const start = media.getStart() ?? 0;
+      this.seekMedia(media, frameCentreTime(start, frameIndex, this.fps));
     }
   }
 
@@ -106,6 +159,7 @@ export class MediaSync {
     const wasHeld = this.held;
     this.playing = false;
     this.held = false;
+    this.atEnd = false;
     for (const media of this.media.values()) {
       media.video.pause();
       media.video.playbackRate = this.rate;
@@ -118,6 +172,12 @@ export class MediaSync {
     if (!this.playing) return null;
     const master = this.master();
     if (!master) return null;
+    if (this.atEnd) return { frameIndex: Number.POSITIVE_INFINITY, buffering: false };
+
+    if (this.reachedEnd(master)) {
+      this.clampAtEnd(master);
+      return { frameIndex: Number.POSITIVE_INFINITY, buffering: false };
+    }
 
     const starving = this.ready().some(
       (media) => !media.video.ended && media.video.readyState < HAVE_FUTURE_DATA,
@@ -139,10 +199,44 @@ export class MediaSync {
       }
     }
 
-    if (master.video.ended) return { frameIndex: Number.POSITIVE_INFINITY, buffering: false };
     const start = master.getStart() ?? 0;
-    const frameIndex = Math.max(0, Math.round((master.video.currentTime - start) * this.fps));
-    return { frameIndex, buffering: this.held };
+    return {
+      frameIndex: frameAtTime(start, master.video.currentTime, this.fps),
+      buffering: this.held,
+    };
+  }
+
+  private reachedEnd(master: SyncedMedia): boolean {
+    if (master.video.ended) return true;
+    const end = master.getEnd?.();
+    if (end === null || end === undefined || !Number.isFinite(end)) return false;
+    // The last frame starts one frame before `end`; stop before the next frame (the next episode
+    // of a shared file) can be presented.
+    const lastFrameStart = end - 1 / this.fps;
+    return master.video.currentTime >= lastFrameStart - TICK_LOOKAHEAD_SECONDS * this.rate;
+  }
+
+  /** Pause every camera on the centre of its episode's last frame. */
+  private clampAtEnd(master: SyncedMedia): void {
+    this.atEnd = true;
+    const masterStart = master.getStart() ?? 0;
+    const masterEnd = master.getEnd?.();
+    const lastFrame =
+      masterEnd !== null && masterEnd !== undefined && Number.isFinite(masterEnd)
+        ? Math.max(0, Math.round((masterEnd - masterStart) * this.fps) - 1)
+        : frameAtTime(masterStart, master.video.currentTime, this.fps);
+    for (const media of this.ready()) {
+      media.video.pause();
+      if (media.video.ended) continue;
+      const start = media.getStart() ?? 0;
+      const target = frameCentreTime(start, lastFrame, this.fps);
+      if (Math.abs(media.video.currentTime - target) > 0.5 / this.fps)
+        this.seekMedia(media, target);
+    }
+    if (this.held) {
+      this.held = false;
+      this.emit(false);
+    }
   }
 
   private ready(): SyncedMedia[] {
@@ -153,6 +247,11 @@ export class MediaSync {
 
   private master(): SyncedMedia | null {
     return this.ready()[0] ?? null;
+  }
+
+  private seekMedia(media: SyncedMedia, time: number): void {
+    if (media.seek) media.seek(time);
+    else media.video.currentTime = time;
   }
 
   private align(media: SyncedMedia, master: SyncedMedia, hard: boolean): void {
