@@ -109,6 +109,7 @@ export const PlaybackBar: React.FC = () => {
     setFrameIndex,
     isPlaying,
     setPlaying,
+    consumeEpisodeAutoplay,
     playbackMode,
     setPlaybackMode,
     playbackSpeed,
@@ -187,9 +188,10 @@ export const PlaybackBar: React.FC = () => {
       })
     ) {
       didAutoPlayRef.current = currentId;
-      setPlaying(true);
+      // a switch made while paused stays paused (the provider knows what playback was doing)
+      if (!consumeEpisodeAutoplay || consumeEpisodeAutoplay(selectedEpisodeIndex)) setPlaying(true);
     }
-  }, [totalFrames, isLoading, isPlaying, setPlaying, selectedEpisodeIndex]);
+  }, [totalFrames, isLoading, isPlaying, setPlaying, selectedEpisodeIndex, consumeEpisodeAutoplay]);
 
   useEffect(() => {
     userPausedRef.current = false;
@@ -255,9 +257,10 @@ export const PlaybackBar: React.FC = () => {
 
   const totalTime = useMemo(() => {
     if (totalFrames === 0) return 0;
-    if (currentFrames[totalFrames - 1]?.timestamp !== undefined) {
-      return currentFrames[totalFrames - 1].timestamp;
-    }
+    // the episode's duration (its last frame's time from its first), not a recording's own time
+    const first = currentFrames[0]?.timestamp;
+    const last = currentFrames[totalFrames - 1]?.timestamp;
+    if (first !== undefined && last !== undefined) return last - first;
     return totalFrames / fps;
   }, [totalFrames, currentFrames, fps]);
 
@@ -632,12 +635,12 @@ export const PlaybackBar: React.FC = () => {
           startFrame={dialogStartFrame}
           endFrame={dialogEndFrame}
           startSeconds={frameTimeSeconds(
-            currentFrames[dialogStartFrame]?.timestamp,
+            episodeTime(currentFrames, dialogStartFrame),
             dialogStartFrame,
             fps,
           )}
           endSeconds={frameTimeSeconds(
-            currentFrames[dialogEndFrame]?.timestamp,
+            episodeTime(currentFrames, dialogEndFrame),
             dialogEndFrame,
             fps,
           )}
@@ -660,3 +663,13 @@ export const PlaybackBar: React.FC = () => {
     </div>
   );
 };
+
+/** Seconds of `frame` from the episode's first frame, when the frames carry timestamps. */
+function episodeTime(
+  frames: ReadonlyArray<{ timestamp?: number }>,
+  frame: number,
+): number | undefined {
+  const first = frames[0]?.timestamp;
+  const at = frames[frame]?.timestamp;
+  return first !== undefined && at !== undefined ? at - first : undefined;
+}

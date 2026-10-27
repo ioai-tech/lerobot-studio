@@ -149,6 +149,11 @@ const VideoPanelContent: React.FC<VideoPanelProps> = ({ params, panelApi, contai
       } else if (key === 'm' && onCamera && panelApi) {
         event.preventDefault();
         toggleMaximize();
+      } else if (event.key === 'Escape' && document.fullscreenElement) {
+        // browsers leave full screen on Esc themselves; where the key reaches the page instead
+        // (an embedding that captures it, automation), leave it here
+        event.preventDefault();
+        void document.exitFullscreen?.().catch(() => undefined);
       } else if (event.key === 'Escape' && panelApi?.isMaximized()) {
         event.preventDefault();
         panelApi.exitMaximized();

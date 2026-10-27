@@ -85,6 +85,11 @@ export interface LeRobotPlaybackContextType {
   setFrameIndex: (index: number) => void;
   togglePlay: () => void;
   setPlaying: (target: boolean) => void;
+  /**
+   * Whether the newly selected episode starts playing once loaded: the first one does, and a switch
+   * made while playing. Answers true at most once per selection (a remounted bar does not replay).
+   */
+  consumeEpisodeAutoplay?: (episodeIndex: number | null) => boolean;
   seek: (offset: number) => void;
   setPlaybackMode: (mode: PlaybackMode) => void;
   setPlaybackSpeed: (speed: number) => void;

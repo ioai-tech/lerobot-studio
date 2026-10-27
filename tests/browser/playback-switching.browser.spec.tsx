@@ -327,6 +327,27 @@ describe('browser: playback switching on a frame-coded dataset', () => {
     );
   });
 
+  it('a switch made while paused stays paused on the first frame of the new episode', async ({
+    skip,
+  }) => {
+    if (!(await frameCodedAvailable())) return skip();
+    await open();
+    await waitFor(() => allShow(0), 30_000, 'first frame');
+    for (const index of [2, 1, 3, 0]) {
+      await selectEpisode(index);
+      await waitFor(() => allShow(index * FRAMES), 15_000, `episode ${index} first frame`);
+      await sleep(2_000);
+      expect(isPlaying(), `episode ${index}: ${describeState()}`).toBe(false);
+      expect(frameText()).toBe(0);
+      expect(allShow(index * FRAMES), describeState()).toBe(true);
+    }
+    // and a switch made while playing plays on
+    await act(async () => playButton()!.click());
+    await waitFor(isPlaying, 5_000, 'playing');
+    await selectEpisode(2);
+    await waitFor(() => allIn(2 * FRAMES) && isPlaying(), 15_000, 'episode 2 playing');
+  });
+
   it('switches quality without a black frame, keeping the frame and the cameras in sync', async ({
     skip,
   }) => {

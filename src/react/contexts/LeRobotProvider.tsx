@@ -318,6 +318,23 @@ export const LeRobotDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
           ? trimRanges.get(selectedEpisodeIndex)
           : undefined,
   });
+  const isPlayingRef = useRef(isPlaying);
+  isPlayingRef.current = isPlaying;
+  /** The selection whose autoplay is still to happen (see `consumeEpisodeAutoplay`). */
+  const autoplayRef = useRef<{ episode: number | null; play: boolean }>({
+    episode: null,
+    play: true,
+  });
+  // a new dataset autoplays its first episode again
+  useEffect(() => {
+    autoplayRef.current = { episode: null, play: true };
+  }, [dataLoader]);
+  const consumeEpisodeAutoplay = useCallback((episodeIndex: number | null) => {
+    const intent = autoplayRef.current;
+    if (episodeIndex === null || intent.episode !== episodeIndex || !intent.play) return false;
+    autoplayRef.current = { episode: episodeIndex, play: false };
+    return true;
+  }, []);
 
   const reset = useCallback(async () => {
     // 清理旧资源，回到欢迎页；bump generation 使在途 initialize 失效
@@ -562,6 +579,11 @@ export const LeRobotDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
       // the latest call owns the loading state (two calls for the same episode: auto-advance + click)
       const isCurrent = () => episodeLoadAbortRef.current === controller && !signal.aborted;
 
+      // the first episode autoplays; later ones play on only when chosen while playing
+      autoplayRef.current = {
+        episode: index,
+        play: autoplayRef.current.episode === null || isPlayingRef.current,
+      };
       setIsLoading(true);
       setIsPlaying(false);
       setError(null);
@@ -910,6 +932,7 @@ export const LeRobotDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
       setFrameIndex,
       togglePlay,
       setPlaying,
+      consumeEpisodeAutoplay,
       seek,
       setPlaybackMode,
       setPlaybackSpeed,
@@ -928,6 +951,7 @@ export const LeRobotDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
       setFrameIndex,
       togglePlay,
       setPlaying,
+      consumeEpisodeAutoplay,
       seek,
     ],
   );

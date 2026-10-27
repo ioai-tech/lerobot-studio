@@ -41,7 +41,8 @@ export interface EpisodeReadOptions {
 }
 
 /** Re-read a cached URL this long before it expires. */
-const URL_EXPIRY_MARGIN_MS = 90_000;
+/** A cached URL this close to its expiry is fetched again (ms; internal, tests shorten it). */
+export const URL_EXPIRY_POLICY = { marginMs: 90_000 };
 
 // 文件缓存结构
 interface ParsedFileCache {
@@ -672,7 +673,7 @@ export class LeRobotDataLoader {
     // the source renews ahead of the expiry on its own; force it only when that did not happen
     const url = await this.getFileUrl(path);
     const expiry = this.getFileUrlExpiry(path);
-    if (expiry === null || expiry - Date.now() > URL_EXPIRY_MARGIN_MS) return url;
+    if (expiry === null || expiry - Date.now() > URL_EXPIRY_POLICY.marginMs) return url;
     if (!this._dataSource.invalidateObjectUrl) return url;
     this.fileUrlCache.delete(path);
     this.fileUrlLoading.delete(path);
@@ -683,7 +684,7 @@ export class LeRobotDataLoader {
   async getFileUrl(path: string): Promise<string> {
     const cachedUrl = this.fileUrlCache.get(path);
     const expiry = this.getFileUrlExpiry(path);
-    if (cachedUrl && (expiry === null || expiry - Date.now() > URL_EXPIRY_MARGIN_MS)) {
+    if (cachedUrl && (expiry === null || expiry - Date.now() > URL_EXPIRY_POLICY.marginMs)) {
       return cachedUrl;
     }
     if (cachedUrl) this.fileUrlCache.delete(path);

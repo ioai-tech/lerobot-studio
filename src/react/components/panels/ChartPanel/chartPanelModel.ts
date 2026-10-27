@@ -174,8 +174,11 @@ export type ChartDataCore = {
   dimensions: ChartDimensionMeta[];
   allJointNames: string[];
   jointColorMap: Record<string, string>;
+  /** Seconds since the episode's first frame (the playback bar's time base). */
   simplifiedTimestamps: Float64Array;
   originalTimestamps: number[];
+  /** Timestamp of the episode's first frame in its file (a recording's own time). */
+  timeOffset: number;
   stride: number;
   samplingMeta: ChartSamplingMeta;
   /** Sampled series values keyed by chart series id */
@@ -197,18 +200,18 @@ export function computeChartDataCore(input: {
   const timestampColumn = chartData.timestamp;
   if (!timestampColumn || timestampColumn.rows === 0) return null;
 
-  const fullTimestamps =
+  const absoluteTimestamps =
     currentFrames && currentFrames.length > 0
       ? currentFrames.map((f) => Number(f.timestamp ?? 0))
       : Array.from(timestampColumn.values.slice(0, timestampColumn.rows));
+  // episode time: an episode far into a long recording starts at 0, like the playback bar
+  const timeOffset = absoluteTimestamps[0] ?? 0;
+  const fullTimestamps = absoluteTimestamps.map((value) => value - timeOffset);
   const alignedFullTimestamps = fullTimestamps.slice(0, timestampColumn.rows);
   const shouldSimplify = timestampColumn.rows > MAX_DATA_POINTS;
   const stride = shouldSimplify ? Math.ceil(timestampColumn.rows / MAX_DATA_POINTS) : 1;
   const simplifiedTimestamps = sampleTimestamps(alignedFullTimestamps, stride);
-  const originalTimestamps =
-    currentFrames && currentFrames.length > 0
-      ? currentFrames.map((f) => Number(f.timestamp ?? 0))
-      : Array.from(timestampColumn.values.slice(0, timestampColumn.rows));
+  const originalTimestamps = fullTimestamps;
 
   const dimensions = collectChartDimensions(targetFeatures, features, chartData);
   const allJointNames = collectUniqueJointNames(dimensions);
@@ -243,6 +246,7 @@ export function computeChartDataCore(input: {
     jointColorMap: buildJointColorMap(allJointNames, resolvedTheme),
     simplifiedTimestamps,
     originalTimestamps,
+    timeOffset,
     stride,
     samplingMeta: {
       originalPoints: timestampColumn.rows,
@@ -270,6 +274,7 @@ export function buildAggregatePreparedData(
   configs: uPlot.Series[];
   seriesMeta: Array<ChartSeriesMeta | null>;
   originalTimestamps: number[];
+  timeOffset: number;
   meta: ChartSamplingMeta;
 } {
   const { selectedSeriesIds, showAction, showState, getStrokeColor, stateLabel, actionLabel } =
@@ -315,6 +320,7 @@ export function buildAggregatePreparedData(
     configs: seriesConfigs,
     seriesMeta,
     originalTimestamps: core.originalTimestamps,
+    timeOffset: core.timeOffset,
     meta: core.samplingMeta,
   };
 }

@@ -10,7 +10,34 @@ export default defineConfig({
   publicDir: false,
   // The parquet worker imports hyparquet; Vite's dependency scan does not see worker imports, and a
   // late discovery re-optimises and reloads the page mid-test (releasing Comlink proxies).
-  optimizeDeps: { include: ['hyparquet'] },
+  // Every dependency a test or a lazy chunk imports is pre-bundled up front: one found late (a
+  // first run after `npm ci`, with an empty cache) re-optimises mid-run, and the page's pending
+  // dynamic imports fail ("Failed to fetch dynamically imported module").
+  optimizeDeps: {
+    entries: ['tests/browser/**/*.browser.spec.{ts,tsx}', 'src/**/*.{ts,tsx}'],
+    include: [
+      'hyparquet',
+      'apache-arrow',
+      'comlink',
+      'mediabunny',
+      '@zip.js/zip.js',
+      'fflate',
+      'uplot',
+      'dockview-react',
+      'lucide-react',
+      'radix-ui',
+      'react-dom/client',
+      'react-window',
+      'sonner',
+      'framer-motion',
+      'class-variance-authority',
+      'clsx',
+      'tailwind-merge',
+      'next-themes',
+      'react-intl',
+      'axe-core',
+    ],
+  },
   server: { fs: { allow: [path.resolve(import.meta.dirname)] } },
   resolve: {
     alias: {

@@ -202,4 +202,42 @@ describe('MediaSync', () => {
     expect(sync.tick()?.frameIndex).toBe(30);
     expect(pending.paused).toBe(true);
   });
+
+  it('holds the clock while a camera switches to the episode, and plays everyone once it can', () => {
+    const sync = new MediaSync();
+    sync.setFps(30);
+    const shown = tracked(new FakeVideo());
+    const switching = tracked(new FakeVideo());
+    let pending = true;
+    const events: Array<[boolean, boolean]> = [];
+    sync.onBufferingChange((buffering, waitingForSwitch) =>
+      events.push([buffering, waitingForSwitch]),
+    );
+    sync.register('a', { video: shown, getStart: () => 0 });
+    sync.register('b', { video: switching, getStart: () => 0, isPending: () => pending });
+    sync.start(0, 1);
+    // nobody plays while one camera has no picture of the episode
+    expect(shown.paused && switching.paused).toBe(true);
+    expect(sync.tick()).toEqual({ frameIndex: 0, buffering: true });
+    expect(events).toEqual([[true, true]]);
+    pending = false;
+    const clock = sync.tick();
+    expect(clock?.buffering).toBe(false);
+    expect(!shown.paused && !switching.paused).toBe(true);
+  });
+
+  it('never lets the timer run the clock while its cameras have no picture', () => {
+    const sync = new MediaSync();
+    sync.setFps(30);
+    const loading = tracked(new FakeVideo());
+    loading.readyState = 0;
+    sync.register('a', { video: loading, getStart: () => 0 });
+    sync.start(0, 1);
+    const clock = sync.tick();
+    expect(clock?.buffering).toBe(true);
+    // without any camera the engine's timer runs it (null)
+    const empty = new MediaSync();
+    empty.start(0, 1);
+    expect(empty.tick()).toBeNull();
+  });
 });

@@ -78,9 +78,10 @@ const PlaybackProgressSliderComponent: React.FC<PlaybackProgressSliderProps> = (
 
   const getCurrentTime = useCallback(
     (frameIndex: number) => {
-      if (currentFrames[frameIndex]?.timestamp !== undefined) {
-        return currentFrames[frameIndex].timestamp;
-      }
+      // episode time: an episode far into a long recording starts at 0:00
+      const first = currentFrames[0]?.timestamp;
+      const at = currentFrames[frameIndex]?.timestamp;
+      if (at !== undefined && first !== undefined) return at - first;
       return frameIndex / fps;
     },
     [currentFrames, fps],

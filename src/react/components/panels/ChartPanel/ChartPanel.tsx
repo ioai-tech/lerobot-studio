@@ -229,6 +229,8 @@ const ChartPanelContent: React.FC<ChartPanelProps> = ({ params }) => {
   /** 换 Episode 后下一次 setData 使用 resetScales，避免沿用上一段的 Y 缩放 */
   const lastChartEpisodeRef = useRef<number | null | undefined>(undefined);
   const chartScaleResetPendingRef = useRef(false);
+  /** First and last time of the data on the chart: new data elsewhere in time resets the scales. */
+  const chartRangeKeyRef = useRef('');
 
   const [selectedSeriesIds, setSelectedSeriesIds] = useState<Set<string>>(new Set());
   const [jointSearch, setJointSearch] = useState('');
@@ -888,6 +890,16 @@ const ChartPanelContent: React.FC<ChartPanelProps> = ({ params }) => {
       },
       padding: [8, 10, 8, 10],
       hooks: {
+        // the time range shown (episode seconds), for tests and embedders' diagnostics
+        setScale: [
+          (u, key) => {
+            if (key !== 'x') return;
+            const { min, max } = u.scales.x;
+            if (min !== undefined && max !== undefined && min !== null && max !== null) {
+              u.root.dataset.xRange = `${min.toFixed(3)}:${max.toFixed(3)}`;
+            }
+          },
+        ],
         setCursor: [
           (u) => {
             const tip = tooltipRef.current;
@@ -1133,6 +1145,7 @@ const ChartPanelContent: React.FC<ChartPanelProps> = ({ params }) => {
         chartRef.current,
       );
       chartScaleResetPendingRef.current = false;
+      chartRangeKeyRef.current = chartRangeKey(preparedData);
     } else {
       plotRef.current.batch(() => {
         if (plotRef.current!.series.length !== preparedData.configs.length) {
@@ -1143,8 +1156,14 @@ const ChartPanelContent: React.FC<ChartPanelProps> = ({ params }) => {
             chartRef.current!,
           );
           chartScaleResetPendingRef.current = false;
+          chartRangeKeyRef.current = chartRangeKey(preparedData);
         } else {
-          const resetScales = chartScaleResetPendingRef.current;
+          // another episode's data (its time range moved): never keep the previous episode's
+          // scales, whichever render the episode change and the data arrive in
+          const rangeKey = chartRangeKey(preparedData);
+          const resetScales =
+            chartScaleResetPendingRef.current || rangeKey !== chartRangeKeyRef.current;
+          chartRangeKeyRef.current = rangeKey;
           plotRef.current!.setData(preparedData.data as uPlot.AlignedData, resetScales);
           if (resetScales) {
             chartScaleResetPendingRef.current = false;
@@ -1400,3 +1419,9 @@ const ChartPanelContent: React.FC<ChartPanelProps> = ({ params }) => {
 
 // Memoize ChartPanel to prevent unnecessary re-renders
 export const ChartPanel: React.FC<ChartPanelProps> = ChartPanelContent;
+
+/** Where in its recording the chart's data lies: data of another episode resets the scales. */
+function chartRangeKey(prepared: { data: uPlot.AlignedData; timeOffset: number }): string {
+  const xs = prepared.data[0] as ArrayLike<number> | undefined;
+  return xs && xs.length > 0 ? `${prepared.timeOffset}:${xs.length}:${xs[xs.length - 1]}` : '';
+}

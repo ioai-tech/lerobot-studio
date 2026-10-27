@@ -31,14 +31,14 @@ export interface RemoteManifestOptions {
   refresh?: () => Promise<RemoteFileEntry[]>;
 }
 
-/** Renew this long before the earliest expiry, so a Range request never carries a dead URL. */
-const REFRESH_MARGIN_MS = 2 * 60_000;
 /**
- * Proactive renewals (before the expiry) run at most this often: a host that signs URLs for two
- * minutes or less, or whose refresh returns the URLs it already had, is not asked once per request.
- * A request the store refuses always renews.
+ * Presigned URL renewal timing (ms). `marginMs`: renew this long before the earliest expiry, so a
+ * Range request never carries a dead URL. `minProactiveMs`: proactive renewals (before the expiry)
+ * run at most this often, so a host that signs URLs for two minutes or less, or whose refresh
+ * returns the URLs it already had, is not asked once per request (a refused request always
+ * renews). Internal; tests shorten it to play URL lifetimes in seconds.
  */
-const MIN_PROACTIVE_REFRESH_MS = 30_000;
+export const MANIFEST_REFRESH_POLICY = { marginMs: 2 * 60_000, minProactiveMs: 30_000 };
 /** A size lookup that failed is not repeated for this long (ms). */
 const SIZE_FAILURE_TTL_MS = 60_000;
 
@@ -151,14 +151,15 @@ export class RemoteManifestDataSource implements DataSource {
 
   /**
    * Renew the URLs once for all concurrent callers; `force` after a refused request. A proactive
-   * renewal runs at most every `MIN_PROACTIVE_REFRESH_MS`, and when it fails the current URLs stay
+   * renewal runs at most every `MANIFEST_REFRESH_POLICY.minProactiveMs`, and when it fails the current URLs stay
    * in use until the store refuses one.
    */
   private async renew(force: boolean): Promise<boolean> {
     if (!this.refreshManifest) return false;
     if (!force) {
-      if (this.earliestExpiry - Date.now() > REFRESH_MARGIN_MS) return false;
-      if (Date.now() - this.lastProactiveRefresh < MIN_PROACTIVE_REFRESH_MS) return false;
+      if (this.earliestExpiry - Date.now() > MANIFEST_REFRESH_POLICY.marginMs) return false;
+      if (Date.now() - this.lastProactiveRefresh < MANIFEST_REFRESH_POLICY.minProactiveMs)
+        return false;
       this.lastProactiveRefresh = Date.now();
     }
     if (!this.refreshing) {

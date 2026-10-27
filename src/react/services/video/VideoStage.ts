@@ -47,6 +47,12 @@ const QUALITY_IDLE: QualityStatus = {
 
 /** A link measurement is trusted this long (ms); a stall of an original measures again sooner. */
 const LINK_FRESH_MS = 60_000;
+/**
+ * The link estimate is the best measurement of this window (ms): one short probe under
+ * contention (the videos downloading meanwhile, a busy moment of the network) reads low, a link
+ * does not get slower than its best recent reading unless playback stalls.
+ */
+const LINK_SAMPLE_WINDOW_MS = 180_000;
 /** After a stall of an original, the next one lowers the estimate again no sooner than this (ms). */
 const LINK_STALL_BACKOFF_MS = 5_000;
 /** A measurement waits this long at most for the videos to stop downloading (ms). */
@@ -134,6 +140,10 @@ export class VideoStage {
   /** Measured link throughput (bits/s; Infinity for local files), null before a measurement. */
   private linkBps: number | null = null;
   private linkMeasuredAt = 0;
+  /** Recent link measurements (bits/s, ms). */
+  private linkSamples: Array<{ bps: number; at: number }> = [];
+  /** A stall capped the estimate (bits/s, ms): it holds for `LINK_FRESH_MS`. */
+  private linkCap: { bps: number; at: number } | null = null;
   private measuring: Promise<void> | null = null;
   private lastStallAt = 0;
   private stallTimer: number | null = null;
@@ -150,6 +160,8 @@ export class VideoStage {
   private readonly sizes = new Map<string, number | Promise<void>>();
   /** When a size lookup last failed, per path. */
   private readonly sizeMisses = new Map<string, number>();
+  /** Media durations (s) seen per file; a file and its other rendition share theirs. */
+  private readonly durations = new Map<string, number>();
   /** Measures the link (tests replace it). */
   measureLink: (url: string, offset: number) => Promise<number | null> = (url, offset) =>
     measureThroughput(url, { offset });
@@ -163,10 +175,15 @@ export class VideoStage {
     this.mediaSync = mediaSync;
     this.getFrameIndex = getFrameIndex;
     // the stage lives as long as the media sync (both belong to the data provider)
-    mediaSync.onBufferingChange((buffering) => {
+    mediaSync.onBufferingChange((buffering, switching) => {
       if (this.stallTimer !== null) clearTimeout(this.stallTimer);
       this.stallTimer = null;
       const now = performance.now();
+      // waiting for a camera that switches episodes says nothing about the link
+      if (buffering && switching) {
+        this.heldSince = null;
+        return;
+      }
       if (buffering) {
         this.heldSince = now;
         // a stall that lasts, not the moment a camera's next data arrives late
@@ -209,9 +226,12 @@ export class VideoStage {
     this.previewExists.clear();
     this.sizes.clear();
     this.sizeMisses.clear();
+    this.durations.clear();
     this.starved.clear();
     this.linkBps = null;
     this.linkMeasuredAt = 0;
+    this.linkSamples = [];
+    this.linkCap = null;
     this.plan = null;
     this.cancelPrefetch();
     for (const [key, player] of this.players) {
@@ -750,14 +770,27 @@ export class VideoStage {
     if (!file) return null;
     const size = this.sizes.get(file.path);
     if (typeof size !== 'number') return null;
-    // the file's duration once an element loaded it (the preview copy is as long as the original);
-    // else the episode's end, a lower bound of the duration: the bit rate comes out high, never low
+    // The file's duration, once an element loaded it or its other rendition (the preview copy is
+    // as long as the original). Never the episode's times: an episode far into a long recording
+    // would make a 2 GB file look like it needs hundreds of Mbps.
     const player = this.players.get(featureKey);
-    const duration =
-      player?.mediaDuration(file.path) ??
-      player?.mediaDuration(original.path) ??
-      (original.toSec && original.toSec > 0 ? original.toSec : null);
-    return duration ? (size * 8) / duration : null;
+    const previewFile = this.previewTemplate
+      ? this.loader.getEpisodeVideoPath(this.episodeIndex, featureKey, this.previewTemplate)
+      : null;
+    const paths = [file.path, original.path, previewFile?.path].filter(
+      (path): path is string => typeof path === 'string',
+    );
+    let duration: number | null = null;
+    for (const path of paths) {
+      const known = player?.mediaDuration(path) ?? this.durations.get(path) ?? null;
+      if (known && known > 0) {
+        duration = known;
+        break;
+      }
+    }
+    if (!duration) return null;
+    for (const path of paths) this.durations.set(path, duration);
+    return (size * 8) / duration;
   }
 
   /** Look up the sizes of the originals of the cameras and of the files on screen. */
@@ -843,8 +876,17 @@ export class VideoStage {
       }
       if (this.loader !== loader) return;
       if (bps !== null) {
-        this.linkBps = bps;
-        this.linkMeasuredAt = performance.now();
+        const now = performance.now();
+        this.linkSamples = this.linkSamples.filter(
+          (sample) => now - sample.at < LINK_SAMPLE_WINDOW_MS,
+        );
+        this.linkSamples.push({ bps, at: now });
+        let estimate = Math.max(...this.linkSamples.map((sample) => sample.bps));
+        if (this.linkCap && now - this.linkCap.at < LINK_FRESH_MS) {
+          estimate = Math.min(estimate, this.linkCap.bps);
+        }
+        this.linkBps = estimate;
+        this.linkMeasuredAt = now;
       }
     };
     this.measuring = run()
@@ -935,6 +977,7 @@ export class VideoStage {
     const needed = onOriginal.reduce((sum, player) => sum + (this.originalBps(player.key) ?? 0), 0);
     if (needed <= 0 || !Number.isFinite(this.linkBps)) return;
     this.linkBps = Math.min(this.linkBps, needed) * 0.85;
+    this.linkCap = { bps: this.linkBps, at: now };
     this.linkMeasuredAt = now;
     this.replan();
   }
@@ -954,6 +997,7 @@ export class VideoStage {
       start: original.fromSec ?? 0,
       end: original.toSec && original.toSec > (original.fromSec ?? 0) ? original.toSec : null,
       rendition: 'original',
+      episode: episodeIndex,
     };
     if (rendition !== 'preview' || !this.previewTemplate) return base;
     const preview = loader.getEpisodeVideoPath(episodeIndex, featureKey, this.previewTemplate);

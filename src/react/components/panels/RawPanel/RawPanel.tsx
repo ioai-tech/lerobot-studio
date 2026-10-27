@@ -864,6 +864,16 @@ const RawPanelContent: React.FC<RawPanelProps> = ({ params }) => {
 
   // 订阅帧索引变化（优化的节流逻辑）
   useEffect(() => {
+    // throttled, with a trailing update: the frame playback stops on is always shown
+    let trailing: number | null = null;
+    const publish = () => {
+      trailing = null;
+      lastUpdateRef.current = Date.now();
+      const frameIndex = pendingFrameRef.current;
+      startTransition(() => {
+        publishDisplayFrameIndex(frameIndex);
+      });
+    };
     const unsubscribe = subscribeFrameIndex((frameIndex) => {
       // 始终保存最新的帧索引
       pendingFrameRef.current = frameIndex;
@@ -871,15 +881,18 @@ const RawPanelContent: React.FC<RawPanelProps> = ({ params }) => {
       // 如果暂停了，不更新显示
       if (isPaused) return;
 
-      const now = Date.now();
-      if (now - lastUpdateRef.current >= AUTO_REFRESH_INTERVAL) {
-        lastUpdateRef.current = now;
-        startTransition(() => {
-          publishDisplayFrameIndex(frameIndex);
-        });
+      const wait = AUTO_REFRESH_INTERVAL - (Date.now() - lastUpdateRef.current);
+      if (wait <= 0) {
+        if (trailing !== null) window.clearTimeout(trailing);
+        publish();
+      } else if (trailing === null) {
+        trailing = window.setTimeout(publish, wait);
       }
     });
-    return unsubscribe;
+    return () => {
+      if (trailing !== null) window.clearTimeout(trailing);
+      unsubscribe();
+    };
   }, [subscribeFrameIndex, isPaused, publishDisplayFrameIndex]);
 
   // 手动刷新函数
