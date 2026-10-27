@@ -72,14 +72,30 @@ function virtualEntries(
   recordings: EpisodeSetRecording[],
   keys: string[],
 ): { entries: RemoteFileEntry[]; slots: Map<string, { chunk: number; file: number }> } {
-  const entries: RemoteFileEntry[] = [];
   const slots = new Map<string, { chunk: number; file: number }>();
   recordings.forEach((recording, k) => {
     if (slots.has(recording.id)) {
       throw new Error(`Episode set lists recording ${recording.id} twice`);
     }
-    const slot = { chunk: Math.floor(k / CHUNK_SIZE), file: k % CHUNK_SIZE };
-    slots.set(recording.id, slot);
+    slots.set(recording.id, { chunk: Math.floor(k / CHUNK_SIZE), file: k % CHUNK_SIZE });
+  });
+  return { entries: slottedEntries(recordings, keys, slots), slots };
+}
+
+/**
+ * The virtual entries of `recordings` at the slots fixed when the set was built, by recording id
+ * (a refresh may list the recordings in another order, or leave some out). Recordings without a
+ * slot are skipped.
+ */
+function slottedEntries(
+  recordings: EpisodeSetRecording[],
+  keys: string[],
+  slots: ReadonlyMap<string, { chunk: number; file: number }>,
+): RemoteFileEntry[] {
+  const entries: RemoteFileEntry[] = [];
+  for (const recording of recordings) {
+    const slot = slots.get(recording.id);
+    if (!slot) continue;
     const data = recording.files.filter((file) => DATA_FILE.test(file.logicalPath));
     if (data.length !== 1) {
       throw new Error(
@@ -115,8 +131,29 @@ function virtualEntries(
         });
       }
     }
-  });
-  return { entries, slots };
+  }
+  return entries;
+}
+
+/**
+ * Fresh URLs of a refresh, mapped to the recordings' own slots by id. A recording the refresh
+ * leaves out keeps its current URLs (and is reported); an unknown recording is ignored.
+ */
+function refreshedEntries(
+  recordings: EpisodeSetRecording[],
+  keys: string[],
+  slots: ReadonlyMap<string, { chunk: number; file: number }>,
+): RemoteFileEntry[] {
+  const seen = new Set(recordings.map((recording) => recording.id));
+  const unknown = recordings.filter((recording) => !slots.has(recording.id));
+  const missing = [...slots.keys()].filter((id) => !seen.has(id));
+  if (unknown.length > 0 || missing.length > 0) {
+    console.warn('[lerobot] episode set refresh does not match its recordings', {
+      unknown: unknown.map((recording) => recording.id),
+      missing,
+    });
+  }
+  return slottedEntries(recordings, keys, slots);
 }
 
 function slotValues(slot: { chunk: number; file: number }) {
@@ -142,7 +179,7 @@ export class EpisodeSetDataSource implements DataSource {
     const { entries, slots } = virtualEntries(manifest.recordings, keys);
     const refresh = options.refresh;
     this.files = new RemoteManifestDataSource(entries, limits, {
-      refresh: refresh ? async () => virtualEntries(await refresh(), keys).entries : undefined,
+      refresh: refresh ? async () => refreshedEntries(await refresh(), keys, slots) : undefined,
     });
 
     this.rows = manifest.episodes.map((episode, index) => {

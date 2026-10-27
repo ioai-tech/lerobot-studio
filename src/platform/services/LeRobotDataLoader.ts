@@ -66,6 +66,10 @@ export class LeRobotDataLoader {
   private worker: Remote<ParquetWorkerAPI>;
   private fileUrlCache: LRUCache<string, string>;
   private disposed = false;
+  /** Files whose Range reads worked (a later failure is a real error, not a missing Range support). */
+  private readonly rangedPaths = new Set<string>();
+  /** Files read whole: no size, or the server does not serve Range. */
+  private readonly wholeFilePaths = new Set<string>();
   private validationReport: ValidationReport | null = null;
   private versionCapability: LeRobotVersionCapability = {
     status: 'unsupported',
@@ -303,8 +307,16 @@ export class LeRobotDataLoader {
     read: (start: number, end: number) => Promise<ArrayBuffer>;
   } | null> {
     const source = this._dataSource;
-    if (!source.readRange || !source.getSize) return null;
-    const byteLength = await source.getSize(path);
+    if (!source.readRange || !source.getSize || this.wholeFilePaths.has(path)) return null;
+    let byteLength: number;
+    try {
+      byteLength = await source.getSize(path);
+    } catch (error) {
+      // no size (a store that hides Content-Range, a refused lookup): read the file whole
+      console.warn(`[lerobot] no size for ${path}; reading it whole`, error);
+      this.wholeFilePaths.add(path);
+      return null;
+    }
     signal?.throwIfAborted();
     const read = async (start: number, end: number): Promise<ArrayBuffer> => {
       const bytes = await source.readRange!(
@@ -326,6 +338,39 @@ export class LeRobotDataLoader {
   }
 
   /**
+   * Run `ranged` with Range reads of `path` when the source supports them, else (or when the first
+   * ranged read of the file fails: a server that ignores Range, a store that refuses it) `whole`
+   * with the whole file, as datasets without Range support always do.
+   */
+  private async withRangeFallback<T>(
+    path: string,
+    signal: AbortSignal | undefined,
+    ranged: (file: NonNullable<Awaited<ReturnType<LeRobotDataLoader['rangeFile']>>>) => Promise<T>,
+    whole: (buffer: ArrayBuffer) => Promise<T>,
+  ): Promise<T> {
+    const file = await this.rangeFile(path, signal);
+    if (file) {
+      try {
+        const result = await ranged(file);
+        this.rangedPaths.add(path);
+        return result;
+      } catch (error) {
+        if (this.rangedPaths.has(path) || isAbortError(error) || signal?.aborted) throw error;
+        console.warn(`[lerobot] range reads of ${path} failed; reading it whole`, error);
+        this.wholeFilePaths.add(path);
+      }
+    }
+    signal?.throwIfAborted();
+    const bytes = await this.readFileBytesCached(path);
+    signal?.throwIfAborted();
+    const buffer = (bytes.buffer as ArrayBuffer).slice(
+      bytes.byteOffset,
+      bytes.byteOffset + bytes.byteLength,
+    );
+    return whole(buffer);
+  }
+
+  /**
    * 一次性加载所有数值列 - 优化版本
    */
   async loadAllNumericalData(
@@ -337,24 +382,13 @@ export class LeRobotDataLoader {
     if (columns.length === 0) return {};
 
     const { path, start, end } = this.getEpisodeRange(episodeIndex);
-    const ranged = await this.rangeFile(path, options.signal);
-    let result: Awaited<ReturnType<ParquetWorkerAPI['readNumericColumns']>>;
-    if (ranged) {
-      result = await this.worker.readNumericColumnsRange(
-        ranged.file,
-        ranged.read,
-        columns,
-        start,
-        end,
-      );
-    } else {
-      const bytes = await this.readFileBytesCached(path);
-      const buffer = (bytes.buffer as ArrayBuffer).slice(
-        bytes.byteOffset,
-        bytes.byteOffset + bytes.byteLength,
-      );
-      result = await this.worker.readNumericColumns(buffer, columns, start, end);
-    }
+    const result = await this.withRangeFallback(
+      path,
+      options.signal,
+      (ranged) =>
+        this.worker.readNumericColumnsRange(ranged.file, ranged.read, columns, start, end),
+      (buffer) => this.worker.readNumericColumns(buffer, columns, start, end),
+    );
 
     return Object.fromEntries(
       Object.entries(result).map(([column, data]) => [
@@ -409,16 +443,13 @@ export class LeRobotDataLoader {
     if (featureNames.length === 0) return {};
 
     const { path, start, end } = this.getEpisodeRange(episodeIndex);
-    const ranged = await this.rangeFile(path, options.signal);
-    if (ranged) {
-      return this.worker.readFeatureDataRange(ranged.file, ranged.read, featureNames, start, end);
-    }
-    const bytes = await this.readFileBytesCached(path);
-    const buffer = (bytes.buffer as ArrayBuffer).slice(
-      bytes.byteOffset,
-      bytes.byteOffset + bytes.byteLength,
+    return this.withRangeFallback(
+      path,
+      options.signal,
+      (ranged) =>
+        this.worker.readFeatureDataRange(ranged.file, ranged.read, featureNames, start, end),
+      (buffer) => this.worker.readFeatureData(buffer, featureNames, start, end),
     );
-    return this.worker.readFeatureData(buffer, featureNames, start, end);
   }
 
   getEpisodes() {
@@ -688,4 +719,8 @@ export class LeRobotDataLoader {
   isFileBytesCached(path: string): boolean {
     return this.fileBytesCache?.path === path;
   }
+}
+
+function isAbortError(error: unknown): boolean {
+  return error instanceof Error && error.name === 'AbortError';
 }

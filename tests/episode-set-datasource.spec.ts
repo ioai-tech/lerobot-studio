@@ -4,12 +4,17 @@ import { fileURLToPath } from 'node:url';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('../src/platform/workers/workerManager.ts', async () => {
-  const { readParquetToIPC } = await import('./helpers/parquet');
+  const { readParquetToIPC, readNumericColumns, readFeatureData } =
+    await import('./helpers/parquet');
   const range = await import('../src/platform/workers/parquetRange');
   return {
     createParquetWorker: () => ({
       readParquet: async (buffer: ArrayBuffer, columns?: string[]) =>
         readParquetToIPC(new Uint8Array(buffer), columns),
+      readNumericColumns: async (buffer: ArrayBuffer, columns: string[], a: number, b: number) =>
+        readNumericColumns(new Uint8Array(buffer), columns, a, b),
+      readFeatureData: async (buffer: ArrayBuffer, columns: string[], a: number, b: number) =>
+        readFeatureData(new Uint8Array(buffer), columns, a, b),
       readNumericColumnsRange: range.readNumericColumnsRange,
       readFeatureDataRange: range.readFeatureRowsRange,
       clearCache: async () => undefined,
@@ -128,6 +133,98 @@ describe('createEpisodeSetDataSource', () => {
     );
     await expect(source.exists(missing!.path)).resolves.toBe(false);
     await loader.dispose();
+  });
+
+  it('maps a refresh to the recordings by id, whatever its order or omissions', async () => {
+    const signed = async (id: string, sig: number) => {
+      const rec = await recording(id);
+      rec.files = rec.files.map((file) => ({
+        ...file,
+        presignedUrl: file.presignedUrl.replace('sig=1', `sig=${sig}`),
+      }));
+      return rec;
+    };
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    let refreshed: EpisodeSetRecording[] = [];
+    const source = createEpisodeSetDataSource(
+      {
+        fps: info.fps,
+        features: info.features,
+        recordings: [await recording('a'), await recording('b'), await recording('c')],
+        episodes: [{ recordingId: 'a', task: 't', fromRow: 0, toRow: 1, fromS: 0, toS: 0.1 }],
+      },
+      { refresh: async () => refreshed },
+    );
+    const video = (slot: number) => `videos/observation.images.cam/chunk-000/file-00${slot}.mp4`;
+    // reversed, and recording b left out
+    refreshed = [await signed('c', 2), await signed('x', 2), await signed('a', 2)];
+    await source.invalidateObjectUrl?.(video(0));
+    expect(await source.getObjectUrl(video(0))).toBe(
+      'https://store.test/a/videos/observation.images.cam/chunk-000/file-000.mp4?sig=2',
+    );
+    expect(await source.getObjectUrl(video(1))).toBe(
+      'https://store.test/b/videos/observation.images.cam/chunk-000/file-000.mp4?sig=1',
+    );
+    expect(await source.getObjectUrl(video(2))).toBe(
+      'https://store.test/c/videos/observation.images.cam/chunk-000/file-000.mp4?sig=2',
+    );
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringContaining('refresh does not match'),
+      expect.objectContaining({ unknown: ['x'], missing: ['b'] }),
+    );
+    warn.mockRestore();
+  });
+
+  it('reads a file whole when its size or Range is not available', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const unsized = async (id: string) => {
+      const rec = await recording(id);
+      rec.files = rec.files.map((file) => ({ ...file, sizeBytes: null }));
+      return rec;
+    };
+    // 1: a store that does not expose Content-Range (the size lookup fails)
+    // 2: a server that ignores Range (answers 200 with the whole file)
+    for (const mode of ['no-content-range', 'ignores-range'] as const) {
+      // footers and blocks of earlier tests would answer without a request
+      (await import('../src/platform/workers/parquetRange')).clearRangeMetadataCache();
+      vi.stubGlobal('fetch', async (url: string, init?: RequestInit) => {
+        requested.push(url);
+        const logicalPath = new URL(url).pathname.split('/').slice(2).join('/');
+        const bytes = await fs.readFile(path.join(fixture, fixturePath(logicalPath)));
+        const header = new Headers(init?.headers).get('range');
+        if (!header || mode === 'ignores-range') {
+          // the size lookup succeeds (Content-Length of the whole file); Range reads do not
+          return new Response(bytes, {
+            status: 200,
+            headers: { 'content-length': String(bytes.length) },
+          });
+        }
+        // a partial response whose Content-Range the browser may not read
+        const match = /^bytes=(\d+)-(\d+)$/.exec(header)!;
+        return new Response(bytes.subarray(Number(match[1]), Number(match[2]) + 1), {
+          status: 206,
+        });
+      });
+      const source = createEpisodeSetDataSource({
+        fps: info.fps,
+        features: info.features,
+        recordings: [await unsized('a')],
+        episodes: [{ recordingId: 'a', task: 'pick', fromRow: 2, toRow: 5, fromS: 0.2, toS: 0.5 }],
+      });
+      const loader = new LeRobotDataLoader(source);
+      await loader.initialize();
+      const columns = await loader.loadAllNumericalData(0, ['index']);
+      expect(Array.from(columns.index.values), mode).toEqual([2, 3, 4]);
+      expect(
+        warn.mock.calls.some(([message]) =>
+          String(message).includes(mode === 'ignores-range' ? 'range reads of' : 'no size for'),
+        ),
+        mode,
+      ).toBe(true);
+      warn.mockClear();
+      await loader.dispose();
+    }
+    warn.mockRestore();
   });
 
   it('refuses a recording that is not a single-file tree', async () => {

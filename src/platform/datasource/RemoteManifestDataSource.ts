@@ -33,6 +33,14 @@ export interface RemoteManifestOptions {
 
 /** Renew this long before the earliest expiry, so a Range request never carries a dead URL. */
 const REFRESH_MARGIN_MS = 2 * 60_000;
+/**
+ * Proactive renewals (before the expiry) run at most this often: a host that signs URLs for two
+ * minutes or less, or whose refresh returns the URLs it already had, is not asked once per request.
+ * A request the store refuses always renews.
+ */
+const MIN_PROACTIVE_REFRESH_MS = 30_000;
+/** A size lookup that failed is not repeated for this long (ms). */
+const SIZE_FAILURE_TTL_MS = 60_000;
 
 function isExpiredSignature(status: number): boolean {
   return status === 400 || status === 401 || status === 403;
@@ -62,6 +70,8 @@ export class RemoteManifestDataSource implements DataSource {
   private refreshing: Promise<void> | null = null;
   private readonly staleUrls = new Set<string>();
   private earliestExpiry = Number.POSITIVE_INFINITY;
+  private lastProactiveRefresh = Number.NEGATIVE_INFINITY;
+  private readonly sizeFailures = new Map<string, { at: number; error: Error }>();
 
   constructor(
     files: RemoteFileEntry[],
@@ -119,24 +129,38 @@ export class RemoteManifestDataSource implements DataSource {
     if (Number.isFinite(expiry)) this.earliestExpiry = Math.min(this.earliestExpiry, expiry);
   }
 
-  /** Swap in fresh URLs for the paths this manifest already has; new or missing paths are ignored. */
+  /**
+   * Swap in fresh URLs for the paths this manifest already has; new paths are ignored, and paths
+   * the refresh left out keep their URLs (and still count towards the next renewal).
+   */
   private applyRefresh(files: RemoteFileEntry[]): void {
-    this.earliestExpiry = Number.POSITIVE_INFINITY;
     for (const file of files) {
       const path = validateUntrustedPath(file.logicalPath, this.limits);
       const current = this.entryMap.get(path);
       if (!current) continue;
       validateManifestUrl(file.presignedUrl, this.limits, path);
-      const next = { ...current, presignedUrl: file.presignedUrl, expiresAt: file.expiresAt };
-      this.entryMap.set(path, next);
-      this.noteExpiry(next);
+      this.entryMap.set(path, {
+        ...current,
+        presignedUrl: file.presignedUrl,
+        expiresAt: file.expiresAt,
+      });
     }
+    this.earliestExpiry = Number.POSITIVE_INFINITY;
+    for (const entry of this.entryMap.values()) this.noteExpiry(entry);
   }
 
-  /** Renew the URLs once for all concurrent callers; `force` after a refused request. */
+  /**
+   * Renew the URLs once for all concurrent callers; `force` after a refused request. A proactive
+   * renewal runs at most every `MIN_PROACTIVE_REFRESH_MS`, and when it fails the current URLs stay
+   * in use until the store refuses one.
+   */
   private async renew(force: boolean): Promise<boolean> {
     if (!this.refreshManifest) return false;
-    if (!force && this.earliestExpiry - Date.now() > REFRESH_MARGIN_MS) return false;
+    if (!force) {
+      if (this.earliestExpiry - Date.now() > REFRESH_MARGIN_MS) return false;
+      if (Date.now() - this.lastProactiveRefresh < MIN_PROACTIVE_REFRESH_MS) return false;
+      this.lastProactiveRefresh = Date.now();
+    }
     if (!this.refreshing) {
       this.refreshing = this.refreshManifest()
         .then((files) => this.applyRefresh(files))
@@ -144,8 +168,17 @@ export class RemoteManifestDataSource implements DataSource {
           this.refreshing = null;
         });
     }
-    await this.refreshing;
-    return true;
+    if (force) {
+      await this.refreshing;
+      return true;
+    }
+    try {
+      await this.refreshing;
+      return true;
+    } catch (error) {
+      console.warn('[lerobot] could not renew the manifest URLs ahead of their expiry', error);
+      return false;
+    }
   }
 
   /** fetch with a fresh URL, renewing and retrying once when the store refuses the signature. */
@@ -225,21 +258,36 @@ export class RemoteManifestDataSource implements DataSource {
     return result;
   }
 
-  /** Size from the manifest, or from a HEAD request when the manifest has none. */
+  /**
+   * Size from the manifest, or from a one-byte Range GET (`Content-Range: bytes 0-0/<size>`) when
+   * the manifest has none. Not HEAD: a presigned URL is signed for GET only, and S3-style stores
+   * refuse HEAD on it. Cross-origin stores must expose `Content-Range`
+   * (`Access-Control-Expose-Headers`); without it, or when the lookup fails, this throws and the
+   * loader reads the whole file instead. A failed lookup is not repeated for a minute.
+   */
   async getSize(path: string): Promise<number> {
     const entry = this.getEntry(path);
     if (entry.sizeBytes != null) return entry.sizeBytes;
     const key = normalizePath(path);
+    const failure = this.sizeFailures.get(key);
+    if (failure && Date.now() - failure.at < SIZE_FAILURE_TTL_MS) throw failure.error;
     let lookup = this.sizeLookups.get(key);
     if (!lookup) {
-      lookup = this.fetchEntry(path, { method: 'HEAD' }).then((res) => {
-        const length = Number(res.headers.get('content-length'));
-        if (!res.ok || !Number.isSafeInteger(length) || length < 0) {
-          throw new Error(`HTTP ${res.status} reading the size of ${path}`);
+      lookup = this.fetchEntry(path, { headers: { Range: 'bytes=0-0' } }).then(async (res) => {
+        const size = sizeFromResponse(res);
+        await res.body?.cancel().catch(() => undefined);
+        if (size === null) {
+          throw new Error(`HTTP ${res.status}: no size for ${path} (Content-Range not readable)`);
         }
-        return length;
+        return size;
       });
-      lookup.catch(() => this.sizeLookups.delete(key));
+      lookup.catch((error: unknown) => {
+        this.sizeLookups.delete(key);
+        this.sizeFailures.set(key, {
+          at: Date.now(),
+          error: error instanceof Error ? error : new Error(String(error)),
+        });
+      });
       this.sizeLookups.set(key, lookup);
     }
     return lookup;
@@ -277,9 +325,7 @@ export class RemoteManifestDataSource implements DataSource {
     }
     if (res.ok) {
       await res.body?.cancel();
-      throw new Error(
-        `HTTP ${res.status} without a byte range fetching ${path}: the server ignored Range`,
-      );
+      throw new RangeNotSupportedError(path, res.status);
     }
     throw new Error(`HTTP ${res.status} fetching ${path}`);
   }
@@ -318,6 +364,31 @@ export class RemoteManifestDataSource implements DataSource {
     }
     return entry;
   }
+}
+
+/** The server answered a Range request with the whole file: the caller reads the file whole. */
+export class RangeNotSupportedError extends Error {
+  readonly code = 'RANGE_NOT_SUPPORTED';
+  constructor(path: string, status: number) {
+    super(`HTTP ${status} without a byte range fetching ${path}: the server ignored Range`);
+    this.name = 'RangeNotSupportedError';
+  }
+}
+
+/** Total size from a `bytes=0-0` response: `Content-Range` of a 206, or the length of a 200. */
+function sizeFromResponse(res: Response): number | null {
+  if (res.status === 206) {
+    const match = /\/(\d+)\s*$/.exec(res.headers.get('content-range') ?? '');
+    const size = match ? Number(match[1]) : Number.NaN;
+    return Number.isSafeInteger(size) && size >= 0 ? size : null;
+  }
+  if (res.ok) {
+    const length = Number(res.headers.get('content-length'));
+    return res.headers.has('content-length') && Number.isSafeInteger(length) && length >= 0
+      ? length
+      : null;
+  }
+  return null;
 }
 
 function validateManifestUrl(
