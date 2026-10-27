@@ -1,3 +1,4 @@
+import type { MediaSync } from '../services/MediaSync';
 import { createContext, useContext } from 'react';
 import type {
   LeRobotInfo,
@@ -30,6 +31,8 @@ export interface LeRobotDataContextType {
   dataLoader: LeRobotDataLoader | null;
   /** Isolated per LeRobotDataProvider; never use the deprecated module singleton in UI code. */
   imageService: ParquetImageServiceImpl;
+  /** Native synchronised video playback; VideoPanels register their element with it. */
+  mediaSync: MediaSync;
   episodes: EpisodeMetadata[];
   tasks: Record<number, string>;
   subtasks: SubtaskTable;

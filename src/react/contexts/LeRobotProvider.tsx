@@ -37,6 +37,7 @@ import { getImageFeatureNames } from '@/core';
 import { useEpisodeView } from './useEpisodeView';
 import { materializeNumericFeatureRows, useFeatureSubscriptions } from './useFeatureSubscriptions';
 import { usePlaybackBridge } from './usePlaybackBridge';
+import { MediaSync } from '../services/MediaSync';
 
 /**
  * 规范化 info.features 中的 names 字段
@@ -185,6 +186,7 @@ export const LeRobotDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
 
   // 高性能播放：使用ref存储帧索引，避免触发React渲染
   const frameIndexRef = useRef(0);
+  const [mediaSync] = useState(() => new MediaSync());
   const frameSubscribersRef = useRef<Set<FrameIndexSubscriber>>(new Set());
   const selectEpisodeRef = useRef<(episodeIndex: number) => Promise<boolean>>(async () => false);
   const shouldHoldAtEpisodeEndRef = useRef<() => boolean>(() => false);
@@ -267,6 +269,7 @@ export const LeRobotDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
     setPlaying,
     seek,
   } = usePlaybackBridge({
+    mediaSync,
     isBusy,
     frameCount: currentFrames.length,
     frameIndexRef,
@@ -723,6 +726,7 @@ export const LeRobotDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
       getFrameIndex,
       dataLoader,
       imageService,
+      mediaSync,
       episodes,
       tasks,
       subtasks: sourceSubtasks,
@@ -744,6 +748,7 @@ export const LeRobotDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
       getFrameIndex,
       dataLoader,
       imageService,
+      mediaSync,
       episodes,
       tasks,
       sourceSubtasks,

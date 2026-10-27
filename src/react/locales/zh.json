@@ -506,6 +506,7 @@
     "video": {
       "title": "视频面板",
       "placeholder": "等待加载视频文件...",
+      "buffering": "缓冲中…",
       "debug": {
         "fps": "FPS",
         "resolution": "分辨率",

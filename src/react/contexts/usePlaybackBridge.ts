@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { MutableRefObject } from 'react';
 import type { EpisodeMetadata, PlaybackMode, EpisodeTrimRange } from '@/core';
 import { PlaybackEngine } from '../services/PlaybackEngine';
+import type { MediaSync } from '../services/MediaSync';
 
 export class PendingPlaybackIntent {
   private target: boolean | null = null;
@@ -43,6 +44,8 @@ type UsePlaybackBridgeOptions = {
   selectEpisodeRef: MutableRefObject<(episodeIndex: number) => Promise<boolean>>;
   shouldHoldAtEpisodeEndRef?: MutableRefObject<() => boolean>;
   onNaturalEndRef?: MutableRefObject<() => void>;
+  /** Native video clock; without it the engine's timer drives every panel. */
+  mediaSync?: MediaSync;
 };
 
 export function usePlaybackBridge({
@@ -60,6 +63,7 @@ export function usePlaybackBridge({
   selectEpisodeRef,
   shouldHoldAtEpisodeEndRef,
   onNaturalEndRef,
+  mediaSync,
 }: UsePlaybackBridgeOptions) {
   const previewRangeRef = useRef(previewRange);
   previewRangeRef.current = previewRange;
@@ -137,6 +141,16 @@ export function usePlaybackBridge({
       onNaturalEnd: () => onNaturalEndRef?.current(),
       onAdvanceEpisode: (episodeIndex) => selectEpisodeRef.current(episodeIndex),
       onResumeAfterEpisode: () => setIsPlaying(true),
+      ...(mediaSync
+        ? {
+            getMediaClock: () => mediaSync.tick(),
+            onPlaybackStart: (frameIndex: number, rate: number) => {
+              mediaSync.setFps(fps);
+              mediaSync.start(frameIndex, rate);
+            },
+            onPlaybackStop: () => mediaSync.stop(),
+          }
+        : {}),
     });
     playbackEngineRef.current = engine;
     return () => {
@@ -156,6 +170,7 @@ export function usePlaybackBridge({
     notifyFrameSubscribers,
     shouldHoldAtEpisodeEndRef,
     onNaturalEndRef,
+    mediaSync,
   ]);
 
   useEffect(() => {

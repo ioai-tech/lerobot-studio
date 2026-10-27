@@ -20,6 +20,13 @@ export type PlaybackEngineCallbacks = {
   /** Resolves true only after the next episode is ready to play. */
   onAdvanceEpisode: (episodeIndex: number) => Promise<boolean>;
   onResumeAfterEpisode: () => void;
+  /**
+   * Native video clock (MediaSync): when it returns a value, the frame index follows the master
+   * video instead of the timer, and playback holds while a video buffers.
+   */
+  getMediaClock?: () => { frameIndex: number; buffering: boolean } | null;
+  onPlaybackStart?: (frameIndex: number, rate: number) => void;
+  onPlaybackStop?: () => void;
 };
 
 /**
@@ -50,12 +57,18 @@ export class PlaybackEngine {
       this.callbacks.notifyFrame(range.startFrame);
     }
     this.lastTickTime = 0;
+    this.callbacks.onPlaybackStart?.(
+      this.callbacks.getFrameIndex(),
+      Math.max(0.1, this.callbacks.getPlaybackSpeed()),
+    );
     this.animationFrameId = requestAnimationFrame(this.tick);
   }
 
   stop(): void {
+    const wasRunning = this.running;
     this.running = false;
     this.cancelScheduled();
+    if (wasRunning) this.callbacks.onPlaybackStop?.();
   }
 
   dispose(): void {
@@ -140,51 +153,75 @@ export class PlaybackEngine {
       return;
     }
 
+    const clock = this.callbacks.getMediaClock?.();
+    if (clock) {
+      const current = this.callbacks.getFrameIndex();
+      if (!clock.buffering && clock.frameIndex !== current && this.advanceTo(clock.frameIndex)) {
+        return;
+      }
+      this.lastTickTime = timestamp;
+      this.animationFrameId = requestAnimationFrame(this.tick);
+      return;
+    }
+
     const fps = this.callbacks.getFps() || 30;
     const frameInterval = 1000 / fps;
     const effectiveInterval = frameInterval / Math.max(0.1, this.callbacks.getPlaybackSpeed());
     const elapsed = timestamp - this.lastTickTime;
 
     if (elapsed >= effectiveInterval) {
-      let newIndex = this.callbacks.getFrameIndex() + 1;
-
-      const range = this.callbacks.getPreviewRange?.();
-      if (range && newIndex > range.endFrame) {
-        this.callbacks.onStop();
-        this.stop();
-        return;
-      }
-      if (range && newIndex < range.startFrame) newIndex = range.startFrame;
-      if (newIndex >= frameCount) {
-        if (this.callbacks.shouldHoldAtEpisodeEnd?.()) {
-          this.callbacks.onStop();
-          this.callbacks.onNaturalEnd?.();
-          this.stop();
-          return;
-        }
-        if (this.callbacks.getPlaybackMode() === 'loop') {
-          newIndex = 0;
-          this.callbacks.setFrameIndexSilent(newIndex);
-          this.callbacks.notifyFrame(newIndex);
-        } else {
-          this.callbacks.onStop();
-          const next = this.resolveNextEpisode();
-          if (next !== -1) {
-            void this.callbacks.onAdvanceEpisode(next).then((loaded) => {
-              if (loaded) this.callbacks.onResumeAfterEpisode();
-            });
-          }
-          this.stop();
-          return;
-        }
-      } else {
-        this.callbacks.setFrameIndexSilent(newIndex);
-        this.callbacks.notifyFrame(newIndex);
-      }
-
+      if (this.advanceTo(this.callbacks.getFrameIndex() + 1)) return;
       this.lastTickTime = timestamp;
     }
 
     this.scheduleNextTick(timestamp, effectiveInterval);
   };
+
+  /** Move to `target` (preview range, loop, hold or next episode at the end); true when playback stopped. */
+  private advanceTo(target: number): boolean {
+    const frameCount = this.callbacks.getFrameCount();
+    let newIndex = target;
+
+    const range = this.callbacks.getPreviewRange?.();
+    if (range && newIndex > range.endFrame) {
+      this.callbacks.onStop();
+      this.stop();
+      return true;
+    }
+    if (range && newIndex < range.startFrame) newIndex = range.startFrame;
+    if (newIndex >= frameCount) {
+      if (this.callbacks.shouldHoldAtEpisodeEnd?.()) {
+        this.callbacks.onStop();
+        this.callbacks.onNaturalEnd?.();
+        this.stop();
+        return true;
+      }
+      if (this.callbacks.getPlaybackMode() === 'loop') {
+        newIndex = 0;
+        this.callbacks.setFrameIndexSilent(newIndex);
+        this.callbacks.notifyFrame(newIndex);
+        if (this.callbacks.getMediaClock) {
+          // restart the videos at the first frame
+          this.callbacks.onPlaybackStop?.();
+          this.callbacks.onPlaybackStart?.(
+            newIndex,
+            Math.max(0.1, this.callbacks.getPlaybackSpeed()),
+          );
+        }
+        return false;
+      }
+      this.callbacks.onStop();
+      const next = this.resolveNextEpisode();
+      if (next !== -1) {
+        void this.callbacks.onAdvanceEpisode(next).then((loaded) => {
+          if (loaded) this.callbacks.onResumeAfterEpisode();
+        });
+      }
+      this.stop();
+      return true;
+    }
+    this.callbacks.setFrameIndexSilent(newIndex);
+    this.callbacks.notifyFrame(newIndex);
+    return false;
+  }
 }

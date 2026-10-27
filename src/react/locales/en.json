@@ -506,6 +506,7 @@
     "video": {
       "title": "Video Panel",
       "placeholder": "Waiting for video file...",
+      "buffering": "Buffering…",
       "debug": {
         "fps": "FPS",
         "resolution": "Resolution",

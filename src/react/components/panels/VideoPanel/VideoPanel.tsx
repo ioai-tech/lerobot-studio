@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react';
+import React, { useEffect, useRef, useState, useCallback, useMemo, useId } from 'react';
 import { AlertTriangle } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useLeRobotData, useLeRobotSelection } from '../../../contexts/LeRobotContext';
@@ -25,7 +25,8 @@ interface VideoPanelProps {
  */
 const VideoPanelContent: React.FC<VideoPanelProps> = ({ params }) => {
   const { t } = useTranslation();
-  const { info, dataLoader, subscribeFrameIndex } = useLeRobotData();
+  const { info, dataLoader, subscribeFrameIndex, mediaSync } = useLeRobotData();
+  const panelId = useId();
   const { selectedEpisodeIndex } = useLeRobotSelection();
 
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -40,6 +41,7 @@ const VideoPanelContent: React.FC<VideoPanelProps> = ({ params }) => {
     null,
   );
   const [currentVideoPath, setCurrentVideoPath] = useState<string>('');
+  const [isBuffering, setIsBuffering] = useState(false);
 
   // 当前加载的视频文件（文件级别）
   const currentVideoFileRef = useRef<{
@@ -282,6 +284,42 @@ const VideoPanelContent: React.FC<VideoPanelProps> = ({ params }) => {
   }, []);
 
   /**
+   * 播放时由 MediaSync 驱动原生 play()（主视频即时钟），暂停/拖动/逐帧时仍按帧 seek。
+   */
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!hasVideo || !video) return;
+    return mediaSync.register(panelId, {
+      video,
+      getStart: () => episodeRangeRef.current?.start ?? null,
+    });
+  }, [hasVideo, mediaSync, panelId]);
+
+  /** 缓冲提示：数据不足以继续播放（或 seek 到未缓冲位置）时显示 */
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!hasVideo || !video) return;
+    const HAVE_FUTURE_DATA = 3;
+    const onWaiting = () => setIsBuffering(true);
+    const onSeeking = () => {
+      if (video.readyState < HAVE_FUTURE_DATA) setIsBuffering(true);
+    };
+    const onReady = () => setIsBuffering(false);
+    video.addEventListener('waiting', onWaiting);
+    video.addEventListener('seeking', onSeeking);
+    for (const event of ['canplay', 'canplaythrough', 'playing', 'seeked'] as const) {
+      video.addEventListener(event, onReady);
+    }
+    return () => {
+      video.removeEventListener('waiting', onWaiting);
+      video.removeEventListener('seeking', onSeeking);
+      for (const event of ['canplay', 'canplaythrough', 'playing', 'seeked'] as const) {
+        video.removeEventListener(event, onReady);
+      }
+    };
+  }, [hasVideo]);
+
+  /**
    * 帧同步 - 纯 seek，零开销
    */
   useEffect(() => {
@@ -291,10 +329,17 @@ const VideoPanelContent: React.FC<VideoPanelProps> = ({ params }) => {
       const video = videoRef.current;
       const range = episodeRangeRef.current;
 
-      if (!video || !range || video.readyState < 2) return;
+      if (!video || !range || video.readyState < 1) return;
 
       const fps = info?.fps ?? 30;
       const targetTime = Math.max(range.start, Math.min(range.start + frameIndex / fps, range.end));
+
+      if (mediaSync.isActive()) {
+        // 原生播放中：帧号来自主视频，只跟随跳转（点击时间轴、逐帧）
+        if (Math.abs(video.currentTime - targetTime) > 0.3) video.currentTime = targetTime;
+        return;
+      }
+      if (video.readyState < 2) return;
 
       // 节流
       const now = Date.now();
@@ -309,7 +354,7 @@ const VideoPanelContent: React.FC<VideoPanelProps> = ({ params }) => {
     });
 
     return unsubscribe;
-  }, [hasVideo, info, subscribeFrameIndex]);
+  }, [hasVideo, info, mediaSync, subscribeFrameIndex]);
 
   return (
     <div className="group relative flex h-full w-full items-center justify-center overflow-hidden bg-black">
@@ -331,6 +376,22 @@ const VideoPanelContent: React.FC<VideoPanelProps> = ({ params }) => {
         disablePictureInPicture
         disableRemotePlayback
       />
+
+      {hasVideo && isBuffering && (
+        <div
+          role="status"
+          aria-live="polite"
+          className="pointer-events-none absolute inset-0 flex items-center justify-center"
+        >
+          <div className="flex items-center gap-2 rounded-md bg-black/60 px-3 py-2 text-xs text-white">
+            <div
+              className="h-4 w-4 rounded-full border-2 border-white border-t-transparent animate-spin motion-reduce:animate-none"
+              aria-hidden
+            />
+            {t('panels.video.buffering')}
+          </div>
+        </div>
+      )}
 
       {/* 占位符 - 只在没有视频时显示 */}
       {!hasVideo && (

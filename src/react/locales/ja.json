@@ -506,6 +506,7 @@
     "video": {
       "title": "動画パネル",
       "placeholder": "動画ファイルを待機中...",
+      "buffering": "バッファリング中…",
       "debug": {
         "title": "メディアデバッグ",
         "feature": "Feature",
