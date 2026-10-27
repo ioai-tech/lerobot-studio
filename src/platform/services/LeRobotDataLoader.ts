@@ -65,7 +65,8 @@ export class LeRobotDataLoader {
   private tasks: Record<number, string> = {};
   private subtasks: SubtaskTable = {};
   private worker: Remote<ParquetWorkerAPI>;
-  private fileUrlCache: LRUCache<string, string>;
+  /** URL per path, with the source's expiry for it when it was cached. */
+  private fileUrlCache: LRUCache<string, { url: string; expiry: number | null }>;
   private disposed = false;
   /** Files read whole: no size, or the server does not serve Range. */
   private readonly wholeFilePaths = new Set<string>();
@@ -87,7 +88,7 @@ export class LeRobotDataLoader {
     // 使用 Vite ?worker&inline 自动处理 worker 和 WASM
     this.worker = createParquetWorker();
     // blob URL 由 DataSource 创建与 revoke；本层仅做 path→URL 查表，避免双层 LRU 互相 revoke 导致失效 URL
-    this.fileUrlCache = new LRUCache<string, string>(50, false);
+    this.fileUrlCache = new LRUCache<string, { url: string; expiry: number | null }>(50, false);
   }
 
   get dataSource(): DataSource {
@@ -682,12 +683,19 @@ export class LeRobotDataLoader {
   }
 
   async getFileUrl(path: string): Promise<string> {
-    const cachedUrl = this.fileUrlCache.get(path);
+    const cached = this.fileUrlCache.get(path);
     const expiry = this.getFileUrlExpiry(path);
-    if (cachedUrl && (expiry === null || expiry - Date.now() > URL_EXPIRY_POLICY.marginMs)) {
-      return cachedUrl;
+    // The cached URL only while the source still signs the path the same way (it renewed its URLs
+    // meanwhile: a newer one, with a later expiry, is there) and it is not about to expire. A URL
+    // from the cache must never outlive what its own expiry allows.
+    if (
+      cached &&
+      cached.expiry === expiry &&
+      (expiry === null || expiry - Date.now() > URL_EXPIRY_POLICY.marginMs)
+    ) {
+      return cached.url;
     }
-    if (cachedUrl) this.fileUrlCache.delete(path);
+    if (cached) this.fileUrlCache.delete(path);
 
     const pending = this.fileUrlLoading.get(path);
     if (pending) {
@@ -696,7 +704,7 @@ export class LeRobotDataLoader {
 
     const promise = (async () => {
       const url = await this._dataSource.getObjectUrl(path);
-      this.fileUrlCache.set(path, url);
+      this.fileUrlCache.set(path, { url, expiry: this.getFileUrlExpiry(path) });
       return url;
     })();
     this.fileUrlLoading.set(path, promise);
