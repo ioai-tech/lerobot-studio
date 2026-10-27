@@ -8,7 +8,13 @@ export type {
 } from './types/lerobot';
 export { isV2Info, isV3Info, isV3Metadata } from './types/lerobot';
 
-export type { DataSource, ProgressHandler, ProgressInfo, LoadingPhase } from './datasource/types';
+export type {
+  DataSource,
+  ProgressHandler,
+  ProgressInfo,
+  LoadingPhase,
+  RangeReadOptions,
+} from './datasource/types';
 
 export type { NumericalColumnData, NumericalColumnMap, EpisodeTableLoader } from './loader/types';
 

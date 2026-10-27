@@ -98,8 +98,14 @@ class BlobUrlLruCache {
   }
 }
 
-import type { DataSource, ProgressHandler, ProgressInfo, LoadingPhase } from '@/core';
-export type { DataSource, ProgressHandler, ProgressInfo, LoadingPhase };
+import type {
+  DataSource,
+  ProgressHandler,
+  ProgressInfo,
+  LoadingPhase,
+  RangeReadOptions,
+} from '@/core';
+export type { DataSource, ProgressHandler, ProgressInfo, LoadingPhase, RangeReadOptions };
 
 function normalizePath(path: string): string {
   let normalized = path.replace(/\\/g, '/');
@@ -597,7 +603,13 @@ export class DirectoryDataSource implements DataSource {
     return (await (await this.getFileHandle(path)).getFile()).size;
   }
 
-  async readRange(path: string, offset: number, length: number): Promise<Uint8Array> {
+  async readRange(
+    path: string,
+    offset: number,
+    length: number,
+    options?: RangeReadOptions,
+  ): Promise<Uint8Array> {
+    options?.signal?.throwIfAborted();
     const file = await (await this.getFileHandle(path)).getFile();
     return new Uint8Array(await file.slice(offset, offset + length).arrayBuffer());
   }
@@ -706,7 +718,13 @@ export class FileListDirectoryDataSource implements DataSource {
     return this.getFile(path).size;
   }
 
-  async readRange(path: string, offset: number, length: number): Promise<Uint8Array> {
+  async readRange(
+    path: string,
+    offset: number,
+    length: number,
+    options?: RangeReadOptions,
+  ): Promise<Uint8Array> {
+    options?.signal?.throwIfAborted();
     const file = this.getFile(path);
     return new Uint8Array(await file.slice(offset, offset + length).arrayBuffer());
   }

@@ -12,6 +12,7 @@ import init, { readParquet } from 'parquet-wasm';
 import type { ParquetWorkerAPI } from '@/core';
 import {
   clearRangeMetadataCache,
+  prefetchRangeMetadata,
   readFeatureRowsRange,
   readNumericColumnsRange,
 } from './parquetRange';
@@ -308,6 +309,16 @@ const api: ParquetWorkerAPI = {
         values.map((value) => convertFeatureValue(value)),
       ]),
     );
+  },
+
+  async prefetchRangeMetadata(file, read) {
+    await prefetchRangeMetadata(file, read);
+  },
+
+  async releaseFileCache(): Promise<void> {
+    // Only the whole-file Arrow table: Range footers and blocks are small and keep episode
+    // switches warm.
+    fileCache = null;
   },
 
   async clearCache(): Promise<void> {

@@ -1,4 +1,4 @@
-import type { DataSource, ProgressHandler } from '../../core/datasource/types';
+import type { DataSource, ProgressHandler, RangeReadOptions } from '../../core/datasource/types';
 import {
   assertMaterializable,
   DataSourceSafetyError,
@@ -246,8 +246,14 @@ export class RemoteManifestDataSource implements DataSource {
   }
 
   /** One HTTP Range request; a server that ignores Range is refused rather than downloaded whole. */
-  async readRange(path: string, offset: number, length: number): Promise<Uint8Array> {
+  async readRange(
+    path: string,
+    offset: number,
+    length: number,
+    options?: RangeReadOptions,
+  ): Promise<Uint8Array> {
     this.getEntry(path);
+    options?.signal?.throwIfAborted();
     if (
       !Number.isSafeInteger(offset) ||
       !Number.isSafeInteger(length) ||
@@ -264,6 +270,7 @@ export class RemoteManifestDataSource implements DataSource {
     assertMaterializable(path, length, this.limits);
     const res = await this.fetchEntry(path, {
       headers: { Range: `bytes=${offset}-${offset + length - 1}` },
+      signal: options?.signal,
     });
     if (res.status === 206) {
       return new Uint8Array(await res.arrayBuffer());
@@ -286,6 +293,13 @@ export class RemoteManifestDataSource implements DataSource {
     if (this.staleUrls.delete(normalizePath(path))) await this.renew(true);
     else await this.renew(false);
     return this.getEntry(path).presignedUrl;
+  }
+
+  /** Expiry of the current presigned URL of `path` (epoch ms), or null when it has none. */
+  getUrlExpiry(path: string): number | null {
+    const expiresAt = this.entryMap.get(normalizePath(path))?.expiresAt;
+    const expiry = expiresAt ? Date.parse(expiresAt) : Number.NaN;
+    return Number.isFinite(expiry) ? expiry : null;
   }
 
   clear(): void {

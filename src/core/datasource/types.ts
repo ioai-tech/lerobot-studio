@@ -16,6 +16,12 @@ export interface ProgressInfo {
 /** Receives data-source progress updates. */
 export type ProgressHandler = (info: ProgressInfo) => void;
 
+/** Options of a ranged read. */
+export interface RangeReadOptions {
+  /** Aborts the read (the viewer cancels the load of an episode the user already left). */
+  signal?: AbortSignal;
+}
+
 /** Browser-readable storage abstraction consumed by the viewer. */
 export interface DataSource {
   /** Return whether a logical dataset path exists. */
@@ -42,7 +48,18 @@ export interface DataSource {
    * Read `length` bytes starting at `offset`. Lets the parquet reader fetch only the footer, the row
    * groups of one episode and the requested column chunks instead of the whole file.
    */
-  readRange?(path: string, offset: number, length: number): Promise<Uint8Array>;
+  readRange?(
+    path: string,
+    offset: number,
+    length: number,
+    options?: RangeReadOptions,
+  ): Promise<Uint8Array>;
+  /**
+   * When the URL `getObjectUrl` returns for this path stops working (epoch milliseconds), or
+   * null/undefined when it does not expire. Video panels renew such URLs shortly before this time
+   * and swap the new one in without interrupting playback.
+   */
+  getUrlExpiry?(path: string): number | null | undefined;
   /**
    * Episode metadata rows (the columns of `meta/episodes/*.parquet`) supplied by the source instead
    * of episode parquet files: a set of episodes assembled from several recordings. In these rows

@@ -34,6 +34,15 @@ import { createParquetWorker, terminateWorker } from '../workers/workerManager';
 
 export type { NumericalColumnData, NumericalColumnMap };
 
+/** Options of an episode read. */
+export interface EpisodeReadOptions {
+  /** Cancels the Range requests of a load the viewer no longer needs. */
+  signal?: AbortSignal;
+}
+
+/** Re-read a cached URL this long before it expires. */
+const URL_EXPIRY_MARGIN_MS = 90_000;
+
 // 文件缓存结构
 interface ParsedFileCache {
   path: string;
@@ -286,15 +295,24 @@ export class LeRobotDataLoader {
    * Range 读取：数据源支持 `readRange` + `getSize` 时（远程清单、本地目录），worker 只拉取 footer、
    * 该 episode 覆盖的 row group 和所需列块；否则退回整文件读取。
    */
-  private async rangeFile(path: string): Promise<{
+  private async rangeFile(
+    path: string,
+    signal?: AbortSignal,
+  ): Promise<{
     file: { key: string; byteLength: number };
     read: (start: number, end: number) => Promise<ArrayBuffer>;
   } | null> {
     const source = this._dataSource;
     if (!source.readRange || !source.getSize) return null;
     const byteLength = await source.getSize(path);
+    signal?.throwIfAborted();
     const read = async (start: number, end: number): Promise<ArrayBuffer> => {
-      const bytes = await source.readRange!(path, start, end - start);
+      const bytes = await source.readRange!(
+        path,
+        start,
+        end - start,
+        signal ? { signal } : undefined,
+      );
       const buffer =
         bytes.byteOffset === 0 && bytes.byteLength === bytes.buffer.byteLength
           ? (bytes.buffer as ArrayBuffer)
@@ -310,12 +328,16 @@ export class LeRobotDataLoader {
   /**
    * 一次性加载所有数值列 - 优化版本
    */
-  async loadAllNumericalData(episodeIndex: number, columns: string[]): Promise<NumericalColumnMap> {
+  async loadAllNumericalData(
+    episodeIndex: number,
+    columns: string[],
+    options: EpisodeReadOptions = {},
+  ): Promise<NumericalColumnMap> {
     if (!this.info) throw new Error('Not initialized');
     if (columns.length === 0) return {};
 
     const { path, start, end } = this.getEpisodeRange(episodeIndex);
-    const ranged = await this.rangeFile(path);
+    const ranged = await this.rangeFile(path, options.signal);
     let result: Awaited<ReturnType<ParquetWorkerAPI['readNumericColumns']>>;
     if (ranged) {
       result = await this.worker.readNumericColumnsRange(
@@ -381,12 +403,13 @@ export class LeRobotDataLoader {
   async loadFeatureData(
     episodeIndex: number,
     featureNames: string[],
+    options: EpisodeReadOptions = {},
   ): Promise<Record<string, unknown[]>> {
     if (!this.info) throw new Error('Not initialized');
     if (featureNames.length === 0) return {};
 
     const { path, start, end } = this.getEpisodeRange(episodeIndex);
-    const ranged = await this.rangeFile(path);
+    const ranged = await this.rangeFile(path, options.signal);
     if (ranged) {
       return this.worker.readFeatureDataRange(ranged.file, ranged.read, featureNames, start, end);
     }
@@ -424,7 +447,10 @@ export class LeRobotDataLoader {
    * Prefers per-frame label columns (`metadata.subtask_label`) when present so
    * PI-style v2 datasets without meta/subtasks.parquet still display segments.
    */
-  async loadEpisodeSubtaskSource(episodeIndex: number): Promise<{
+  async loadEpisodeSubtaskSource(
+    episodeIndex: number,
+    options: EpisodeReadOptions = {},
+  ): Promise<{
     indices: Array<number | null>;
     table: SubtaskTable;
   }> {
@@ -438,9 +464,10 @@ export class LeRobotDataLoader {
     let labels: string[] = [];
     if (labelKey) {
       try {
-        const data = await this.loadFeatureData(episodeIndex, [labelKey]);
+        const data = await this.loadFeatureData(episodeIndex, [labelKey], options);
         labels = (data[labelKey] ?? []).map((value) => normalizeSubtaskLabel(value));
       } catch {
+        options.signal?.throwIfAborted();
         labels = [];
       }
     }
@@ -451,7 +478,7 @@ export class LeRobotDataLoader {
 
     if (!indexKey) return { indices: [], table: this.subtasks };
     try {
-      const data = await this.loadAllNumericalData(episodeIndex, [indexKey]);
+      const data = await this.loadAllNumericalData(episodeIndex, [indexKey], options);
       const column = data[indexKey];
       if (!column) return { indices: [], table: this.subtasks };
       const indices = Array.from({ length: column.rows }, (_, row) =>
@@ -462,6 +489,7 @@ export class LeRobotDataLoader {
         table: tableFromSubtaskIndices(indices, this.subtasks),
       };
     } catch {
+      options.signal?.throwIfAborted();
       return { indices: [], table: this.subtasks };
     }
   }
@@ -557,11 +585,43 @@ export class LeRobotDataLoader {
     return frames;
   }
 
+  /**
+   * Warms the next episode: the footer of its data file (Range sources). Errors are ignored; the
+   * real load reports them.
+   */
+  async prefetchEpisode(episodeIndex: number, options: EpisodeReadOptions = {}): Promise<void> {
+    try {
+      const { path } = this.getEpisodeRange(episodeIndex);
+      const ranged = await this.rangeFile(path, options.signal);
+      if (ranged) await this.worker.prefetchRangeMetadata(ranged.file, ranged.read);
+    } catch {
+      // best effort
+    }
+  }
+
+  /** When the URL of `path` expires (epoch ms), when the data source reports it. */
+  getFileUrlExpiry(path: string): number | null {
+    return this._dataSource.getUrlExpiry?.(path) ?? null;
+  }
+
+  /**
+   * A freshly signed URL for `path` (the video panel renews URLs shortly before they expire): the
+   * source is asked to re-sign when its URLs expire at all.
+   */
+  async refreshFileUrl(path: string): Promise<string> {
+    this.fileUrlCache.delete(path);
+    this.fileUrlLoading.delete(path);
+    if (this.getFileUrlExpiry(path) !== null) await this._dataSource.invalidateObjectUrl?.(path);
+    return this.getFileUrl(path);
+  }
+
   async getFileUrl(path: string): Promise<string> {
     const cachedUrl = this.fileUrlCache.get(path);
-    if (cachedUrl) {
+    const expiry = this.getFileUrlExpiry(path);
+    if (cachedUrl && (expiry === null || expiry - Date.now() > URL_EXPIRY_MARGIN_MS)) {
       return cachedUrl;
     }
+    if (cachedUrl) this.fileUrlCache.delete(path);
 
     const pending = this.fileUrlLoading.get(path);
     if (pending) {
@@ -618,7 +678,7 @@ export class LeRobotDataLoader {
     this.fileBytesCache = null;
     this.pendingParses.clear();
     try {
-      await this.worker.clearCache();
+      await this.worker.releaseFileCache();
     } catch {
       // ignore
     }

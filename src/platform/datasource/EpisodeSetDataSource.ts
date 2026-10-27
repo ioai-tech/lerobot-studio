@@ -1,4 +1,4 @@
-import type { DataSource, ProgressHandler } from '../../core/datasource/types';
+import type { DataSource, ProgressHandler, RangeReadOptions } from '../../core/datasource/types';
 import { formatLeRobotPath } from '../../core/versioning/pathTemplate';
 import type { DataSourceSafetyLimits } from './inputSafety';
 import { RemoteManifestDataSource, type RemoteFileEntry } from './RemoteManifestDataSource';
@@ -217,8 +217,17 @@ export class EpisodeSetDataSource implements DataSource {
     return this.files.getSize(path);
   }
 
-  readRange(path: string, offset: number, length: number): Promise<Uint8Array> {
-    return this.files.readRange(path, offset, length);
+  readRange(
+    path: string,
+    offset: number,
+    length: number,
+    options?: RangeReadOptions,
+  ): Promise<Uint8Array> {
+    return this.files.readRange(path, offset, length, options);
+  }
+
+  getUrlExpiry(path: string): number | null {
+    return this.files.getUrlExpiry(path);
   }
 
   invalidateObjectUrl(path: string): void {

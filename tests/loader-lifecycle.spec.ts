@@ -7,6 +7,7 @@ const mocks = vi.hoisted(() => ({
     readNumericColumns: vi.fn(),
     readFeatureData: vi.fn(),
     clearCache: vi.fn(),
+    releaseFileCache: vi.fn(),
   },
   terminateWorker: vi.fn(),
   validate: vi.fn(),
@@ -48,6 +49,7 @@ function source(overrides: Partial<DataSource> = {}): DataSource {
 beforeEach(() => {
   vi.resetAllMocks();
   mocks.worker.clearCache.mockResolvedValue(undefined);
+  mocks.worker.releaseFileCache.mockResolvedValue(undefined);
   mocks.validate.mockResolvedValue({ hasError: false, items: [] });
   mocks.loadEpisodes.mockResolvedValue([]);
   mocks.loadTasks.mockResolvedValue({});
@@ -180,10 +182,12 @@ describe('LeRobotDataLoader resource release', () => {
 
   it('releases parsed caches independently and tolerates worker cleanup failure', async () => {
     const loader = new LeRobotDataLoader(source());
-    mocks.worker.clearCache.mockRejectedValueOnce(new Error('worker gone'));
+    mocks.worker.releaseFileCache.mockRejectedValueOnce(new Error('worker gone'));
 
     await expect(loader.releaseParsedCaches()).resolves.toBeUndefined();
-    expect(mocks.worker.clearCache).toHaveBeenCalledOnce();
+    // only the whole-file table: Range footers and blocks stay warm across episodes
+    expect(mocks.worker.releaseFileCache).toHaveBeenCalledOnce();
+    expect(mocks.worker.clearCache).not.toHaveBeenCalled();
     expect(loader.isFileBytesCached('data/file.parquet')).toBe(false);
   });
 

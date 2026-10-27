@@ -67,8 +67,20 @@ export interface ParquetWorkerAPI {
     endRow: number,
   ): Promise<Record<string, unknown[]>>;
 
+  /** Reads and caches the footer metadata of a Range file (next-episode prefetch). */
+  prefetchRangeMetadata(
+    file: { key: string; byteLength: number },
+    read: (start: number, end: number) => Promise<ArrayBuffer>,
+  ): Promise<void>;
+
   /**
-   * 清除文件缓存
+   * Releases the whole-file Arrow table only. Range footers and cached blocks stay, so switching
+   * episodes keeps them warm.
+   */
+  releaseFileCache(): Promise<void>;
+
+  /**
+   * 清除文件缓存（包括 Range footer 与块缓存）
    */
   clearCache(): Promise<void>;
 }
