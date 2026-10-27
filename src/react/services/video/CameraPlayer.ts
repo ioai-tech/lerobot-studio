@@ -15,6 +15,7 @@
 import type { MediaSync, SyncedMedia, SyncedVideo } from '../MediaSync';
 import { SeekController, frameCentreTime } from './SeekController';
 import { DEFAULT_RETRY_POLICY, RetryBudget, isSignatureRefused, type RetryPolicy } from './retry';
+import { bufferedAhead, type Rendition } from './quality';
 
 /** One camera's view of an episode: the file and the episode's time range in it. */
 export interface CameraSource {
@@ -23,6 +24,8 @@ export interface CameraSource {
   start: number;
   /** `to_timestamp` (s), or null when unknown (the file's duration is used). */
   end: number | null;
+  /** The preview copy or the original video (default: original). */
+  rendition?: Rendition;
 }
 
 export type CameraErrorCode = 'VIDEO_UNAVAILABLE' | 'VIDEO_URL_REFUSED';
@@ -32,8 +35,12 @@ export interface CameraSnapshot {
   status: 'empty' | 'loading' | 'ready' | 'error';
   /** Waiting for data on the element on screen (playback or a seek). */
   buffering: boolean;
-  /** A swap (episode, quality, URL) is loading in the standby element. */
+  /** Another episode or file is loading in the standby element. */
   switching: boolean;
+  /** Rendition on screen (null: nothing yet). */
+  rendition: Rendition | null;
+  /** While playing: the other rendition of the same episode loads behind the picture. */
+  pendingRendition: Rendition | null;
   errorCode: CameraErrorCode | null;
   path: string | null;
   width: number;
@@ -59,6 +66,15 @@ export interface PlayerEnvironment {
   retryPolicy: RetryPolicy;
   /** HTTP status of `url` (Range 0-0), to tell an expired signature from a server failure. */
   probe(url: string): Promise<number | null>;
+  /** The camera was shown or hidden. */
+  onVisibilityChange?(player: CameraPlayer): void;
+  /** A swap finished: the camera shows its new source. */
+  onPromoted?(player: CameraPlayer): void;
+  /**
+   * Playing, a switch to another rendition gave up: the clock kept overtaking what the standby
+   * could buffer (the link does not carry the file). The camera keeps what it shows.
+   */
+  onSwitchStarved?(player: CameraPlayer): void;
 }
 
 type JobPurpose = 'show' | 'prefetch' | 'renew' | 'recover';
@@ -83,6 +99,12 @@ interface Job {
   aimedAt: number;
   /** How long the last aim took to get ready (ms). */
   readyLatency: number | null;
+  /** Times the playing clock overtook what the standby had buffered. */
+  overtaken: number;
+  /** The standby plays hidden ahead of the clock to fill its buffer. */
+  prerolling: boolean;
+  /** When it first started to (ms): a buffer that does not grow in `PREROLL_MAX_MS` gives up. */
+  prerollSince: number | null;
   group: TransitionGroup | null;
   startedAt: number;
 }
@@ -129,12 +151,23 @@ export class TransitionGroup {
 
 const HAVE_CURRENT_DATA = 2;
 const HAVE_FUTURE_DATA = 3;
+/**
+ * While playing, a camera switches to another rendition only when the standby has this much media
+ * buffered past the switch (s, scaled by the rate; less near the end of the episode): a switch never
+ * trades a playing picture for a stall.
+ */
+export const SUSTAIN_AHEAD_SECONDS = 3;
 /** URL renewal; `renewLeadMs` before the expiry the URL is re-signed and swapped in (tests shorten it). */
 export const VIDEO_URL_POLICY = { renewLeadMs: 90_000 };
 /** Elements without a panel for this long release their source. */
 const PARK_RELEASE_MS = 3_000;
 /** While playing, a swap is prepared this far ahead of the clock and promoted when it gets there. */
 const RENDEZVOUS_LEAD_SECONDS = 0.6;
+/** A playing switch gives up after the clock overtook the standby's buffer this many times. */
+const MAX_OVERTAKEN = 4;
+/** Head start of a standby that plays ahead to fill its buffer after the clock caught it (s). */
+const PREROLL_LEAD_SECONDS = 2;
+const PREROLL_MAX_MS = 12_000;
 
 type VideoFrameCallback = (now: number, metadata: { mediaTime: number }) => void;
 type FrameCallbackVideo = HTMLVideoElement & {
@@ -204,12 +237,19 @@ export class CameraPlayer {
   private hosts: HTMLElement[] = [];
   private readonly visibleHosts = new Set<HTMLElement>();
   private observer: IntersectionObserver | null = null;
+  private resizeObserver: ResizeObserver | null = null;
+  /** Hosts in the viewport, and hosts with an area: visible = both. */
+  private readonly intersecting = new Set<HTMLElement>();
+  private readonly sized = new Set<HTMLElement>();
   private unregisterSync: (() => void) | null = null;
   private readonly syncedMedia: SyncedMedia;
   private disposed = false;
   private readonly frameCallbacks = new WeakMap<HTMLVideoElement, number>();
   private readonly mirrors = new Map<HTMLElement, HTMLCanvasElement>();
   private mirrorHandle: number | null = null;
+  /** Paused swap: the old picture painted on a canvas while its element let go of its connection. */
+  private cover: HTMLCanvasElement | null = null;
+  private frozenFrame: number | null = null;
 
   constructor(key: string, env: PlayerEnvironment) {
     this.key = key;
@@ -225,6 +265,8 @@ export class CameraPlayer {
       status: 'empty',
       buffering: false,
       switching: false,
+      rendition: null,
+      pendingRendition: null,
       errorCode: null,
       path: null,
       width: 0,
@@ -343,11 +385,13 @@ export class CameraPlayer {
       return;
     }
 
-    if (this.activeUrl && this.source?.path === source.path) {
+    if (this.activeUrl && this.source?.path === source.path && this.frozenFrame === null) {
+      const sameEpisode = Math.abs(this.source.start - source.start) < 1e-6;
       this.cancelJob();
       this.source = source;
       this.update({ start: source.start, end: source.end, switching: false });
-      this.seekActive(frame, false);
+      // the rendition on screen again while playing (a pending switch was called off): no seek
+      if (!(sameEpisode && this.env.mediaSync.isPlaying())) this.seekActive(frame, false);
       this.refreshSyncRegistration();
       return;
     }
@@ -395,6 +439,7 @@ export class CameraPlayer {
 
   /** Frame shown by the element on screen. */
   currentFrame(): number {
+    if (this.frozenFrame !== null) return this.frozenFrame;
     if (!this.source) return 0;
     const fps = this.env.fps();
     return Math.max(0, Math.floor((this.active.currentTime - this.source.start) * fps + 1e-3));
@@ -449,13 +494,26 @@ export class CameraPlayer {
       rendezvous: null,
       aimedAt: performance.now(),
       readyLatency: null,
+      overtaken: 0,
+      prerolling: false,
+      prerollSince: null,
       group: null,
       startedAt: performance.now(),
     };
     this.job = job;
     if (group) this.joinGroup(job, group);
+    if (purpose === 'show' && this.activeUrl && !this.env.mediaSync.isPlaying()) this.freeze();
     if (!this.activeUrl) this.update({ status: 'loading', path: source.path });
-    else if (purpose === 'show') this.update({ switching: true });
+    else if (purpose === 'show') {
+      const sameEpisode = this.source !== null && Math.abs(this.source.start - source.start) < 1e-6;
+      const rendition = source.rendition ?? 'original';
+      if (sameEpisode && rendition !== (this.source?.rendition ?? 'original')) {
+        // the picture stays on screen and keeps playing: not a switch the user waits for
+        this.update({ pendingRendition: rendition });
+      } else {
+        this.update({ switching: true });
+      }
+    }
     void this.loadJob(job);
   }
 
@@ -583,28 +641,75 @@ export class CameraPlayer {
     const wait = () => {
       if (this.job !== job || this.disposed) return;
       const active = this.active;
+      const element = job.element;
       const fps = this.env.fps();
       if (active.paused || !this.env.mediaSync.isPlaying()) {
         // playback stopped meanwhile: show the frame the old element stopped on
+        this.stopPreroll(job);
         job.rendezvous = null;
         this.retarget(job, this.currentFrame());
         return;
+      }
+      if (job.prerolling) {
+        // The standby plays (hidden, muted) ahead of the clock, so the browser keeps downloading
+        // it as it would for the picture on screen (a paused element stops after a second or two).
+        if (this.canSustain(job)) {
+          // enough buffered to play on: wait for the clock where it is
+          this.stopPreroll(job);
+          job.rendezvous = element.currentTime;
+        } else if (active.currentTime >= element.currentTime - 0.5 / fps) {
+          // the clock caught up with it: the link does not carry this file at this rate (yet)
+          this.stopPreroll(job);
+          job.overtaken += 1;
+          if (job.overtaken >= MAX_OVERTAKEN && job.purpose === 'show') {
+            this.cancelJob();
+            this.env.onSwitchStarved?.(this);
+            return;
+          }
+          // further ahead each time: the standby needs a head start to fill its buffer
+          const lead = Math.min(10, PREROLL_LEAD_SECONDS * 2 ** (job.overtaken - 1));
+          job.rendezvous =
+            active.currentTime +
+            Math.max(lead, this.reaimLead(job, active.playbackRate)) *
+              Math.max(1, active.playbackRate);
+          this.retarget(job, Math.max(0, Math.floor((job.rendezvous - job.source.start) * fps)));
+          return;
+        } else if (performance.now() - (job.prerollSince ?? performance.now()) > PREROLL_MAX_MS) {
+          // it plays along but its buffer does not grow: the link carries this file at about its
+          // bit rate and no faster; on screen it would stall at the first hiccup
+          this.stopPreroll(job);
+          if (job.purpose === 'show') {
+            this.cancelJob();
+            this.env.onSwitchStarved?.(this);
+            return;
+          }
+          requestAnimationFrame(wait);
+          return;
+        } else {
+          requestAnimationFrame(wait);
+          return;
+        }
       }
       const rendezvous = job.rendezvous ?? 0;
       if (active.currentTime > rendezvous + 2 / fps) {
         // the standby got ready after the clock passed it: aim further ahead, by what getting
         // ready took (a slow link, a heavy rendition), and meet the clock there
-        const seconds = ((job.readyLatency ?? 600) / 1000) * 1.5 * Math.max(1, active.playbackRate);
-        const lead = Math.min(10, Math.max(RENDEZVOUS_LEAD_SECONDS, seconds));
+        const lead = this.reaimLead(job, active.playbackRate);
         job.rendezvous = active.currentTime + lead;
         this.retarget(job, Math.max(0, Math.floor((job.rendezvous - job.source.start) * fps)));
+        return;
+      }
+      if (!this.canSustain(job)) {
+        // ahead of the clock but short of data: play it along until it holds enough
+        this.startPreroll(job, active.playbackRate);
+        requestAnimationFrame(wait);
         return;
       }
       if (active.currentTime >= rendezvous - 0.5 / fps) {
         this.promote(job);
         return;
       }
-      if (active.currentTime < (job.rendezvous ?? 0) - 3) {
+      if (active.currentTime < rendezvous - 3 - SUSTAIN_AHEAD_SECONDS) {
         // the clock jumped back (a seek): prepare again
         this.startJob(job.purpose, job.source, this.currentFrame(), null);
         return;
@@ -612,6 +717,49 @@ export class CameraPlayer {
       requestAnimationFrame(wait);
     };
     requestAnimationFrame(wait);
+  }
+
+  private startPreroll(job: Job, rate: number): void {
+    if (job.prerolling) return;
+    job.prerolling = true;
+    job.prerollSince ??= performance.now();
+    const element = job.element;
+    element.playbackRate = rate > 0 ? rate : 1;
+    try {
+      const pending = element.play();
+      if (pending && typeof pending.catch === 'function') pending.catch(() => undefined);
+    } catch {
+      // a refused play shows up as the clock catching up
+    }
+  }
+
+  private stopPreroll(job: Job): void {
+    if (!job.prerolling) return;
+    job.prerolling = false;
+    job.element.pause();
+  }
+
+  /** How far ahead of the clock to aim again: by what getting ready took (a slow link, a heavy rendition). */
+  private reaimLead(job: Job, rate: number): number {
+    const seconds = ((job.readyLatency ?? 600) / 1000) * 1.5 * Math.max(1, rate);
+    return Math.min(10, Math.max(RENDEZVOUS_LEAD_SECONDS, seconds));
+  }
+
+  /** The standby has enough media past its frame to play on without a stall. */
+  private canSustain(job: Job): boolean {
+    const element = job.element;
+    const rate = Math.max(1, this.active.playbackRate);
+    const end =
+      job.source.end !== null && job.source.end > job.source.start
+        ? job.source.end
+        : Number.isFinite(element.duration)
+          ? element.duration
+          : Number.POSITIVE_INFINITY;
+    const need = Math.min(
+      SUSTAIN_AHEAD_SECONDS * rate,
+      end - element.currentTime - 0.5 / this.env.fps(),
+    );
+    return need <= 0 || bufferedAhead(element, element.currentTime) >= need;
   }
 
   /** Called by a transition group once every member is ready. */
@@ -631,6 +779,7 @@ export class CameraPlayer {
     this.activeUrl = job.url;
     this.source = job.source;
     this.applyRoles();
+    this.unfreeze();
     this.active.preload = this.isVisible() ? 'auto' : 'metadata';
     previous.pause();
     // the old element is behind the new one now; free its connection and decoder
@@ -639,6 +788,8 @@ export class CameraPlayer {
     this.update({
       status: 'ready',
       switching: false,
+      rendition: job.source.rendition ?? 'original',
+      pendingRendition: null,
       errorCode: null,
       path: job.source.path,
       width: this.active.videoWidth,
@@ -652,6 +803,7 @@ export class CameraPlayer {
     this.scheduleRenewal();
     this.paintMirrors();
     job.resolve(true);
+    this.env.onPromoted?.(this);
   }
 
   private cancelJob(): void {
@@ -662,7 +814,8 @@ export class CameraPlayer {
     job.resolve(false);
     this.seekerOf(job.element).cancel();
     releaseMediaElement(job.element);
-    if (this.snapshot.switching) this.update({ switching: false });
+    if (this.snapshot.switching || this.snapshot.pendingRendition)
+      this.update({ switching: false, pendingRendition: null });
   }
 
   private failJob(job: Job): void {
@@ -671,6 +824,7 @@ export class CameraPlayer {
     job.group?.settle(this, false);
     const purpose = job.purpose;
     this.job = null;
+    if (this.snapshot.pendingRendition) this.update({ pendingRendition: null });
     job.resolve(false);
     releaseMediaElement(job.element);
     if (purpose === 'prefetch') return; // the real switch loads it again
@@ -762,7 +916,9 @@ export class CameraPlayer {
   private listen(element: HTMLVideoElement): void {
     const isActive = () => element === this.active;
     const onWaiting = () => {
-      if (isActive() && this.activeUrl) this.update({ buffering: true });
+      // a frozen camera let its element go on purpose; the cover shows its picture
+      if (isActive() && this.activeUrl && this.frozenFrame === null)
+        this.update({ buffering: true });
     };
     const onSeeking = () => {
       if (isActive() && element.readyState < HAVE_FUTURE_DATA) this.update({ buffering: true });
@@ -814,6 +970,9 @@ export class CameraPlayer {
   private detach(host: HTMLElement): void {
     this.hosts = this.hosts.filter((candidate) => candidate !== host);
     this.observer?.unobserve(host);
+    this.resizeObserver?.unobserve(host);
+    this.intersecting.delete(host);
+    this.sized.delete(host);
     this.visibleHosts.delete(host);
     const mirror = this.mirrors.get(host);
     if (mirror) {
@@ -831,12 +990,54 @@ export class CameraPlayer {
     }
   }
 
+  /**
+   * Paused, a swap of file loads while the old picture stays: paint it on a canvas and let the old
+   * element go, so its connection is free for the new file (browsers open about six connections
+   * per host; four cameras on screen plus four loading would leave two waiting).
+   */
+  private freeze(): void {
+    const video = this.active;
+    const owner = this.hosts[0];
+    if (this.frozenFrame !== null || !owner || video.readyState < HAVE_CURRENT_DATA) return;
+    if (!video.videoWidth || !video.videoHeight) return;
+    const canvas = document.createElement('canvas');
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    try {
+      canvas.getContext('2d')?.drawImage(video, 0, 0, canvas.width, canvas.height);
+    } catch {
+      return; // no picture to hold: keep the element
+    }
+    canvas.dataset.lerobotCover = this.key;
+    Object.assign(canvas.style, {
+      position: 'absolute',
+      inset: '0',
+      width: '100%',
+      height: '100%',
+      objectFit: 'contain',
+      zIndex: '2',
+      pointerEvents: 'none',
+    });
+    owner.appendChild(canvas);
+    this.cover = canvas;
+    this.frozenFrame = this.currentFrame();
+    this.activeSeeker.cancel();
+    releaseMediaElement(video);
+  }
+
+  private unfreeze(): void {
+    this.cover?.remove();
+    this.cover = null;
+    this.frozenFrame = null;
+  }
+
   /** The elements live in the first panel; further panels get a mirror canvas. */
   private placeElements(): void {
     const owner = this.hosts[0] ?? this.env.parking();
     for (const element of this.elements) {
       if (element.parentElement !== owner) owner.appendChild(element);
     }
+    if (this.cover && this.cover.parentElement !== owner) owner.appendChild(this.cover);
     for (const host of this.hosts.slice(1)) {
       if (!this.mirrors.has(host)) {
         const canvas = document.createElement('canvas');
@@ -900,12 +1101,39 @@ export class CameraPlayer {
     this.observer ??= new IntersectionObserver((entries) => {
       for (const entry of entries) {
         const target = entry.target as HTMLElement;
-        if (entry.isIntersecting && entry.intersectionRatio > 0) this.visibleHosts.add(target);
-        else this.visibleHosts.delete(target);
+        if (entry.isIntersecting && entry.intersectionRatio > 0) this.intersecting.add(target);
+        else this.intersecting.delete(target);
       }
-      this.onVisibilityChange();
+      this.updateVisibleHosts();
     });
+    // a panel collapsed to nothing (another one maximized) still "intersects", with zero area
+    if (typeof ResizeObserver !== 'undefined') {
+      this.resizeObserver ??= new ResizeObserver((entries) => {
+        for (const entry of entries) {
+          const target = entry.target as HTMLElement;
+          const { width, height } = entry.contentRect;
+          if (width > 1 && height > 1) this.sized.add(target);
+          else this.sized.delete(target);
+        }
+        this.updateVisibleHosts();
+      });
+      this.resizeObserver.observe(host);
+    } else {
+      this.sized.add(host);
+    }
     this.observer.observe(host);
+  }
+
+  private updateVisibleHosts(): void {
+    const before = this.visibleHosts.size;
+    const had = new Set(this.visibleHosts);
+    this.visibleHosts.clear();
+    for (const host of this.hosts) {
+      if (this.intersecting.has(host) && this.sized.has(host)) this.visibleHosts.add(host);
+    }
+    const same =
+      before === this.visibleHosts.size && [...this.visibleHosts].every((host) => had.has(host));
+    if (!same) this.onVisibilityChange();
   }
 
   /** Visible cameras download ahead and join playback; hidden ones only keep metadata. */
@@ -915,6 +1143,7 @@ export class CameraPlayer {
     if (this.job && this.job.purpose !== 'prefetch')
       this.job.element.preload = visible ? 'auto' : 'metadata';
     this.refreshSyncRegistration();
+    this.env.onVisibilityChange?.(this);
   }
 
   /** Join MediaSync while a source is on screen and the camera is visible. */
@@ -952,8 +1181,52 @@ export class CameraPlayer {
     this.unregisterSync?.();
     this.unregisterSync = null;
     for (const element of this.elements) releaseMediaElement(element);
+    this.unfreeze();
     this.activeUrl = null;
     this.update({ status: this.source ? 'empty' : this.snapshot.status, buffering: false });
+  }
+
+  /**
+   * The rendition this camera shows, or is switching to (a prefetch or URL renewal keeps the
+   * current one); null before the first source.
+   */
+  wantedRendition(): Rendition | null {
+    const job = this.job;
+    if (job && (job.purpose === 'show' || job.purpose === 'recover'))
+      return job.source.rendition ?? 'original';
+    if (!this.source) return null;
+    return this.source.rendition ?? 'original';
+  }
+
+  /** Elements that may download, with the file each loads (link measurement). */
+  streams(): Array<{ element: HTMLVideoElement; path: string }> {
+    const streams: Array<{ element: HTMLVideoElement; path: string }> = [];
+    if (this.activeUrl && this.source && this.frozenFrame === null)
+      streams.push({ element: this.active, path: this.source.path });
+    if (this.job?.url) streams.push({ element: this.job.element, path: this.job.source.path });
+    return streams;
+  }
+
+  /** A swap (not a prefetch or URL renewal) loads in the standby element. */
+  isSwitching(): boolean {
+    return this.job !== null && (this.job.purpose === 'show' || this.job.purpose === 'recover');
+  }
+
+  /** The other rendition of the episode on screen loads in the standby element. */
+  isUpgrading(): boolean {
+    return this.snapshot.pendingRendition === 'original';
+  }
+
+  /** Duration of `path` when one of the elements has loaded it. */
+  mediaDuration(path: string): number | null {
+    const candidates: HTMLVideoElement[] = [];
+    if (this.activeUrl && this.source?.path === path && this.frozenFrame === null)
+      candidates.push(this.active);
+    if (this.job?.source.path === path) candidates.push(this.job.element);
+    for (const element of candidates) {
+      if (Number.isFinite(element.duration) && element.duration > 0) return element.duration;
+    }
+    return null;
   }
 
   /** Whether the element on screen shows `source` (or loads it in the standby element). */
@@ -967,6 +1240,7 @@ export class CameraPlayer {
     this.disposed = true;
     if (this.releaseTimer !== null) clearTimeout(this.releaseTimer);
     this.observer?.disconnect();
+    this.resizeObserver?.disconnect();
     this.seekers.forEach((seeker) => seeker.dispose());
     for (const canvas of this.mirrors.values()) canvas.remove();
     this.mirrors.clear();

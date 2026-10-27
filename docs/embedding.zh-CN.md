@@ -99,6 +99,8 @@ export function SignedManifestViewer({ files }: { files: RemoteFileEntry[] }) {
 
 自定义 `DataSource` 也可以获得相同行为：实现 `getSize` 和 `readRange(path, offset, length, { signal })`（查看器会取消用户已离开的 Episode 的读取），以及用于会过期 URL 的 `getUrlExpiry(path)`。
 
+提供预览副本（`previewVideoPath`）时，查看器会在播放中判断连接能承载哪些相机的原画。它通过文件大小（`sizeBytes` 或 `getSize`）得到每个视频的码率，并在选择原画时（以及播放满一分钟后）用一次针对原画的短 Range 下载（最多 4 MB 或 2 秒）测量连接速度。没有文件大小时，所有相机都播放原画，与之前一致。
+
 ## 自定义欢迎页
 
 多数嵌入场景会先让用户选数据，再打开查看器。用 `LeRobotStudioProvider` 包一层，欢迎页和查看器就能共用主题、语言和样式。有了 `DataSource` 之后，再渲染 `LeRobotViewerContent`：

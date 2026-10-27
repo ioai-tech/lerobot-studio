@@ -65,6 +65,8 @@ You can add panels, split the layout to the right or below, and close panels you
 
 When you switch episodes, the charts, timeline and subtasks of the previous episode stay on screen (dimmed) until the new episode is loaded, and every camera keeps its picture until its first frame of the new episode is ready. The next episode is read ahead, so automatic advance and loop playback continue without a pause.
 
+When a dataset has a light preview copy of its videos, **Preview / Original** in the playback bar chooses which one plays. Paused, **Original** switches every camera at the frame on screen within a moment. While playing, the original videos of all cameras together can need more than your connection carries (four 13 Mbps cameras on a 20 Mbps link). Then the viewer measures the connection and plays the original only on the cameras it carries, the focused camera first, one camera at a time and only once that camera has buffered enough to keep playing. The other cameras keep the preview and show a **Preview** badge, and the playback bar tells you why (for example "Original on 1 of 4 cameras"; hover it for the numbers). Pause, or focus a camera (`M` or `F`), to see the original.
+
 Video playback depends on the video codec and your browser. If a video cannot play, charts and raw data may still be available.
 
 ## Check the dataset

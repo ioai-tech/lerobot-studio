@@ -94,7 +94,11 @@
       "preview": "Preview",
       "original": "Original",
       "previewHint": "Playing the light preview copy; switch to the original resolution",
-      "originalHint": "Playing the original videos; switch back to the light preview copy"
+      "originalHint": "Playing the original videos; switch back to the light preview copy",
+      "limited": "Original on {{count}} of {{total}} cameras",
+      "limitedFocused": "Original on the focused camera",
+      "limitedHint": "Original needs about {{needed}} Mbps; this connection carries about {{link}} Mbps. While playing, the other cameras keep the preview. Pause, or focus a camera (M / F), to see Original.",
+      "limitedHintUnknown": "This connection cannot carry the original video of every camera. While playing, the other cameras keep the preview. Pause, or focus a camera (M / F), to see Original."
     },
     "noData": "Select an episode to start playback",
     "progress": "Playback progress",
@@ -533,6 +537,10 @@
       "errors": {
         "unavailable": "This video could not be loaded.",
         "urlRefused": "The link to this video expired and could not be renewed."
+      },
+      "rendition": {
+        "preview": "Preview",
+        "loadingOriginal": "Loading Original…"
       }
     },
     "image": {

@@ -16,6 +16,7 @@ import { getFeatureDisplayType, getFirstVisualFeatureName } from '@/core';
 import { ImagePanel } from '../ImagePanel/ImagePanel';
 import { MediaDebugOverlay } from '../Common/MediaDebugOverlay';
 import { useVideoStage } from '../../../contexts/VideoStageContext';
+import { useVideoVariant } from '../../../contexts/VideoVariantContext';
 import type { CameraPlayer, CameraSnapshot } from '../../../services/video/CameraPlayer';
 
 interface VideoPanelProps {
@@ -31,6 +32,8 @@ const EMPTY_SNAPSHOT: CameraSnapshot = {
   status: 'empty',
   buffering: false,
   switching: false,
+  rendition: null,
+  pendingRendition: null,
   errorCode: null,
   path: null,
   width: 0,
@@ -93,6 +96,7 @@ const VideoPanelContent: React.FC<VideoPanelProps> = ({ params, panelApi, contai
   const { t } = useTranslation();
   const { info } = useLeRobotData();
   const stage = useVideoStage();
+  const { variant, previewVideoPath } = useVideoVariant();
   const featureKey = params?.featureKey || 'observation.images.up';
   const rootRef = useRef<HTMLDivElement>(null);
   const hostRef = useRef<HTMLDivElement>(null);
@@ -100,6 +104,13 @@ const VideoPanelContent: React.FC<VideoPanelProps> = ({ params, panelApi, contai
   const snapshot = useCameraSnapshot(player);
   const maximized = useMaximized(panelApi, containerApi);
   const fullscreen = useFullscreen(rootRef);
+  const focused = maximized || fullscreen;
+
+  useEffect(() => {
+    if (!stage) return;
+    stage.setFocusedCamera(featureKey, focused);
+    return () => stage.setFocusedCamera(featureKey, false);
+  }, [stage, featureKey, focused]);
 
   useLayoutEffect(() => {
     const host = hostRef.current;
@@ -161,6 +172,12 @@ const VideoPanelContent: React.FC<VideoPanelProps> = ({ params, panelApi, contai
 
   const hasFrame = snapshot.status === 'ready';
   const showBusy = useDelayedFlag(hasFrame && (snapshot.buffering || snapshot.switching), 250);
+  // Original chosen, but this camera plays the preview (the link carries fewer originals)
+  const onPreview =
+    hasFrame &&
+    Boolean(previewVideoPath) &&
+    variant === 'original' &&
+    (snapshot.rendition === 'preview' || snapshot.pendingRendition === 'original');
   const title = featureKey.split('.').pop() || featureKey;
 
   return (
@@ -241,6 +258,26 @@ const VideoPanelContent: React.FC<VideoPanelProps> = ({ params, panelApi, contai
           </div>
         </div>
       )}
+
+      {onPreview ? (
+        <div
+          className="pointer-events-none absolute left-2 top-2 z-[4] flex items-center gap-1.5 rounded bg-black/60 px-1.5 py-0.5 text-[10px] font-medium text-white"
+          data-camera-rendition={snapshot.rendition ?? undefined}
+          data-camera-upgrading={snapshot.pendingRendition === 'original' ? 'true' : undefined}
+        >
+          {snapshot.pendingRendition === 'original' ? (
+            <>
+              <span
+                className="h-2.5 w-2.5 rounded-full border border-white border-t-transparent animate-spin motion-reduce:animate-none"
+                aria-hidden
+              />
+              {t('panels.video.rendition.loadingOriginal')}
+            </>
+          ) : (
+            t('panels.video.rendition.preview')
+          )}
+        </div>
+      ) : null}
 
       <div className="absolute right-2 top-2 z-[4] flex gap-1 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100 focus-within:opacity-100">
         {panelApi ? (

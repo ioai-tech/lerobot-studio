@@ -1,4 +1,11 @@
-import React, { useMemo, useRef, useEffect, useCallback, useState } from 'react';
+import React, {
+  useMemo,
+  useRef,
+  useEffect,
+  useCallback,
+  useState,
+  useSyncExternalStore,
+} from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   useLeRobotData,
@@ -11,6 +18,8 @@ import { EpisodeTrimControls } from './EpisodeTrimControls';
 import { EditSubtaskDialog } from '../dialogs/EditSubtaskDialog';
 import { useLoading } from '../../contexts/LoadingContext';
 import { useVideoVariant } from '../../contexts/VideoVariantContext';
+import { useVideoStage } from '../../contexts/VideoStageContext';
+import type { QualityStatus, VideoStage } from '../../services/video/VideoStage';
 import {
   resolveSubtaskIndexFeatureKey,
   resolveSubtaskLabelFeatureKey,
@@ -21,7 +30,71 @@ import { Button } from '@/ui';
 import { Badge } from '@/ui';
 import { Separator } from '@/ui';
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/ui';
-import { Play, Pause, ChevronLeft, ChevronRight, Repeat, Repeat1, Shuffle } from 'lucide-react';
+import {
+  Play,
+  Pause,
+  ChevronLeft,
+  ChevronRight,
+  Repeat,
+  Repeat1,
+  Shuffle,
+  Info,
+} from 'lucide-react';
+
+const NO_QUALITY_STATUS: QualityStatus = {
+  limited: false,
+  neededMbps: null,
+  linkMbps: null,
+  originalCount: 0,
+  visibleCount: 0,
+  focusedOriginal: false,
+};
+const noopSubscribe = () => () => undefined;
+
+function useQualityStatus(stage: VideoStage | null): QualityStatus {
+  return useSyncExternalStore(
+    stage?.subscribeQuality ?? noopSubscribe,
+    stage?.getQualityStatus ?? (() => NO_QUALITY_STATUS),
+  );
+}
+
+/** Playing with Original chosen while the link carries the original of only some cameras. */
+const QualityNotice: React.FC<{ status: QualityStatus }> = ({ status }) => {
+  const { t } = useTranslation();
+  if (!status.limited) return null;
+  const label = status.focusedOriginal
+    ? t('playback.quality.limitedFocused')
+    : t('playback.quality.limited', {
+        count: status.originalCount,
+        total: status.visibleCount,
+      });
+  const hint =
+    status.neededMbps !== null && status.linkMbps !== null
+      ? t('playback.quality.limitedHint', {
+          needed: Math.round(status.neededMbps),
+          link: Math.max(1, Math.round(status.linkMbps)),
+        })
+      : t('playback.quality.limitedHintUnknown');
+  return (
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <span
+            role="status"
+            aria-live="polite"
+            data-quality-notice=""
+            className="inline-flex max-w-[16rem] items-center gap-1 truncate rounded px-1.5 py-0.5 text-[11px] text-amber-700 dark:text-amber-400"
+          />
+        }
+      >
+        <Info className="h-3.5 w-3.5 shrink-0" aria-hidden />
+        <span className="truncate">{label}</span>
+        <span className="sr-only">{hint}</span>
+      </TooltipTrigger>
+      <TooltipContent className="max-w-xs">{hint}</TooltipContent>
+    </Tooltip>
+  );
+};
 
 function frameTimeSeconds(timestamp: number | undefined, frameIndex: number, fps: number): number {
   if (typeof timestamp === 'number' && Number.isFinite(timestamp)) return timestamp;
@@ -53,6 +126,7 @@ export const PlaybackBar: React.FC = () => {
         resolveSubtaskLabelFeatureKey(info.features)),
     );
   const { previewVideoPath, variant, setVariant } = useVideoVariant();
+  const qualityStatus = useQualityStatus(useVideoStage());
   const { selectedEpisodeIndex, trimRanges, trimEpisode } = useLeRobotSelection();
   const {
     canAnnotate,
@@ -336,6 +410,9 @@ export const PlaybackBar: React.FC = () => {
                   : t('playback.quality.originalHint')}
               </TooltipContent>
             </Tooltip>
+          ) : null}
+          {previewVideoPath && variant === 'original' ? (
+            <QualityNotice status={qualityStatus} />
           ) : null}
 
           <Tooltip>

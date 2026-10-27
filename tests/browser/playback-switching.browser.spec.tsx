@@ -57,11 +57,14 @@ const canvas = document.createElement('canvas');
 const context = canvas.getContext('2d', { willReadFrequently: true })!;
 
 /** The dataset frame index shown by `video`, or null for a black / blank / undecodable picture. */
-function decodeFrame(video: HTMLVideoElement | null | undefined): number | null {
+function decodeFrame(
+  video: HTMLVideoElement | HTMLCanvasElement | null | undefined,
+): number | null {
   // what is on screen: the last presented frame also while a seek is in flight
-  if (!video || !video.videoWidth) return null;
-  const width = video.videoWidth;
-  const height = video.videoHeight;
+  if (!video) return null;
+  const width = video instanceof HTMLVideoElement ? video.videoWidth : video.width;
+  const height = video instanceof HTMLVideoElement ? video.videoHeight : video.height;
+  if (!width || !height) return null;
   canvas.width = width;
   canvas.height = height;
   context.drawImage(video, 0, 0, width, height);
@@ -101,7 +104,12 @@ describe('browser: playback switching on a frame-coded dataset', () => {
   const panel = (camera: string) => host.querySelector<HTMLElement>(`[data-camera="${camera}"]`);
   const activeVideo = (camera: string) =>
     panel(camera)?.querySelector<HTMLVideoElement>('video[data-lerobot-role="active"]') ?? null;
-  const shown = (camera: string) => decodeFrame(activeVideo(camera));
+  /** The picture on screen: a paused swap holds it on a cover canvas while the new file loads. */
+  const shown = (camera: string) =>
+    decodeFrame(
+      panel(camera)?.querySelector<HTMLCanvasElement>('canvas[data-lerobot-cover]') ??
+        activeVideo(camera),
+    );
   const allShow = (value: number) => CAMERAS.every((camera) => shown(camera) === value);
   /** Every camera shows a frame of the episode starting at `start` (it may be playing). */
   const allIn = (start: number) =>

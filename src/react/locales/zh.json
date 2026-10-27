@@ -94,7 +94,11 @@
       "preview": "预览",
       "original": "原画",
       "previewHint": "正在播放轻量预览副本；切换到原始分辨率",
-      "originalHint": "正在播放原始视频；切回轻量预览副本"
+      "originalHint": "正在播放原始视频；切回轻量预览副本",
+      "limited": "{{total}} 路相机中 {{count}} 路为原画",
+      "limitedFocused": "聚焦的相机为原画",
+      "limitedHint": "原画需要约 {{needed}} Mbps，当前连接约 {{link}} Mbps。播放时其他相机保持预览画质。暂停或聚焦某个相机（M / F）即可查看原画。",
+      "limitedHintUnknown": "当前连接无法同时播放所有相机的原画。播放时其他相机保持预览画质。暂停或聚焦某个相机（M / F）即可查看原画。"
     },
     "noData": "请选择一个动作任务开始播放",
     "progress": "播放进度",
@@ -533,6 +537,10 @@
       "errors": {
         "unavailable": "无法加载此视频。",
         "urlRefused": "此视频的链接已过期且无法续期。"
+      },
+      "rendition": {
+        "preview": "预览",
+        "loadingOriginal": "正在加载原画…"
       }
     },
     "image": {

@@ -33,7 +33,9 @@ export default defineConfig({
     fileParallelism: false,
     browser: {
       enabled: true,
-      provider: playwright(),
+      // a user action that never becomes possible fails with the locator it waited for, instead
+      // of hanging until the test timeout
+      provider: playwright({ actionTimeout: 60_000 }),
       headless: true,
       instances: [{ browser: 'chromium' }],
     },

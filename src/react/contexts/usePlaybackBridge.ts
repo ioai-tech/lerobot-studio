@@ -211,9 +211,11 @@ export function usePlaybackBridge({
             onPlaybackStart: (frameIndex: number, rate: number) => {
               mediaSync.setFps(latest().fps);
               mediaSync.start(frameIndex, rate);
+              videoStage?.setPlaying(true);
             },
             onPlaybackStop: () => {
               mediaSync.stop();
+              videoStage?.setPlaying(false);
               videoStage?.alignToPlayhead();
             },
             ...(videoStage
