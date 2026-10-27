@@ -46,6 +46,7 @@ export type {
   LoadingPhase,
   ProgressHandler,
   ProgressInfo,
+  RangeReadOptions,
 } from '../core/datasource/types';
 export type { RemoteFileEntry, RemoteManifestOptions };
 export type { EpisodeSetEpisode, EpisodeSetManifest, EpisodeSetOptions, EpisodeSetRecording };

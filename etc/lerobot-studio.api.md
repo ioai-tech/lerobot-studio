@@ -49,11 +49,12 @@ export interface DataSource {
     exists(path: string): Promise<boolean>;
     getObjectUrl(path: string, mimeType?: string, onProgress?: ProgressHandler): Promise<string>;
     getSize?(path: string): Promise<number>;
+    getUrlExpiry?(path: string): number | null | undefined;
     invalidateObjectUrl?(path: string): void | Promise<void>;
     listPaths?(): Promise<string[]>;
     readBytes(path: string, onProgress?: ProgressHandler): Promise<Uint8Array>;
     readEpisodeRows?(): Promise<Array<Record<string, unknown>>>;
-    readRange?(path: string, offset: number, length: number): Promise<Uint8Array>;
+    readRange?(path: string, offset: number, length: number, options?: RangeReadOptions): Promise<Uint8Array>;
     readText(path: string, onProgress?: ProgressHandler): Promise<string>;
 }
 
@@ -215,6 +216,11 @@ export interface ProgressInfo {
     message?: string;
     phase: LoadingPhase;
     total?: number;
+}
+
+// @public
+export interface RangeReadOptions {
+    signal?: AbortSignal;
 }
 
 // @public
