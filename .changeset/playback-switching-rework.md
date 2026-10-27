@@ -1,0 +1,15 @@
+---
+'@ioai/lerobot-studio': minor
+---
+
+Rework playback and switching so the picture never flashes, goes black or lands on the wrong frame.
+
+- Every camera has a standby `<video>` element. Another file (the next episode, the Preview / Original switch, a renewed URL) loads there, seeks to the target frame before the start of the file is fetched, and replaces the picture once its frame is decoded; all cameras switch together and playback continues where it was. Episodes in the same file seek in place. The switch is allowed while a load runs; the latest choice wins.
+- Seeks are exact and coalescing: the latest target wins, one seek runs at a time, the final position of a fast scrub is never dropped, frames are addressed by their centre, and steps while playing move every camera. Paused cameras sit exactly on the playhead frame, also right after pausing.
+- Playback stops on the last frame of an episode (never showing the next episode of a shared file). The next episode (or the start of the episode, in loop mode) is prefetched — the footer and numeric columns of its data, and its videos into the standby elements near the end of playback or after a short idle while paused — so auto-advance and loop start without a stall.
+- Switching episodes keeps the charts, timeline and subtask lane on screen (dimmed) until the new episode is loaded; cameras show a placeholder instead of black while their first frame loads.
+- The panel layout is built in one step and only rebuilt when its arrangement changes; a locale switch renames panels in place, and video elements outlive panels, so a breakpoint change never reloads a video. A second panel of the same camera mirrors the first instead of downloading it again. Camera panels gain Focus (M) and Full screen (F) buttons.
+- Hidden cameras (another panel focused, scrolled out of view) keep only metadata and leave synchronized playback until they are shown again.
+- Video URLs that expire are renewed shortly before they do and swapped in without interrupting the picture. A failing video retries with exponential backoff and stops after five attempts with a named error and a Retry button; only a refused signature (400/401/403) re-signs.
+- Range parquet reads keep the footer metadata across episode switches, cache recently read row-group blocks (48 MB budget), coalesce column chunks into fewer requests, run the numeric, subtask and feature reads of an episode in parallel, and cancel the reads of an episode the user already left.
+- `DataSource` gains two optional members: `readRange(path, offset, length, options?)` may take `{ signal }`, and `getUrlExpiry(path)` reports when a URL from `getObjectUrl` expires. The remote manifest and episode-set sources implement both.

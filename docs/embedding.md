@@ -95,6 +95,10 @@ export function SignedManifestViewer({ files }: { files: RemoteFileEntry[] }) {
 
 Each entry needs a logical dataset path and an HTTP(S) URL. Optional `contentType` and `sizeBytes` help the viewer and the built-in safety limits.
 
+Presigned URLs expire. Give each entry its `expiresAt` and pass a `refresh` that returns the same paths with new URLs: `createRemoteManifestDataSource(files, { refresh })`. Video panels renew a URL about 90 seconds before it expires and swap it in without interrupting the picture; data reads renew shortly before the earliest expiry. A request refused with 400/401/403 re-signs once; other failures (a 5xx, a dropped connection) retry with exponential backoff and, after five attempts, the camera shows an error with a Retry button.
+
+A custom `DataSource` can opt into the same behaviour: implement `getSize` and `readRange(path, offset, length, { signal })` (the viewer aborts the reads of an episode the user already left), and `getUrlExpiry(path)` for URLs that expire.
+
 ## Custom welcome page
 
 Most embeds show a landing screen first, then the viewer. Wrap the page in `LeRobotStudioProvider` so that screen and the viewer share theme, language, and styles. Render `LeRobotViewerContent` once you have a `DataSource`:

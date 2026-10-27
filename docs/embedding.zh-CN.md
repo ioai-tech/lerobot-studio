@@ -95,6 +95,10 @@ export function SignedManifestViewer({ files }: { files: RemoteFileEntry[] }) {
 
 每条记录需要逻辑路径和 HTTP(S) URL。可选的 `contentType` 与 `sizeBytes` 会帮助查看器和内置安全限额。
 
+预签名 URL 会过期。为每条记录提供 `expiresAt`，并传入返回相同路径、新 URL 的 `refresh`：`createRemoteManifestDataSource(files, { refresh })`。视频面板会在 URL 过期前约 90 秒续期，并在不打断画面的情况下切换到新 URL；数据读取会在最早的过期时间之前续期。被 400/401/403 拒绝的请求会重新签名一次；其他失败（5xx、连接中断）按指数退避重试，5 次之后该相机显示错误和“重试”按钮。
+
+自定义 `DataSource` 也可以获得相同行为：实现 `getSize` 和 `readRange(path, offset, length, { signal })`（查看器会取消用户已离开的 Episode 的读取），以及用于会过期 URL 的 `getUrlExpiry(path)`。
+
 ## 自定义欢迎页
 
 多数嵌入场景会先让用户选数据，再打开查看器。用 `LeRobotStudioProvider` 包一层，欢迎页和查看器就能共用主题、语言和样式。有了 `DataSource` 之后，再渲染 `LeRobotViewerContent`：

@@ -45,6 +45,13 @@ Keyboard shortcuts:
 | `↑` / `↓`                  | Previous or next episode            |
 | `Home` / `End`             | First or last frame                 |
 
+In a camera panel (click it first):
+
+| Key | Action                               |
+| --- | ------------------------------------ |
+| `M` | Focus this camera / show all cameras |
+| `F` | Full screen camera; `Esc` leaves it  |
+
 ## Read the data
 
 The default layout keeps video, charts, and raw features on the same frame.
@@ -54,7 +61,9 @@ The default layout keeps video, charts, and raw features on the same frame.
 - **Raw** shows the source values for the current frame.
 - **Analysis** in the sidebar shows dataset totals, duration distribution, and task distribution.
 
-You can add panels, split the layout to the right or below, and close panels you do not need.
+You can add panels, split the layout to the right or below, and close panels you do not need. A second panel of the same camera mirrors the first one rather than downloading the video again. Hover a camera for **Focus** (hide the other panels; hidden cameras stop downloading until they are shown again) and **Full screen**.
+
+When you switch episodes, the charts, timeline and subtasks of the previous episode stay on screen (dimmed) until the new episode is loaded, and every camera keeps its picture until its first frame of the new episode is ready. The next episode is read ahead, so automatic advance and loop playback continue without a pause.
 
 Video playback depends on the video codec and your browser. If a video cannot play, charts and raw data may still be available.
 
