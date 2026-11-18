@@ -6,6 +6,7 @@ import {
   DEFAULT_VISIBLE_DIMENSIONS,
   featureUnit,
   nearestSampleIndex,
+  visibleSampleRange,
 } from '../src/react/components/panels/ChartPanel/chartGroupsModel';
 
 const names18 = Array.from({ length: 18 }, (_, i) => `joint_${i}`);
@@ -62,5 +63,28 @@ describe('chart groups', () => {
     expect(nearestSampleIndex(t, 0.0076)).toBe(2);
     expect(nearestSampleIndex(t, -1)).toBe(0);
     expect(nearestSampleIndex(t, 9)).toBe(3);
+  });
+
+  it('keeps gaps as gaps: no infinite extremes from empty or non-finite buckets', () => {
+    const n = 4_000;
+    const x = Float64Array.from({ length: n }, (_, i) => i);
+    const y = Float64Array.from({ length: n }, (_, i) =>
+      i < 1_000 ? NaN : i < 1_100 ? Infinity : i < 1_200 ? -Infinity : Math.sin(i),
+    );
+    const out = decimateMinMax(x, [y], 100);
+    expect(out.ys[0]!.some((v) => v === Infinity || v === -Infinity)).toBe(false);
+    expect(Number.isNaN(out.ys[0]![0])).toBe(true);
+    const short = decimateMinMax([0, 1, 2], [[1, Infinity, -Infinity]], 100);
+    expect(Array.from(short.ys[0]!)).toEqual([1, NaN, NaN]);
+  });
+
+  it('decimates only the visible window, so a long series keeps detail on screen', () => {
+    // 200 Hz over 100 s; the visible episode is 2 s of it.
+    const x = Float64Array.from({ length: 20_000 }, (_, i) => i / 200);
+    const [from, to] = visibleSampleRange(x, 50, 52);
+    expect(x[from]).toBeLessThan(50);
+    expect(x[to - 1]).toBeGreaterThan(52);
+    expect(to - from).toBe(403);
+    expect(visibleSampleRange(x, -5, -1)).toEqual([0, 1]);
   });
 });

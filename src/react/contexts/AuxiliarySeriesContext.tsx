@@ -64,8 +64,22 @@ export function AuxiliarySeriesProvider({
   const [entries, setEntries] = useState<Map<string, Entry>>(new Map());
   /** Latest entries, updated synchronously so overlapping effect runs never double-read. */
   const entriesRef = useRef(entries);
-  const warnRef = useRef(onWarning);
-  warnRef.current = onWarning;
+  const onWarningRef = useRef(onWarning);
+  onWarningRef.current = onWarning;
+  /** Warnings already reported (code, series, column): each is reported once. */
+  const reportedRef = useRef(new Set<string>());
+  const warnRef = useRef((warning: AuxiliarySeriesWarning) => {
+    const key = `${warning.code}\u0000${warning.seriesId}\u0000${warning.column ?? ''}`;
+    if (reportedRef.current.has(key)) return;
+    reportedRef.current.add(key);
+    onWarningRef.current?.(warning);
+  });
+  /** Forget what was reported for a series that is read again (new data or a retry). */
+  const forgetWarnings = (seriesId: string) => {
+    for (const key of [...reportedRef.current]) {
+      if (key.split('\u0000')[1] === seriesId) reportedRef.current.delete(key);
+    }
+  };
   const fps = info?.fps || 30;
   const isEpisodeSet = dataLoader?.dataSource instanceof EpisodeSetDataSource;
 
@@ -73,7 +87,7 @@ export function AuxiliarySeriesProvider({
     if (!dataLoader || !info || !series?.length) return;
     if (isEpisodeSet) {
       for (const item of series) {
-        warnRef.current?.({
+        warnRef.current({
           code: 'EPISODE_SET_UNSUPPORTED',
           seriesId: item.id,
           message: 'Auxiliary series apply to single-dataset views only',
@@ -87,6 +101,7 @@ export function AuxiliarySeriesProvider({
       // Same data (only URLs changed): keep what is loaded or loading. A
       // failed read is retried when the host passes the series again.
       if (existing && existing.key === key && existing.state !== 'failed') continue;
+      forgetWarnings(item.id);
       const loading: Entry = { key, state: 'loading' };
       entriesRef.current = new Map(entriesRef.current).set(item.id, loading);
       setEntries(entriesRef.current);
@@ -98,11 +113,11 @@ export function AuxiliarySeriesProvider({
       };
       void readAuxiliarySeries(item, fps, (bytes) => dataLoader.parseParquet(bytes))
         .then((data) => {
-          data.warnings.forEach((warning) => warnRef.current?.(warning));
+          data.warnings.forEach((warning) => warnRef.current(warning));
           settle({ key, state: 'ready', data });
         })
         .catch((error: unknown) => {
-          warnRef.current?.({
+          warnRef.current({
             code: 'READ_FAILED',
             seriesId: item.id,
             message: error instanceof Error ? error.message : String(error),

@@ -3,6 +3,7 @@ import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { page } from 'vitest/browser';
 import { LeRobotViewer } from '@/components/LeRobotViewer';
+import { createEpisodeSetDataSource } from '../../src/react/public-api';
 import type {
   AuxiliarySeries,
   AuxiliarySeriesWarning,
@@ -275,6 +276,46 @@ describe('browser: data foundations', () => {
     // Defaults apply in the effect after the group first renders.
     await waitFor(() => chip('aux:late')!.getAttribute('aria-pressed') === 'true', 3_000);
     expect(chip('action')!.getAttribute('aria-pressed')).toBe('true');
+  }, 60_000);
+
+  it('reports an auxiliary-series warning once, not on every render', async () => {
+    const info = await (await fetch(`${DATASET}/meta/info.json`)).json();
+    const file = (path: string) => ({
+      logicalPath: path,
+      presignedUrl: `${location.origin}${DATASET}/${path}`,
+    });
+    const source = createEpisodeSetDataSource({
+      fps: info.fps,
+      features: info.features,
+      recordings: [{ id: 'a', files: [file('data/chunk-000/file-000.parquet'), file(VIDEO)] }],
+      episodes: [{ recordingId: 'a', task: 'pick', fromRow: 0, toRow: 3, fromS: 0, toS: 0.3 }],
+    });
+    const warnings: AuxiliarySeriesWarning[] = [];
+    // A new series array on every render, as inline props are.
+    const view = () => (
+      <LeRobotViewer
+        dataSource={source}
+        language="en"
+        showPlaybackBar={false}
+        auxiliarySeries={[
+          {
+            id: 'extra',
+            label: 'Extra',
+            files: [file('data/chunk-000/file-000.parquet')],
+            timeColumn: 'timestamp',
+            timeUnit: 's',
+          },
+        ]}
+        onAuxiliarySeriesWarning={(warning) => warnings.push(warning)}
+      />
+    );
+    await render(view());
+    await waitFor(() => host.querySelector('[data-chart-group="action"]') !== null);
+    for (let i = 0; i < 4; i++) {
+      await render(view());
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+    expect(warnings.map((warning) => warning.code)).toEqual(['EPISODE_SET_UNSUPPORTED']);
   }, 60_000);
 
   it('pauses exactly: the slider frame equals every camera frame, pause after pause', async () => {

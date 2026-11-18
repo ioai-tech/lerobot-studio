@@ -99,7 +99,10 @@ export function decimateMinMax(
   const n = x.length;
   const buckets = Math.max(1, Math.floor(pixelWidth));
   if (n <= buckets * 4) {
-    return { x: Float64Array.from(x), ys: ys.map((y) => Float64Array.from(y)) };
+    return {
+      x: Float64Array.from(x),
+      ys: ys.map((y) => Float64Array.from(y, (v) => (Number.isFinite(v) ? v : NaN))),
+    };
   }
   const outX: number[] = [];
   const outYs: number[][] = ys.map(() => []);
@@ -117,12 +120,15 @@ export function decimateMinMax(
     ];
     outX.push(...xs);
     ys.forEach((y, s) => {
+      // Gaps (NaN, ±Infinity) are skipped; a bucket without a finite sample
+      // stays a gap instead of an infinite extreme that breaks the y scale.
       let min = Infinity;
       let max = -Infinity;
-      let minAt = from;
-      let maxAt = from;
+      let minAt = -1;
+      let maxAt = -1;
       for (let i = from; i < to; i++) {
         const v = y[i]!;
+        if (!Number.isFinite(v)) continue;
         if (v < min) {
           min = v;
           minAt = i;
@@ -132,11 +138,45 @@ export function decimateMinMax(
           maxAt = i;
         }
       }
+      const finiteOrGap = (v: number) => (Number.isFinite(v) ? v : NaN);
+      if (minAt < 0) {
+        outYs[s]!.push(NaN, NaN, NaN, NaN);
+        return;
+      }
       const [lo, hi] = minAt <= maxAt ? [min, max] : [max, min];
-      outYs[s]!.push(y[from]!, lo, hi, y[last]!);
+      outYs[s]!.push(finiteOrGap(y[from]!), lo, hi, finiteOrGap(y[last]!));
     });
   }
   return { x: Float64Array.from(outX), ys: outYs.map((values) => Float64Array.from(values)) };
+}
+
+/** Index range `[from, to)` of the samples to draw for `[min, max]`, plus one neighbour each side. */
+export function visibleSampleRange(
+  x: ArrayLike<number>,
+  min: number,
+  max: number,
+): [number, number] {
+  const lowerBound = (value: number) => {
+    let lo = 0;
+    let hi = x.length;
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      if (x[mid]! < value) lo = mid + 1;
+      else hi = mid;
+    }
+    return lo;
+  };
+  const upperBound = (value: number) => {
+    let lo = 0;
+    let hi = x.length;
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      if (x[mid]! <= value) lo = mid + 1;
+      else hi = mid;
+    }
+    return lo;
+  };
+  return [Math.max(0, lowerBound(min) - 1), Math.min(x.length, upperBound(max) + 1)];
 }
 
 /** Values of one dimension of a numeric column. */

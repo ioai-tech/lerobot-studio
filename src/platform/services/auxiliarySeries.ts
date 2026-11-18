@@ -1,4 +1,4 @@
-import { tableFromIPC, type Vector } from 'apache-arrow';
+import { tableFromIPC, Type, type Vector } from 'apache-arrow';
 import type { RemoteFileEntry } from '../datasource/RemoteManifestDataSource';
 import { RemoteManifestDataSource } from '../datasource/RemoteManifestDataSource';
 
@@ -16,12 +16,17 @@ export interface AuxiliarySeries {
   files: RemoteFileEntry[];
   /** Column holding each sample's time. */
   timeColumn: string;
-  /** `s` seconds, `ns` nanoseconds, or `frame` (dataset frame index, divided by fps). */
+  /**
+   * `s` seconds, `ns` nanoseconds, or `frame` (dataset frame index, divided by
+   * fps). An Arrow/parquet timestamp column is read exactly as nanoseconds and
+   * needs `ns` (otherwise `TIME_UNIT_MISMATCH`).
+   */
   timeUnit: 's' | 'ns' | 'frame';
   /**
-   * Integer nanoseconds as a decimal string, added to the time column before
-   * conversion (for example the negative recording start, so absolute
-   * timestamps become seconds from the episode start). Exact for int64 columns.
+   * Integer nanoseconds as a decimal string, added to every sample's time (for
+   * example the negative recording start, so absolute timestamps become
+   * seconds from the episode start). Applies to every unit; exact for int64
+   * and timestamp columns with `ns`.
    */
   timeOffsetNs?: string;
   /** Numeric columns to plot; all numeric columns but the time column when omitted. */
@@ -32,7 +37,11 @@ export interface AuxiliarySeries {
 
 /** Machine-readable auxiliary-series problems; other series keep drawing. */
 export type AuxiliarySeriesWarningCode =
-  'COLUMN_MISSING' | 'TIME_COLUMN_MISSING' | 'READ_FAILED' | 'EPISODE_SET_UNSUPPORTED';
+  | 'COLUMN_MISSING'
+  | 'TIME_COLUMN_MISSING'
+  | 'TIME_UNIT_MISMATCH'
+  | 'READ_FAILED'
+  | 'EPISODE_SET_UNSUPPORTED';
 
 export interface AuxiliarySeriesWarning {
   code: AuxiliarySeriesWarningCode;
@@ -74,8 +83,9 @@ function isNumericVector(vector: Vector): boolean {
 }
 
 /**
- * Convert one series' time values to seconds. `ns` adds `timeOffsetNs` with
- * BigInt arithmetic, so int64 epoch timestamps stay exact before conversion.
+ * Convert one series' time values to seconds from the episode start.
+ * `timeOffsetNs` applies to every unit; for `ns` it is added with BigInt
+ * arithmetic, so int64 epoch timestamps stay exact before conversion.
  */
 export function convertAuxiliaryTime(
   raw: ArrayLike<unknown>,
@@ -85,18 +95,43 @@ export function convertAuxiliaryTime(
 ): Float64Array {
   const out = new Float64Array(raw.length);
   const offset = timeOffsetNs ? BigInt(timeOffsetNs) : 0n;
+  const offsetS = Number(offset) / 1e9;
   for (let i = 0; i < raw.length; i++) {
     const value = raw[i];
     if (unit === 'ns') {
       if (typeof value === 'bigint') out[i] = Number(value + offset) / 1e9;
       else out[i] = (toNumber(value) + Number(offset)) / 1e9;
     } else if (unit === 'frame') {
-      out[i] = toNumber(value) / fps;
+      out[i] = toNumber(value) / fps + offsetS;
     } else {
-      out[i] = toNumber(value);
+      out[i] = toNumber(value) + offsetS;
     }
   }
   return out;
+}
+
+const NS_PER_TIMESTAMP_UNIT = [1_000_000_000n, 1_000_000n, 1_000n, 1n];
+
+/**
+ * Raw values of a time column. Arrow `Timestamp` columns are read from their
+ * int64 storage and scaled to nanoseconds exactly (Arrow's `get()` returns
+ * float milliseconds, which loses nanoseconds); other columns use `get()`.
+ */
+function readTimeColumn(vector: Vector): { values: unknown[]; timestamp: boolean } {
+  const values = new Array<unknown>(vector.length);
+  if (vector.type.typeId !== Type.Timestamp) {
+    for (let i = 0; i < vector.length; i++) values[i] = vector.get(i);
+    return { values, timestamp: false };
+  }
+  const factor = NS_PER_TIMESTAMP_UNIT[(vector.type as { unit: number }).unit] ?? 1n;
+  let row = 0;
+  for (const data of vector.data) {
+    const storage = data.values as unknown as BigInt64Array;
+    for (let i = 0; i < data.length; i++, row++) {
+      values[row] = data.getValid(i) ? BigInt(storage[data.offset + i]!) * factor : null;
+    }
+  }
+  return { values, timestamp: true };
 }
 
 /**
@@ -112,8 +147,17 @@ export async function readAuxiliarySeries(
   const source = new RemoteManifestDataSource(series.files);
   const warnings: AuxiliarySeriesWarning[] = [];
   const times: Float64Array[] = [];
-  const columnParts = new Map<string, { width: number; parts: Float64Array[] }>();
+  const files: Array<{
+    rows: number;
+    columns: Map<string, { width: number; values: Float64Array }>;
+  }> = [];
+  const order: string[] = [];
   const wanted = series.columns ? [...series.columns] : null;
+  const refuse = (warning: AuxiliarySeriesWarning): LoadedAuxiliarySeries => ({
+    time: new Float64Array(),
+    columns: [],
+    warnings: [warning],
+  });
 
   for (const file of series.files) {
     const ipc = await parse(await source.readBytes(file.logicalPath));
@@ -121,41 +165,34 @@ export async function readAuxiliarySeries(
     const rows = table.numRows;
     const timeVector = table.getChild(series.timeColumn);
     if (!timeVector) {
-      return {
-        time: new Float64Array(),
-        columns: [],
-        warnings: [
-          {
-            code: 'TIME_COLUMN_MISSING',
-            seriesId: series.id,
-            column: series.timeColumn,
-            message: `Time column ${series.timeColumn} is missing in ${file.logicalPath}`,
-          },
-        ],
-      };
+      return refuse({
+        code: 'TIME_COLUMN_MISSING',
+        seriesId: series.id,
+        column: series.timeColumn,
+        message: `Time column ${series.timeColumn} is missing in ${file.logicalPath}`,
+      });
     }
-    const rawTime = new Array<unknown>(rows);
-    for (let i = 0; i < rows; i++) rawTime[i] = timeVector.get(i);
-    times.push(convertAuxiliaryTime(rawTime, series.timeUnit, fps, series.timeOffsetNs));
+    const rawTime = readTimeColumn(timeVector);
+    if (rawTime.timestamp && series.timeUnit !== 'ns') {
+      return refuse({
+        code: 'TIME_UNIT_MISMATCH',
+        seriesId: series.id,
+        column: series.timeColumn,
+        message: `Time column ${series.timeColumn} is a timestamp; use timeUnit 'ns'`,
+      });
+    }
+    times.push(convertAuxiliaryTime(rawTime.values, series.timeUnit, fps, series.timeOffsetNs));
 
     const names =
       wanted ??
       table.schema.fields
         .map((field) => field.name)
         .filter((name) => name !== series.timeColumn && isNumericVector(table.getChild(name)!));
+    const columns = new Map<string, { width: number; values: Float64Array }>();
     for (const name of names) {
+      if (!order.includes(name)) order.push(name);
       const vector = table.getChild(name);
-      if (!vector) {
-        if (!warnings.some((warning) => warning.column === name)) {
-          warnings.push({
-            code: 'COLUMN_MISSING',
-            seriesId: series.id,
-            column: name,
-            message: `Column ${name} is missing`,
-          });
-        }
-        continue;
-      }
+      if (!vector) continue;
       const width = vectorWidth(vector, rows);
       if (width === 0) continue;
       const values = new Float64Array(rows * width);
@@ -168,10 +205,9 @@ export async function readAuxiliarySeries(
           for (let d = 0; d < width; d++) values[i * width + d] = toNumber(items[d]);
         }
       }
-      const entry = columnParts.get(name) ?? { width, parts: [] };
-      entry.parts.push(values);
-      columnParts.set(name, entry);
+      columns.set(name, { width, values });
     }
+    files.push({ rows, columns });
   }
 
   const concat = (parts: Float64Array[]) => {
@@ -185,11 +221,39 @@ export async function readAuxiliarySeries(
     return out;
   };
   let time = concat(times);
-  let columns = [...columnParts.entries()].map(([name, { width, parts }]) => ({
-    name,
-    width,
-    values: concat(parts),
-  }));
+  // One value per sample of every file: a column a file lacks is padded with
+  // NaN for that file's rows, so values never shift against time.
+  let columns: LoadedAuxiliarySeries['columns'] = [];
+  for (const name of order) {
+    const present = files.filter((file) => file.columns.has(name));
+    if (present.length < files.length) {
+      warnings.push({
+        code: 'COLUMN_MISSING',
+        seriesId: series.id,
+        column: name,
+        message:
+          present.length === 0
+            ? `Column ${name} is missing`
+            : `Column ${name} is missing in ${files.length - present.length} of ${files.length} files`,
+      });
+    }
+    if (present.length === 0) continue;
+    const width = Math.max(...present.map((file) => file.columns.get(name)!.width));
+    const parts = files.map((file) => {
+      const column = file.columns.get(name);
+      if (column && column.width === width) return column.values;
+      const padded = new Float64Array(file.rows * width).fill(NaN);
+      if (column) {
+        for (let i = 0; i < file.rows; i++) {
+          for (let d = 0; d < column.width; d++) {
+            padded[i * width + d] = column.values[i * column.width + d]!;
+          }
+        }
+      }
+      return padded;
+    });
+    columns.push({ name, width, values: concat(parts) });
+  }
   // Keep samples in time order (files may arrive out of order).
   let sorted = true;
   for (let i = 1; i < time.length; i++) {

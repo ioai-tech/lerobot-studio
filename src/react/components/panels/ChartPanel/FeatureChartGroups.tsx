@@ -8,7 +8,7 @@ import {
   getCssVarHsl,
   getLerobotRoot,
 } from '../../../lib/chartTheme';
-import { decimateMinMax, type ChartGroup } from './chartGroupsModel';
+import { decimateMinMax, visibleSampleRange, type ChartGroup } from './chartGroupsModel';
 
 /** One chart group with its samples (x in seconds from the episode start, ascending). */
 export interface ChartGroupData {
@@ -115,8 +115,13 @@ function FeatureChart({
     const shown = group.series.filter((series) => visibleKey.split('|').includes(series.id));
     const raw = shown.map((series) => data.values(series.id) ?? new Float64Array(data.x.length));
 
+    // Decimate only what the shared x range shows: a series spanning many
+    // episodes keeps full detail inside the visible window.
+    const [from, to] = visibleSampleRange(data.x, xRange[0], xRange[1]);
+    const visibleX = data.x.subarray(from, to);
+    const visibleYs = raw.map((values) => values.subarray(from, to));
     const build = (width: number): uPlot.AlignedData => {
-      const decimated = decimateMinMax(data.x, raw, Math.max(1, width));
+      const decimated = decimateMinMax(visibleX, visibleYs, Math.max(1, width));
       return [decimated.x, ...decimated.ys] as uPlot.AlignedData;
     };
 

@@ -1,5 +1,16 @@
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
-import { Float64, Int64, Table, tableToIPC, vectorFromArray, type Vector } from 'apache-arrow';
+import {
+  Float64,
+  Int64,
+  makeData,
+  makeVector,
+  Table,
+  TimestampMicrosecond,
+  TimestampNanosecond,
+  tableToIPC,
+  vectorFromArray,
+  type Vector,
+} from 'apache-arrow';
 import { getParquetWasmNode } from './helpers/parquetWasmNode';
 import { readParquetToIPC } from './helpers/parquet';
 import {
@@ -130,5 +141,98 @@ describe('auxiliary series', () => {
     expect(loaded.time).toHaveLength(2_001);
     expect(loaded.time.at(-1)).toBe(20);
     expect(loaded.columns[0]!.values.at(-1)).toBe(99);
+  });
+
+  it('reads a parquet TIMESTAMP(NANOS) time column exactly as int64 nanoseconds', async () => {
+    const stamps = BigInt64Array.from([START_NS, START_NS + 1n, START_NS + 5_000_001n]);
+    const bytes = await parquet({
+      t: makeVector(makeData({ type: new TimestampNanosecond(), length: 3, data: stamps })),
+      v: vectorFromArray(Float64Array.from([1, 2, 3])),
+    });
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response(bytes)),
+    );
+    const loaded = await readAuxiliarySeries(
+      series({ timeColumn: 't', columns: ['v'] }),
+      30,
+      parse,
+    );
+    expect(Array.from(loaded.time)).toEqual([0, 1e-9, 0.005000001]);
+  });
+
+  it('scales other timestamp units to nanoseconds, and refuses a timestamp column without ns', async () => {
+    const micros = BigInt64Array.from([START_NS / 1000n, START_NS / 1000n + 2n]);
+    const bytes = await parquet({
+      t: makeVector(makeData({ type: new TimestampMicrosecond(), length: 2, data: micros })),
+      v: vectorFromArray(Float64Array.from([1, 2])),
+    });
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response(bytes)),
+    );
+    const loaded = await readAuxiliarySeries(
+      series({
+        timeColumn: 't',
+        columns: ['v'],
+        timeOffsetNs: (-(START_NS / 1000n) * 1000n).toString(),
+      }),
+      30,
+      parse,
+    );
+    expect(Array.from(loaded.time)).toEqual([0, 0.000002]);
+    const refused = await readAuxiliarySeries(
+      series({ timeColumn: 't', columns: ['v'], timeUnit: 's' }),
+      30,
+      parse,
+    );
+    expect(refused.columns).toEqual([]);
+    expect(refused.warnings[0]).toMatchObject({ code: 'TIME_UNIT_MISMATCH', column: 't' });
+  });
+
+  it('applies timeOffsetNs to s and frame time columns too', () => {
+    expect(Array.from(convertAuxiliaryTime([10, 11], 's', 30, '-10000000000'))).toEqual([0, 1]);
+    expect(Array.from(convertAuxiliaryTime([30, 60], 'frame', 30, '-1000000000'))).toEqual([0, 1]);
+  });
+
+  it('pads a column missing from one file, so values stay aligned with time', async () => {
+    const withBoth = await parquet({
+      ts: vectorFromArray(Float64Array.from([0, 1])),
+      a: vectorFromArray(Float64Array.from([10, 11])),
+      b: vectorFromArray(Float64Array.from([20, 21])),
+    });
+    const onlyA = await parquet({
+      ts: vectorFromArray(Float64Array.from([2, 3])),
+      a: vectorFromArray(Float64Array.from([12, 13])),
+    });
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(
+        async (input: RequestInfo | URL) =>
+          new Response(String(input).includes('second') ? onlyA : withBoth),
+      ),
+    );
+    const loaded = await readAuxiliarySeries(
+      series({
+        timeColumn: 'ts',
+        timeUnit: 's',
+        timeOffsetNs: undefined,
+        files: [
+          { logicalPath: 'first.parquet', presignedUrl: 'https://store.test/first.parquet' },
+          { logicalPath: 'second.parquet', presignedUrl: 'https://store.test/second.parquet' },
+        ],
+      }),
+      30,
+      parse,
+    );
+    expect(Array.from(loaded.time)).toEqual([0, 1, 2, 3]);
+    const b = loaded.columns.find((column) => column.name === 'b')!;
+    expect(Array.from(b.values)).toEqual([20, 21, NaN, NaN]);
+    expect(Array.from(loaded.columns.find((column) => column.name === 'a')!.values)).toEqual([
+      10, 11, 12, 13,
+    ]);
+    expect(loaded.warnings).toEqual([
+      expect.objectContaining({ code: 'COLUMN_MISSING', column: 'b' }),
+    ]);
   });
 });
