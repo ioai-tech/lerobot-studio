@@ -111,4 +111,32 @@ describe('metadata reads in flight', () => {
     expect(most).toBeGreaterThan(1);
     expect(most).toBeLessThanOrEqual(6);
   });
+
+  it('frees the slot of a read whose host readBytes throws, so the reads behind it still start', async () => {
+    const shards = Array.from(
+      { length: 20 },
+      (_, index) => `meta/episodes/chunk-000/file-${String(index + 1).padStart(3, '0')}.parquet`,
+    );
+    const started = new Set<string>();
+    class ThrowingHost extends LocalFsDataSource {
+      constructor() {
+        super(V3);
+      }
+      // Not async: the first shards throw at once, as a host's own code might.
+      override readBytes(relativePath: string) {
+        if (shards.includes(relativePath)) {
+          started.add(relativePath);
+          if (shards.indexOf(relativePath) < 8) throw new Error(`host bug on ${relativePath}`);
+          return super.readBytes(EPISODES);
+        }
+        return super.readBytes(relativePath);
+      }
+      async listPaths(): Promise<string[]> {
+        return [EPISODES, ...shards, TASKS, 'meta/info.json'];
+      }
+    }
+    const opened = new LeRobotDataLoader(new ThrowingHost()).initialize().catch(() => undefined);
+    await Promise.race([opened, new Promise((resolve) => setTimeout(resolve, 3000))]);
+    expect([...started].sort()).toEqual([...shards].sort());
+  });
 });

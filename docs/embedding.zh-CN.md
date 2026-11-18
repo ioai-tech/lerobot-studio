@@ -411,6 +411,26 @@ export function CustomWelcome({ language }: { language: string }) {
 
 如果要显示导出按钮，自己接 `onExport`。本包不包含独立应用里的导出对话框。
 
+## 提前开始加载
+
+每次打开都要先等 Parquet 读取器（一个约 1.6 MB gzip 的 WASM 模块），以及查看器的布局和加载器代码。一旦知道将要打开查看器，就调用 `preloadLeRobotViewer()`，让这次下载与宿主自己的工作（签名 URL、读取数据源）同时进行：
+
+```ts
+import { preloadLeRobotViewer } from '@ioai/lerobot-studio';
+
+// 在查看器的路由中、数据源就绪之前……
+preloadLeRobotViewer();
+
+// ……或在用户指向一个会打开查看器的链接时。
+link.addEventListener('pointerenter', () => preloadLeRobotViewer(), { once: true });
+```
+
+- WASM 只获取一次；在页面允许编译时（见下文的内容安全策略）只编译一次。服务器返回 `Content-Type: application/wasm` 时，会边下载边编译。之后的每个查看器都复用它，重复调用共享同一份工作。
+- 这个函数从不抛出异常，服务端渲染时不做任何事。
+- 加载失败时，查看器在打开时报告 `PARQUET_ENGINE_UNAVAILABLE` 及其原因。失败的结果不会保留，下次打开会重试。
+- 查看器挂载时也会自行开始这项工作。更早调用只是把开始时间提前。
+- **内容安全策略（CSP）。** Parquet 读取器运行在模块 Worker 中，Worker 脚本从包自身的文件加载，与包的 JS 放在一起。`worker-src`（或 `script-src`）必须允许这些文件。WASM 以 `data:` URL 的形式随包发布，因此 `connect-src` 必须允许 `data:`。页面的 `script-src` 含 `'wasm-unsafe-eval'` 时，页面为所有 Worker 编译一次 WASM。不含时，页面保留下载的字节，由每个 Worker 按自己的策略编译。两种情况下查看器都能打开，且只下载一次。
+
 ## Next.js
 
 在 Client Component 中加载查看器，并关闭 SSR：

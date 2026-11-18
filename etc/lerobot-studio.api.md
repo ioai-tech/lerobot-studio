@@ -519,6 +519,9 @@ export interface ParsedSourceUrl {
 }
 
 // @public
+export function preloadLeRobotViewer(): void;
+
+// @public
 export type ProgressHandler = (info: ProgressInfo) => void;
 
 // @public

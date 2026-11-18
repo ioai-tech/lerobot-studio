@@ -1,26 +1,14 @@
-import { promises as fs } from 'node:fs';
-import path from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { tableFromIPC } from 'apache-arrow';
-import init, { readParquet } from 'parquet-wasm/esm';
+import { readParquet } from 'parquet-wasm/esm';
+import { getParquetWasmNode } from '../../scripts/parquetWasmNode';
 
-let initialized = false;
-
+/**
+ * One initialization of the shared parquet-wasm module for every caller
+ * (also scripts/parquetWasmNode.ts): concurrent cold calls must not each
+ * instantiate it.
+ */
 async function ensureParquetWasm(): Promise<void> {
-  if (initialized) return;
-  const currentDir = path.dirname(fileURLToPath(import.meta.url));
-  const wasmPath = path.resolve(
-    currentDir,
-    '../../node_modules/parquet-wasm/esm/parquet_wasm_bg.wasm',
-  );
-  const wasmFile = await fs.readFile(wasmPath);
-  await init({
-    module_or_path: wasmFile.buffer.slice(
-      wasmFile.byteOffset,
-      wasmFile.byteOffset + wasmFile.byteLength,
-    ),
-  });
-  initialized = true;
+  await getParquetWasmNode();
 }
 
 export async function readParquetToIPC(

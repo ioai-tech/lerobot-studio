@@ -2,7 +2,12 @@
  * Worker 管理器 - 使用 Vite 原生外置 module Worker
  *
  * Worker 使用相对模块 URL，WASM 保留为单份按需 data URL chunk，因此不依赖部署根路径。
- * WASM 由主线程预加载为 ArrayBuffer，再通过 postMessage Transfer 传递给 Worker。
+ * The main thread downloads the WASM once (one module-level promise,
+ * started early by `preloadLeRobotViewer`) and compiles it once; every worker
+ * receives the compiled `WebAssembly.Module` by postMessage and only
+ * instantiates it. Where the page may not compile WebAssembly (a CSP without
+ * 'wasm-unsafe-eval'), each worker receives a copy of the bytes and compiles
+ * them under its own policy, as it did before; nothing is downloaded twice.
  *
  * Worker 侧使用 Promise 等待（而非轮询），彻底消除竞态条件：
  * 无论主线程多快/多慢完成 fetch，Worker 都会等到 buffer 到达后再初始化。
@@ -14,40 +19,77 @@ import type { ParquetWorkerAPI, ParquetImageWorkerAPI } from '@/core';
 import parquetWorkerUrl from './parquet.worker?worker&url';
 import parquetImageWorkerUrl from './parquetImage.worker?worker&url';
 
-// WASM 预加载缓存（Promise 形式，多个 worker 共享同一份 fetch）
-let wasmBufferPromise: Promise<ArrayBuffer> | null = null;
+/**
+ * The parquet WASM for the workers: compiled once on the page, or its bytes
+ * when the page may not compile WebAssembly (each worker then compiles them).
+ */
+export type ParquetWasm = WebAssembly.Module | ArrayBuffer;
+
+/** The parquet WASM, shared by every worker; reset on failure so a later open retries. */
+let wasmPromise: Promise<ParquetWasm> | null = null;
 const workerRegistry = new WeakMap<Comlink.Remote<unknown>, Worker>();
 
-/**
- * 预加载 WASM 文件为 ArrayBuffer（带缓存）
- */
-async function loadWasmBuffer(): Promise<ArrayBuffer> {
-  if (!wasmBufferPromise) {
-    // Library mode places this data URL in its own lazy chunk. Keeping one
-    // package-local copy is relocatable across Vite, Next, and arbitrary bases.
-    wasmBufferPromise = import('./wasmUrl')
-      .then(({ wasmUrl }) => fetch(wasmUrl))
-      .then((response) => {
-        if (!response.ok) throw new Error(`Failed to fetch WASM: ${response.status}`);
-        return response.arrayBuffer();
-      })
-      .catch((err) => {
-        wasmBufferPromise = null; // 重置以便重试
-        throw err;
-      });
-  }
-  // 返回副本以便可以 Transfer（Transfer 会转移所有权）
-  const buffer = await wasmBufferPromise;
-  return buffer.slice(0);
+/** A compile the page's CSP refused (no 'wasm-unsafe-eval'), as opposed to a fetch that failed. */
+function isCompileRefused(error: unknown): boolean {
+  return (
+    (typeof WebAssembly.CompileError === 'function' && error instanceof WebAssembly.CompileError) ||
+    error instanceof EvalError
+  );
 }
 
 /**
- * 向 Worker 发送 WASM buffer，出错时通知 worker 以便快速失败
+ * Prepare a fetched WASM response for the workers: compile it once on the
+ * page (streaming, while the bytes arrive, when it is served as
+ * `application/wasm`). If the page may not compile WebAssembly, keep the
+ * bytes of the same download for the workers to compile.
+ */
+export async function prepareParquetWasm(response: Response): Promise<ParquetWasm> {
+  if (!response.ok) throw new Error(`Failed to fetch WASM: ${response.status}`);
+  const type = response.headers.get('Content-Type')?.split(';')[0]?.trim();
+  if (typeof WebAssembly.compileStreaming === 'function' && type === 'application/wasm') {
+    const bytes = response.clone();
+    try {
+      return await WebAssembly.compileStreaming(response);
+    } catch (error) {
+      if (!isCompileRefused(error)) throw error;
+      return bytes.arrayBuffer();
+    }
+  }
+  const bytes = await response.arrayBuffer();
+  try {
+    return await WebAssembly.compile(bytes);
+  } catch (error) {
+    if (!isCompileRefused(error)) throw error;
+    return bytes;
+  }
+}
+
+/** Download and prepare the parquet WASM once; later calls share the same promise. */
+export function loadParquetWasm(): Promise<ParquetWasm> {
+  if (!wasmPromise) {
+    // Library mode places this data URL in its own lazy chunk. Keeping one
+    // package-local copy is relocatable across Vite, Next, and arbitrary bases.
+    const pending = import('./wasmUrl')
+      .then(({ wasmUrl }) => fetch(wasmUrl))
+      .then(prepareParquetWasm)
+      .catch((err: unknown) => {
+        if (wasmPromise === pending) wasmPromise = null; // 重置以便重试
+        throw err;
+      });
+    wasmPromise = pending;
+  }
+  return wasmPromise;
+}
+
+/**
+ * 向 Worker 发送 WASM（编译好的模块，或一份字节副本），出错时通知 worker 以便快速失败
  */
 function sendWasmToWorker(worker: Worker): void {
-  loadWasmBuffer()
-    .then((buffer) => {
-      worker.postMessage({ type: 'init-wasm', wasmBuffer: buffer }, [buffer]);
+  loadParquetWasm()
+    .then((wasm) => {
+      // A Module is shared by reference; bytes are copied (not transferred),
+      // so every worker gets its own and the shared download stays intact.
+      worker.postMessage({ type: 'init-wasm', wasmModule: wasm });
     })
     .catch((err) => {
       worker.postMessage({ type: 'init-wasm-error', message: String(err) });

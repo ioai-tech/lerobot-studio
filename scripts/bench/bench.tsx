@@ -2,7 +2,8 @@
 /**
  * Playback bench page: mounts the viewer on a remote manifest
  * (`?manifest=/manifest/<name>.json`) and exposes a small control surface on
- * `window.__bench` for scripts/bench/measure-playback.mjs.
+ * `window.__bench` for scripts/bench/measure-playback.mjs. `?preload=1` calls
+ * `preloadLeRobotViewer()` at navigation, as a host would.
  */
 import { useEffect } from 'react';
 import { createRoot } from 'react-dom/client';
@@ -10,6 +11,7 @@ import {
   createRemoteManifestDataSource,
   LeRobotStudioProvider,
   LeRobotViewerContent,
+  preloadLeRobotViewer,
   type DataSource,
   type RemoteFileEntry,
 } from '../../src/react/public-api';
@@ -49,6 +51,8 @@ function BenchHooks() {
 
 async function main() {
   const params = new URLSearchParams(location.search);
+  // `?preload=1`: the host preloads at navigation, before its source read.
+  if (params.get('preload') === '1') preloadLeRobotViewer();
   const manifestUrl = params.get('manifest') ?? '/manifest/default.json';
   const expiresIn = params.get('expiresIn');
   const fetchManifest = async (): Promise<RemoteFileEntry[]> => {
@@ -56,6 +60,9 @@ async function main() {
     if (expiresIn) url.searchParams.set('expiresIn', expiresIn);
     return (await fetch(url)).json();
   };
+  // `?sourceDelayMs=N`: the host's own source read (signing, API calls) before the viewer gets a source.
+  const sourceDelayMs = Number(params.get('sourceDelayMs') ?? 0);
+  if (sourceDelayMs > 0) await new Promise((resolve) => setTimeout(resolve, sourceDelayMs));
   const dataSource: DataSource = createRemoteManifestDataSource(await fetchManifest(), {
     refresh: fetchManifest,
   });
