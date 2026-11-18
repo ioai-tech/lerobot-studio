@@ -176,9 +176,9 @@ export const LeRobotDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
     return segmentsFromFrameIndices(sourceSubtaskIndices, sourceSubtasks);
   }, [currentFrames.length, sourceSubtaskIndices, sourceSubtasks]);
 
-  /** What is on screen now, for a source swap deciding whether to keep it. */
-  const viewRef = useRef({ selectedEpisodeIndex, frames: currentFrames.length });
-  viewRef.current = { selectedEpisodeIndex, frames: currentFrames.length };
+  /** What is on screen now, for a source swap deciding whether, and where, to keep it. */
+  const viewRef = useRef({ selectedEpisodeIndex, frames: currentFrames.length, episodes });
+  viewRef.current = { selectedEpisodeIndex, frames: currentFrames.length, episodes };
 
   // 使用 ref 跟踪当前数据源和加载器，用于清理和防止重复加载
   const dataLoaderRef = useRef<LeRobotDataLoader | null>(null);
@@ -244,10 +244,24 @@ export const LeRobotDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
   // A load whose token is gone drops its results and errors.
   const episodeLoadRef = useRef<object | null>(null);
 
-  // A data-source swap that keeps the view: the episode the new loader
-  // reloads in place, and the previous loader and image service, disposed
-  // once that episode is shown.
-  const swapEpisodeRef = useRef<number | null>(null);
+  /**
+   * A committed same-timeline swap waiting for its loader to render: the
+   * swap's generation (the one owner of "is this swap current": only the
+   * current generation reloads, lands or retires), its loader, and where
+   * it lands, decided once at commit from what was shown then.
+   */
+  const committedSwapRef = useRef<{
+    generation: number;
+    loader: LeRobotDataLoader;
+    landing: PendingSelection & { episodeIndex: number; requireLength: number };
+  } | null>(null);
+  /**
+   * Whether playback resumes when the current swap lands: true when it was
+   * playing as a swap began, also across a swap superseded before landing.
+   */
+  const swapResumeRef = useRef(false);
+  // The previous loader and image service, disposed once the swapped-in
+  // source shows its episode.
   const retiringRef = useRef<{
     loader: LeRobotDataLoader;
     imageService: ParquetImageServiceImpl | null;
@@ -352,6 +366,10 @@ export const LeRobotDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
     loopRange: segments.loopRange,
   });
   setFrameIndexRef.current = setFrameIndex;
+  const isPlayingRef = useRef(isPlaying);
+  isPlayingRef.current = isPlaying;
+  const setPlayingRef = useRef(setPlaying);
+  setPlayingRef.current = setPlaying;
 
   // A segment selected on another episode seeks once that episode's frames are in.
   const flushPendingSeek = segments.flushPendingSeek;
@@ -368,23 +386,51 @@ export const LeRobotDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
   const setPendingSelection = useCallback((selection: PendingSelection | null) => {
     pendingSelectionRef.current = selection;
   }, []);
-  const hasPendingSelection = useCallback(() => pendingSelectionRef.current !== null, []);
+  /**
+   * True while a landing is being applied: the selection is not reported
+   * (nor autoplayed) until segment, frame and play state are in, together.
+   */
+  const landingRef = useRef(false);
+  const [landedTick, setLandedTick] = useState(0);
+  const hasPendingSelection = useCallback(
+    () => pendingSelectionRef.current !== null || landingRef.current,
+    [],
+  );
   const getPendingSelection = useCallback(() => pendingSelectionRef.current, []);
   const segmentsRef = useRef(segments);
   segmentsRef.current = segments;
   /**
-   * True while a swapped-in source opens behind the shown view: the carried
-   * selection lands once the new source's episode is in (`landTick`).
+   * The one landing of a selection on the open episode, for a deep link and
+   * a data-source swap alike: the segment is marked selected in place (no
+   * navigation of its own), the playhead goes to the selection's frame (its
+   * frame, its time, else the segment's first frame), then the play state.
+   * The host hears about it once, after all of it is in.
    */
-  const swappingRef = useRef(false);
-  const [landTick, setLandTick] = useState(0);
-  const endSwap = useCallback(() => {
-    swappingRef.current = false;
-    setLandTick((tick) => tick + 1);
-  }, []);
+  const applyLanding = useCallback(
+    (landing: PendingSelection, episodeIndex: number, frameCount: number, fps: number) => {
+      landingRef.current = true;
+      const found = landing.segmentId
+        ? findSegment(segmentsRef.current.doc, landing.segmentId)
+        : null;
+      const segment = found && found.episodeIndex === episodeIndex ? found.segment : null;
+      if (segment) segmentsRef.current.selectSegment(segment.id, { navigate: false });
+      setFrameIndexRef.current(
+        pendingSelectionFrame(landing, segment?.startFrame ?? null, fps, frameCount),
+      );
+      if (landing.resume) setPlayingRef.current(true);
+      setLandedTick((tick) => tick + 1);
+    },
+    [],
+  );
+  // The landing is committed: report it (the frame notification the host hears).
+  useEffect(() => {
+    if (!landingRef.current) return;
+    landingRef.current = false;
+    notifyFrameSubscribers(frameIndexRef.current);
+  }, [landedTick, notifyFrameSubscribers]);
   useEffect(() => {
     const pending = pendingSelectionRef.current;
-    if (!pending || pending.episodeIndex == null || isLoading || swappingRef.current) return;
+    if (!pending || pending.episodeIndex == null || isLoading) return;
     if (selectedEpisodeIndex != null && selectedEpisodeIndex !== pending.episodeIndex) {
       // The person (or a failed load) went elsewhere first: the link no longer applies.
       pendingSelectionRef.current = null;
@@ -397,30 +443,8 @@ export const LeRobotDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
       return;
     }
     pendingSelectionRef.current = null;
-    const found = pending.segmentId
-      ? findSegment(segmentsRef.current.doc, pending.segmentId)
-      : null;
-    const segment = found && found.episodeIndex === selectedEpisodeIndex ? found.segment : null;
-    if (segment) segmentsRef.current.selectSegment(segment.id);
-    setFrameIndex(
-      pendingSelectionFrame(
-        pending,
-        segment?.startFrame ?? null,
-        info?.fps || 30,
-        currentFrames.length,
-      ),
-    );
-    if (pending.resume) setPlaying(true);
-  }, [
-    landTick,
-    currentFrames.length,
-    error,
-    info?.fps,
-    isLoading,
-    selectedEpisodeIndex,
-    setFrameIndex,
-    setPlaying,
-  ]);
+    applyLanding(pending, selectedEpisodeIndex, currentFrames.length, info?.fps || 30);
+  }, [currentFrames.length, error, info?.fps, isLoading, selectedEpisodeIndex, applyLanding]);
 
   const reset = useCallback(async () => {
     // 清理旧资源，回到欢迎页；bump generation 使在途 initialize 失效
@@ -501,18 +525,30 @@ export const LeRobotDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
       }
 
       const generation = ++initGenerationRef.current;
+      const isCurrentInit = () => generation === initGenerationRef.current;
       isLoadingRef.current = true;
-      // A swap from a shown episode keeps the view: the old dataset stays on
-      // screen (paused) while the new source loads, then everything changes
-      // in one step. A first open, or a failed one, shows the loading view.
-      const previous = dataLoaderRef.current;
+      // A swap from a shown episode keeps the view: the shown dataset stays
+      // on screen (paused, still interactive) while the new source opens; at
+      // commit it either changes in one step (same timeline) or opens as
+      // usual. A first open shows the loading view.
       const keepView =
-        previous !== null &&
+        dataLoaderRef.current !== null &&
         viewRef.current.selectedEpisodeIndex !== null &&
         viewRef.current.frames > 0;
+      // A newer swap supersedes a committed one that has not landed yet.
+      committedSwapRef.current = null;
+      // The selection carried by the host (the #117 rule) only lends the play
+      // state: the landing itself is decided at commit, from what is shown.
+      const carried = keepView ? pendingSelectionRef.current : null;
+      if (keepView) {
+        pendingSelectionRef.current = null;
+        swapResumeRef.current =
+          swapResumeRef.current || carried?.resume === true || isPlayingRef.current;
+      } else {
+        swapResumeRef.current = false;
+      }
       const taskId = 'lerobot-init';
       setError(null);
-      swappingRef.current = keepView;
       if (keepView) {
         setIsPlaying(false);
       } else {
@@ -568,13 +604,13 @@ export const LeRobotDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
           ? new DirectoryDataSource(dataSource as FileSystemDirectoryHandle)
           : dataSource;
       let loader: LeRobotDataLoader | null = null;
+      /** Whether the shown dataset was given up (a first open, or another timeline). */
+      let viewCleared = !keepView;
       try {
         if (!keepView) {
           // 先清理旧数据源
           await clearView(source);
-          if (generation !== initGenerationRef.current) {
-            return;
-          }
+          if (!isCurrentInit()) return;
           resetEditing();
         }
 
@@ -593,39 +629,63 @@ export const LeRobotDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
           });
         }
         const lerobotInfo = await loader.initialize();
-        if (generation !== initGenerationRef.current) {
+        if (!isCurrentInit()) {
+          // A newer open owns the view: this source's late metadata is dropped.
           await loader.dispose().catch(() => {});
           return;
         }
         const episodes = loader.getEpisodes();
 
         if (keepView) {
-          // Same timeline (the #117 selection rule finds the shown episode,
-          // same length): reload that episode in place. Otherwise open the
-          // new source as usual.
-          const pending = pendingSelectionRef.current;
-          const shown = viewRef.current.selectedEpisodeIndex;
-          const target = pending
-            ? pendingSelectionEpisode(pending, episodes, new Set(), null)
-            : null;
-          if (target !== null && target === shown) {
+          // The one landing decision, made now from what is shown now: the
+          // episode on screen (also one the person picked during the swap),
+          // its frame and segment, and the play state. The same timeline
+          // (that episode, same length, in the new source) keeps the view.
+          const shown = viewRef.current.selectedEpisodeIndex!;
+          const frame = frameIndexRef.current;
+          const segmentId = segmentsRef.current.selectedSegmentId ?? undefined;
+          const resume = swapResumeRef.current || isPlayingRef.current;
+          const landing: PendingSelection = {
+            episodeIndex: shown,
+            frame,
+            segmentId,
+            requireLength:
+              viewRef.current.episodes.find((episode) => episode.episode_index === shown)?.length ??
+              viewRef.current.frames,
+            resume,
+          };
+          if (pendingSelectionEpisode(landing, episodes, new Set(), null) === shown) {
+            // One transition: the loader, metadata and image service change
+            // together; selection, segments and edits stay (same timeline);
+            // the shown episode reloads in place, then lands.
             episodeLoadRef.current = null;
             retire();
-            retiringRef.current = { loader: previous!, imageService: imageServiceRef.current };
+            retiringRef.current = {
+              loader: dataLoaderRef.current!,
+              imageService: imageServiceRef.current,
+            };
             const nextImageService = createParquetImageService();
             nextImageService.setDataSource(source);
             imageServiceRef.current = nextImageService;
             setImageService(nextImageService);
-            swapEpisodeRef.current = target;
+            committedSwapRef.current = {
+              generation,
+              loader,
+              landing: { ...landing, episodeIndex: shown, requireLength: landing.requireLength! },
+            };
+            setIsPlaying(false);
           } else {
-            swappingRef.current = false;
+            // Another timeline: open as usual (the landing finds nothing to keep).
+            viewCleared = true;
+            swapResumeRef.current = false;
             await clearView(source);
-            if (generation !== initGenerationRef.current) {
+            if (!isCurrentInit()) {
               await loader.dispose().catch(() => {});
               return;
             }
+            resetEditing();
+            pendingSelectionRef.current = landing;
           }
-          resetEditing();
         }
 
         dataLoaderRef.current = loader;
@@ -640,20 +700,20 @@ export const LeRobotDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
         if (!keepView) completeTask(taskId);
         failedSourcesRef.current.delete(dataSource);
       } catch (e) {
-        if (generation !== initGenerationRef.current) {
+        if (!isCurrentInit()) {
           await loader?.dispose().catch(() => {});
           return;
         }
         console.error('Failed to initialize LeRobot data loader', e);
         failedSourcesRef.current.add(dataSource);
         const msg = e instanceof Error ? e.message : 'Unknown error during initialization';
-        if (keepView && dataLoaderRef.current === previous) {
-          // The shown dataset stays; the error names the source that failed.
+        setError(msg);
+        if (!viewCleared) {
+          // The shown dataset stays, as it was; the error names what failed.
           await loader?.dispose().catch(() => {});
-          setError(msg);
-          endSwap();
+          if (swapResumeRef.current) setPlayingRef.current(true);
+          swapResumeRef.current = false;
         } else {
-          setError(msg);
           failTask(taskId, msg);
         }
         const report = loader?.getValidationReport?.() ?? null;
@@ -662,7 +722,7 @@ export const LeRobotDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
           setHealthDialogOpen(true);
         }
       } finally {
-        if (generation === initGenerationRef.current) {
+        if (isCurrentInit()) {
           isLoadingRef.current = false;
           if (!keepView) setIsLoading(false);
         }
@@ -679,7 +739,6 @@ export const LeRobotDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
       setIsPlaying,
       resetSegments,
       retire,
-      endSwap,
     ],
   );
 
@@ -880,17 +939,24 @@ export const LeRobotDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
   );
   selectEpisodeRef.current = selectEpisode;
 
-  // A swapped-in source reloads the shown episode in place, then the
-  // previous loader goes.
+  // A committed swap, once its loader renders, reloads the shown episode in
+  // place; then, if it is still the current swap, the previous loader goes
+  // and the decided landing applies (frame, then play state once the new
+  // data is in). A superseded swap does nothing more.
   useEffect(() => {
-    const index = swapEpisodeRef.current;
-    if (index === null || !dataLoader || !info) return;
-    swapEpisodeRef.current = null;
-    void selectEpisode(index, { keepView: true }).finally(() => {
+    const swap = committedSwapRef.current;
+    if (!swap || swap.loader !== dataLoader || !info) return;
+    committedSwapRef.current = null;
+    const isCurrentSwap = () => swap.generation === initGenerationRef.current;
+    const { landing } = swap;
+    void selectEpisode(landing.episodeIndex, { keepView: true }).then((loaded) => {
+      if (!isCurrentSwap()) return;
       retire();
-      endSwap();
+      swapResumeRef.current = false;
+      if (!loaded) return;
+      applyLanding(landing, landing.episodeIndex, landing.requireLength, info.fps || 30);
     });
-  }, [dataLoader, info, selectEpisode, retire, endSwap]);
+  }, [dataLoader, info, selectEpisode, retire, applyLanding]);
 
   const clearError = useCallback(() => {
     setError(null);

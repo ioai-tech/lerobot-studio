@@ -9,10 +9,7 @@ import {
   type MessageMap,
   type SupportedLocale,
 } from './messages';
-import { LEROBOT_MESSAGE_KEYS } from './messageKeys';
-
-/** Only the documented keys can be replaced; internal copy is not API. */
-const HOST_MESSAGE_KEYS: ReadonlySet<string> = new Set(LEROBOT_MESSAGE_KEYS);
+import { selectHostMessages } from './hostMessages';
 
 type TranslationValues = Record<string, unknown>;
 type TFunction = (
@@ -139,15 +136,7 @@ export function I18nProvider({
   const localeMessages = useMemo(() => {
     const base = shown?.messages ?? {};
     if (!messages) return base;
-    const overrides = Object.fromEntries(
-      Object.entries(messages)
-        .filter(
-          (entry): entry is [string, string] =>
-            typeof entry[1] === 'string' && HOST_MESSAGE_KEYS.has(entry[0]),
-        )
-        .map(([key, text]) => [key, text.replace(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g, '{$1}')]),
-    );
-    return { ...base, ...overrides };
+    return { ...base, ...selectHostMessages(messages) };
   }, [shown?.messages, messages]);
 
   if (!shown) return null;

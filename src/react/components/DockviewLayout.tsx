@@ -103,7 +103,10 @@ export const DockviewLayout: React.FC = () => {
   useLayoutEffect(() => {
     const el = dockviewRef.current;
     if (!el) return;
+    // A hidden container (width 0) keeps the last visible size: hiding and
+    // showing the viewer does not rebuild its panels.
     const update = (width: number, height: number) =>
+      width > 0 &&
       setBox((prev) =>
         prev.width === Math.round(width) && prev.height === Math.round(height)
           ? prev

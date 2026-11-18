@@ -74,3 +74,41 @@ describe('metadata loading', () => {
     });
   }
 });
+
+describe('metadata reads in flight', () => {
+  it('opens at most six listed metadata file reads at once', async () => {
+    const shards = Array.from(
+      { length: 20 },
+      (_, index) => `meta/episodes/chunk-000/file-${String(index + 1).padStart(3, '0')}.parquet`,
+    );
+    let inFlight = 0;
+    let most = 0;
+    class ManyShards extends LocalFsDataSource {
+      constructor() {
+        super(V3);
+      }
+      override async readBytes(relativePath: string) {
+        // The listed (prefetched) files; `meta/subtasks.parquet` is not listed here.
+        if (!relativePath.startsWith('meta/episodes/') && relativePath !== TASKS) {
+          return super.readBytes(relativePath);
+        }
+        inFlight += 1;
+        most = Math.max(most, inFlight);
+        try {
+          await new Promise((resolve) => setTimeout(resolve, 20));
+          // Every extra shard is a copy of the real one.
+          return await super.readBytes(shards.includes(relativePath) ? EPISODES : relativePath);
+        } finally {
+          inFlight -= 1;
+        }
+      }
+      async listPaths(): Promise<string[]> {
+        return [EPISODES, ...shards, TASKS, 'meta/info.json'];
+      }
+    }
+    const source = new ManyShards();
+    await new LeRobotDataLoader(source).initialize();
+    expect(most).toBeGreaterThan(1);
+    expect(most).toBeLessThanOrEqual(6);
+  });
+});

@@ -71,6 +71,9 @@ interface FileBytesCache {
   bytes: Uint8Array;
 }
 
+/** Metadata files read at once while a dataset opens. */
+const METADATA_READS_IN_FLIGHT = 6;
+
 export class LeRobotDataLoader {
   private _dataSource: DataSource;
   private info?: LeRobotInfo;
@@ -292,9 +295,21 @@ export class LeRobotDataLoader {
         listed ? path : (await this._dataSource.exists(path).catch(() => false)) ? path : null,
       ),
     );
+    // At most METADATA_READS_IN_FLIGHT at once: a dataset with hundreds of
+    // episode shards does not open hundreds of requests.
+    let inFlight = 0;
+    const waiting: Array<() => void> = [];
+    const slot = () =>
+      inFlight < METADATA_READS_IN_FLIGHT
+        ? (inFlight++, Promise.resolve())
+        : new Promise<void>((resolve) => waiting.push(resolve)).then(() => void inFlight++);
+    const done = () => {
+      inFlight--;
+      waiting.shift()?.();
+    };
     for (const path of present) {
       if (!path) continue;
-      const read = this._dataSource.readBytes(path);
+      const read = slot().then(() => this._dataSource.readBytes(path).finally(done));
       read.catch(() => undefined);
       this.metadataBytes.set(path, read);
     }

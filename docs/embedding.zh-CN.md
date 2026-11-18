@@ -327,6 +327,8 @@ export function RecordingStudio({ view, url, navigate }: HostProps) {
 
 切换 `rendition` 会传入帧相同的另一个 `dataSource`；查看器保留所在的 episode、分段和时间（见[选择与深层链接](#selection-and-deep-links)）。
 
+`messages` 的值是 ICU 消息字符串（也支持 `{{name}}` 占位符）。对于未在文档中列出的键，或值不是字符串（例如预编译的消息数组）的键，查看器保留内置文案，并为每个键输出一条 `console.warn`，例如 `lerobot-studio: messages["segments.row"] ignored: expected an ICU string, got array`。
+
 ### 标记与只读建议 {#markers-and-read-only-suggestions}
 
 - **`markers`** 是时间轴上的区间（或单帧刻度），按 `severity` 着色，`label` 显示在提示框和无障碍名称中。点击标记跳到它的第一帧；标记行只占一个 Tab 停靠点，用方向键在标记间移动。与 `warn` 或 `fail` 标记重叠的分段会进入 **有问题** 筛选并显示问题数。`checkId` 留给宿主使用，不会显示。
@@ -345,7 +347,7 @@ export function RecordingStudio({ view, url, navigate }: HostProps) {
 
 - `initialSelection`（`episodeIndex`、`segmentId`、`timeS`）在第一次加载后应用一次。查看器打开该 episode（只给 `segmentId` 时打开分段所在的 episode），选中分段，并**暂停**在包含 `timeS` 的那一帧（没有 `timeS` 时为分段的第一帧）。
 - `onSelectionChange` 在打开 episode 后报告 `{ episodeIndex, segmentId, timeS }`：episode 或分段变化时立即报告，时间变化时每秒最多四次。深层链接尚未落地时不会报告，因此第一次报告就是链接落地的位置。
-- 传入时间轴相同的新 `dataSource`（同一个 episode、帧数相同，例如同一录制的另一种版本）时，保留 episode、分段和帧；原本在播放就继续播放。新数据源打开期间，当前数据集保持显示（暂停），打开后一次性切换，每个相机保留最后一帧，直到新文件显示同一帧；新数据源打开失败时，保留当前数据源，错误中写明失败原因。时间轴不同时照常打开。
+- 传入时间轴相同的新 `dataSource`（同一个 episode、帧数相同，例如同一录制的另一种版本）时，保留 episode、分段和帧；原本在播放就继续播放。新数据源打开期间，当前数据集保持显示（暂停），打开后一次性切换，每个相机保留最后一帧，直到新文件显示同一帧（最多 4 秒，之后显示常规的加载状态）。切换期间查看器仍可操作：期间选中的 episode 就是切换后停留的位置。新数据源打开失败时，保留当前数据源，错误中写明失败原因。时间轴不同时照常打开。
 
 ### 主题变量 {#theme-tokens}
 
