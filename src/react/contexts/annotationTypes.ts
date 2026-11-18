@@ -1,3 +1,4 @@
+import type { OverlaySegmentGroup, TimelineMarker } from '../../core/annotation/markers';
 import type {
   AnnotationChange,
   AnnotationDocument,
@@ -62,4 +63,6 @@ export interface AnnotationConfig {
   annotation?: LeRobotAnnotationProps;
   readOnly?: boolean;
   fields?: readonly AnnotationField[];
+  markers?: readonly TimelineMarker[];
+  overlaySegments?: readonly OverlaySegmentGroup[];
 }

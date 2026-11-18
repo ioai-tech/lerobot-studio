@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useId, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { AlertTriangle, CircleDot, CircleCheck, Lock } from 'lucide-react';
 import {
@@ -7,6 +7,7 @@ import {
   getEpisodeSegments,
   hasSegmentIssue,
   matchesSegmentFilter,
+  segmentIssueMarkers,
   reviewProgress,
   type SegmentFilter,
 } from '@/core';
@@ -58,6 +59,7 @@ export const SegmentList: React.FC<{ episodeIndex: number; showTitle?: boolean }
   showTitle = true,
 }) => {
   const { t } = useTranslation();
+  const listId = useId();
   const { info } = useLeRobotData();
   const segments = useLeRobotSegments();
   const fps = info?.fps || 30;
@@ -65,17 +67,19 @@ export const SegmentList: React.FC<{ episodeIndex: number; showTitle?: boolean }
     () => getEpisodeSegments(segments.doc, episodeIndex),
     [episodeIndex, segments.doc],
   );
+  const { markersOf } = segments;
+  const episodeMarkers = useMemo(() => markersOf(episodeIndex), [episodeIndex, markersOf]);
   const counts = useMemo(
     () => ({
       all: all.length,
       to_review: all.filter((item) => item.review === 'to_review').length,
-      issues: all.filter(hasSegmentIssue).length,
+      issues: all.filter((item) => hasSegmentIssue(item, episodeMarkers)).length,
     }),
-    [all],
+    [all, episodeMarkers],
   );
   const visible = all
     .map((segment, index) => ({ segment, number: index + 1 }))
-    .filter(({ segment }) => matchesSegmentFilter(segment, segments.filter));
+    .filter(({ segment }) => matchesSegmentFilter(segment, segments.filter, episodeMarkers));
 
   return (
     <section
@@ -131,6 +135,11 @@ export const SegmentList: React.FC<{ episodeIndex: number; showTitle?: boolean }
             const reviewText = t(
               toReview ? 'segments.review.toReview' : 'segments.review.confirmed',
             );
+            const markerIssues = segmentIssueMarkers(segment, episodeMarkers);
+            // The row's label hides its content, so the badges are its description.
+            const statusId = segment.status ? `${listId}-status-${number}` : null;
+            const issuesId = markerIssues.length > 0 ? `${listId}-issues-${number}` : null;
+            const describedBy = [statusId, issuesId].filter(Boolean).join(' ') || undefined;
             return (
               <li key={segment.id}>
                 <button
@@ -143,6 +152,7 @@ export const SegmentList: React.FC<{ episodeIndex: number; showTitle?: boolean }
                   )}
                   aria-current={selected ? 'true' : undefined}
                   aria-label={t('segments.row', { n: number, time, review: reviewText })}
+                  aria-describedby={describedBy}
                   onClick={() => segments.selectSegment(segment.id)}
                 >
                   <span className="flex min-w-0 items-center gap-1.5 text-xs">
@@ -162,7 +172,9 @@ export const SegmentList: React.FC<{ episodeIndex: number; showTitle?: boolean }
                       <span className="text-muted-foreground">{t('segments.inheritTask')}</span>
                     )}
                   </span>
-                  {segment.origin.kind === 'suggested' || segment.status ? (
+                  {segment.origin.kind === 'suggested' ||
+                  segment.status ||
+                  markerIssues.length > 0 ? (
                     <span className="flex min-w-0 items-center gap-2 pl-5 text-[10px] text-muted-foreground">
                       {segment.origin.kind === 'suggested' ? (
                         <span>
@@ -175,6 +187,7 @@ export const SegmentList: React.FC<{ episodeIndex: number; showTitle?: boolean }
                       ) : null}
                       {segment.status ? (
                         <span
+                          id={statusId ?? undefined}
                           className={cn(
                             'inline-flex items-center gap-0.5',
                             segment.status.severity !== 'info' && 'text-destructive',
@@ -185,6 +198,21 @@ export const SegmentList: React.FC<{ episodeIndex: number; showTitle?: boolean }
                           ) : null}
                           {segment.status.label}
                           {segment.status.count != null ? ` ${segment.status.count}` : ''}
+                        </span>
+                      ) : null}
+                      {markerIssues.length > 0 ? (
+                        <span
+                          id={issuesId ?? undefined}
+                          className="inline-flex items-center gap-0.5 text-destructive"
+                          title={markerIssues.map((marker) => marker.label).join('\n')}
+                        >
+                          <AlertTriangle className="h-3 w-3" aria-hidden />
+                          {t('markers.issueCount', { count: markerIssues.length })}
+                          <span className="sr-only">
+                            {t('markers.issueList', {
+                              labels: markerIssues.map((marker) => marker.label).join(', '),
+                            })}
+                          </span>
                         </span>
                       ) : null}
                     </span>

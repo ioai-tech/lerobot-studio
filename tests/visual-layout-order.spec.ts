@@ -1,9 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import {
   classifyVisualFeatureKey,
+  cameraAreaHeight,
+  chooseCamerasPerRow,
   getAutoLayoutVisualRows,
-  getVisualMaxPerRow,
   isStackedPanelsWidth,
+  visualAspectRatio,
+  CHART_MIN_HEIGHT_PX,
+  PANEL_HEADER_PX,
 } from '@/core';
 
 describe('visual auto layout', () => {
@@ -136,10 +140,47 @@ describe('visual auto layout', () => {
     ]);
   });
 
-  it('uses 2 cameras per row on a narrow pane and 4 on a wide pane', () => {
-    expect(getVisualMaxPerRow(800)).toBe(2);
-    expect(getVisualMaxPerRow(900)).toBe(4);
-    expect(getVisualMaxPerRow(1280)).toBe(4);
+  it('keeps 3 or 4 cameras in one row while that shows bigger frames, two rows for 6', () => {
+    const aspect = 4 / 3;
+    // 1024x768 with the sidebar open: three cameras side by side, not 2 + 1.
+    expect(chooseCamerasPerRow({ count: 3, width: 768, height: 470, aspect })).toBe(3);
+    expect(chooseCamerasPerRow({ count: 3, width: 1184, height: 644, aspect })).toBe(3);
+    expect(chooseCamerasPerRow({ count: 4, width: 1184, height: 644, aspect })).toBe(4);
+    expect(chooseCamerasPerRow({ count: 6, width: 1184, height: 644, aspect, maxPerRow: 4 })).toBe(
+      3,
+    );
+    // A tall, narrow pane stacks two rows.
+    expect(chooseCamerasPerRow({ count: 2, width: 500, height: 1400, aspect })).toBe(1);
+    expect(chooseCamerasPerRow({ count: 1, width: 500, height: 400, aspect })).toBe(1);
+  });
+
+  it('gives cameras the height first and leaves the charts their minimum', () => {
+    // 3 cameras at 1440x900 with the sidebar open: >= 360 px of camera content.
+    const top = cameraAreaHeight({ height: 644, width: 1184, rows: 1, perRow: 3, aspect: 4 / 3 });
+    expect(top - PANEL_HEADER_PX).toBeGreaterThanOrEqual(360);
+    expect(644 - top).toBeGreaterThanOrEqual(CHART_MIN_HEIGHT_PX);
+    // Tall frames ask for more than the share, up to the chart minimum.
+    const tall = cameraAreaHeight({ height: 700, width: 1200, rows: 1, perRow: 2, aspect: 9 / 16 });
+    expect(tall).toBe(700 - CHART_MIN_HEIGHT_PX);
+  });
+
+  it('reads the frame aspect from video info, then from the named shape', () => {
+    expect(
+      visualAspectRatio({
+        dtype: 'video',
+        shape: [480, 640, 3],
+        names: ['height', 'width', 'channels'],
+      } as never),
+    ).toBeCloseTo(4 / 3);
+    expect(
+      visualAspectRatio({
+        dtype: 'video',
+        shape: [3, 720, 1280],
+        names: ['channels', 'height', 'width'],
+        info: { 'video.width': 1280, 'video.height': 720 },
+      } as never),
+    ).toBeCloseTo(16 / 9);
+    expect(visualAspectRatio(undefined)).toBeCloseTo(4 / 3);
   });
 
   it('stacks panels into one column under 600px of container width', () => {

@@ -39,6 +39,13 @@ export {
 export type { PendingChange } from './pending';
 export { composeUpdateSteps, rebasePending } from './pending';
 export type { SegmentFilter } from './queries';
+export type { OverlaySegment, OverlaySegmentGroup, TimelineMarker } from './markers';
+export {
+  isIssueMarker,
+  markersOfEpisode,
+  overlaySegmentsOfEpisode,
+  segmentIssueMarkers,
+} from './markers';
 export {
   clipSubtasksToRange,
   createManualSegment,

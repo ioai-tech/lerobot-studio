@@ -1,6 +1,6 @@
 import React, { useCallback, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import type { Segment } from '@/core';
+import { frameAtFraction, frameRangeStyle, type Segment } from '@/core';
 import { cn } from '@/ui';
 
 type Range = { startFrame: number; endFrame: number };
@@ -8,8 +8,7 @@ type Range = { startFrame: number; endFrame: number };
 function frameFromClientX(clientX: number, track: HTMLElement, totalFrames: number): number {
   const rect = track.getBoundingClientRect();
   if (rect.width <= 0 || totalFrames <= 0) return 0;
-  const fraction = (clientX - rect.left) / rect.width;
-  return Math.round(Math.max(0, Math.min(1, fraction)) * (totalFrames - 1));
+  return frameAtFraction((clientX - rect.left) / rect.width, totalFrames);
 }
 
 export interface SegmentTrackProps {
@@ -104,18 +103,12 @@ export const SegmentTrack: React.FC<SegmentTrackProps> = ({
     >
       {segments.map((segment, index) => {
         const range = draft?.id === segment.id ? draft.range : segment;
-        const left = (range.startFrame / totalFrames) * 100;
-        const width = ((range.endFrame - range.startFrame + 1) / totalFrames) * 100;
+        const position = frameRangeStyle(range.startFrame, range.endFrame, totalFrames);
         const selected = segment.id === selectedId;
         const toReview = segment.review === 'to_review';
         const label = t('segments.trackSegment', { n: index + 1 });
         return (
-          <div
-            key={segment.id}
-            role="listitem"
-            className="absolute inset-y-0"
-            style={{ left: `${left}%`, width: `${width}%` }}
-          >
+          <div key={segment.id} role="listitem" className="absolute inset-y-0" style={position}>
             <button
               type="button"
               className={cn(

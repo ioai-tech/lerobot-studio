@@ -1,4 +1,12 @@
-import React, { useRef, createContext, useContext, useEffect, useState } from 'react';
+import React, {
+  useRef,
+  createContext,
+  useContext,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useState,
+} from 'react';
 import { DockviewReact } from 'dockview-react';
 import type { DockviewReadyEvent, IDockviewPanelProps, DockviewApi } from 'dockview-react';
 import { useTranslation } from 'react-i18next';
@@ -8,18 +16,17 @@ import type { LeRobotFeature } from '@/core';
 import 'dockview-react/dist/styles/dockview.css';
 import { VideoPanel, ImagePanel, ChartPanel, RawPanel, PanelErrorBoundary } from './panels';
 import { PanelTitle } from './PanelTitle';
-import { getAutoLayoutVisualRows, getVisualMaxPerRow, isStackedPanelsWidth } from '@/core';
+import {
+  cameraAreaHeight,
+  chooseCamerasPerRow,
+  getAutoLayoutVisualRows,
+  isStackedPanelsWidth,
+  visualAspectRatio,
+} from '@/core';
 import { safeAddPanel } from '../utils/dockviewPanelId';
 
-type DockviewSerializedGrid = {
-  grid?: {
-    root?: GridNode;
-  };
-};
-
-type GridNode =
-  | { type: 'leaf'; data: { id: string; activePanel: string; panels: string[] }; size: number }
-  | { type: 'branch'; data: GridNode[]; size: number };
+/** Narrowest camera tile worth showing in a row. */
+const MIN_CAMERA_TILE_PX = 160;
 
 /** Minimum height of each panel in the stacked (narrow) column; the column scrolls. */
 const STACKED_PANEL_MIN_HEIGHT_PX = 220;
@@ -78,158 +85,101 @@ export const DockviewLayout: React.FC = () => {
   const { resolvedTheme } = useTheme();
   const { info } = useLeRobotData();
   const dockviewRef = useRef<HTMLDivElement>(null);
-  const [maxPerRow, setMaxPerRow] = useState(4);
+  const [box, setBox] = useState({ width: 0, height: 0 });
   // Narrow containers (embedded viewers on phones) get a single stacked column.
-  const [stacked, setStacked] = useState(false);
+  const stacked = isStackedPanelsWidth(box.width);
   const [panelCount, setPanelCount] = useState(0);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const el = dockviewRef.current;
     if (!el) return;
-    const update = (width: number) => {
-      setMaxPerRow(getVisualMaxPerRow(width));
-      setStacked(isStackedPanelsWidth(width));
-    };
-    update(el.clientWidth);
+    const update = (width: number, height: number) =>
+      setBox((prev) =>
+        prev.width === Math.round(width) && prev.height === Math.round(height)
+          ? prev
+          : { width: Math.round(width), height: Math.round(height) },
+      );
+    update(el.clientWidth, el.clientHeight);
     const observer = new ResizeObserver((entries) => {
-      update(entries[0]?.contentRect.width ?? el.clientWidth);
+      const rect = entries[0]?.contentRect;
+      update(rect?.width ?? el.clientWidth, rect?.height ?? el.clientHeight);
     });
     observer.observe(el);
     return () => observer.disconnect();
   }, []);
 
+  /** Camera features and their frame shape (the first camera's). */
+  const visualKeys = useMemo(
+    () =>
+      info
+        ? Object.entries(info.features)
+            .filter(([, feature]) => feature?.dtype === 'video' || feature?.dtype === 'image')
+            .map(([key]) => key)
+        : [],
+    [info],
+  );
+  const aspect = useMemo(
+    () => visualAspectRatio(visualKeys[0] ? info?.features[visualKeys[0]] : undefined),
+    [info, visualKeys],
+  );
+  // Cameras per row: the arrangement that shows the biggest frames.
+  const maxPerRow = useMemo(() => {
+    if (box.width <= 0) return 4;
+    const cap = Math.max(1, Math.min(4, Math.floor(box.width / MIN_CAMERA_TILE_PX)));
+    return chooseCamerasPerRow({
+      count: Math.min(visualKeys.length, 6),
+      width: box.width,
+      height: box.height,
+      aspect,
+      maxPerRow: cap,
+    });
+  }, [aspect, box.height, box.width, visualKeys.length]);
+  const layoutInputRef = useRef({ box, aspect });
+  layoutInputRef.current = { box, aspect };
+
+  /** Camera panel ids per row of the current split layout (empty when stacked). */
+  const cameraRowsRef = useRef<string[][]>([]);
+
   /**
-   * 将当前布局 split size 重新均分，保证三层布局稳定：
-   * - 顶部视觉区 + 底部 chart/raw 约 2:1 高度
-   * - 视觉区若有两行，行高均分
-   * - 每一行视觉面板宽度均分
-   * - 底部 chart/raw 宽度均分
+   * Sizes the split layout in place (never through `fromJSON`, which would
+   * re-mount every panel): the camera rows take `cameraAreaHeight` of the
+   * grid height, split evenly, and the charts and raw panel the rest; the
+   * panels of a row, and the charts and raw panel, share the width evenly.
    */
-  const rebalanceLayout = (api: DockviewApi, row1PanelIds: string[], row2PanelIds: string[]) => {
-    const visualPanelIds = [...row1PanelIds, ...row2PanelIds];
-    if (visualPanelIds.length === 0) return;
-
-    const containsAnyPanel = (node: GridNode, panelIds: Set<string>): boolean => {
-      if (node.type === 'leaf') return node.data.panels.some((p) => panelIds.has(p));
-      return node.data.some((c) => containsAnyPanel(c, panelIds));
-    };
-
-    const countVisualLeaves = (node: GridNode, panelIds: Set<string>): number => {
-      if (node.type === 'leaf') return node.data.panels.some((p) => panelIds.has(p)) ? 1 : 0;
-      return node.data.reduce((acc, c) => acc + countVisualLeaves(c, panelIds), 0);
-    };
-
-    const distributeSizes = (
-      branch: Extract<GridNode, { type: 'branch' }>,
-      weights: number[],
-    ): void => {
-      const total = weights.reduce((a, b) => a + b, 0);
-      if (total <= 0) return;
-      let remaining = branch.size;
-      const n = branch.data.length;
-      for (let i = 0; i < n; i++) {
-        const w =
-          i === n - 1 ? remaining : Math.max(1, Math.round((branch.size * weights[i]) / total));
-        branch.data[i].size = w;
-        remaining -= w;
-      }
-    };
-
-    const findDeepestBranchContainingAny = (
-      node: GridNode,
-      panelIds: Set<string>,
-    ): Extract<GridNode, { type: 'branch' }> | null => {
-      if (node.type !== 'branch') return null;
-      if (!containsAnyPanel(node, panelIds)) return null;
-      for (const child of node.data) {
-        const inner = findDeepestBranchContainingAny(child, panelIds);
-        if (inner) return inner;
-      }
-      return node;
-    };
-
-    const equalizeBottom = (node: GridNode): void => {
-      // 找到包含 chart/raw 的分支并将两个叶子均分
-      const hasChartOrRaw = (n: GridNode): boolean =>
-        containsAnyPanel(n, new Set(['chart-panel', 'raw-panel']));
-
-      const dfs = (n: GridNode): Extract<GridNode, { type: 'branch' }> | null => {
-        if (n.type === 'branch') {
-          if (hasChartOrRaw(n)) {
-            // 优先选择“更靠近叶子”的分支
-            for (const c of n.data) {
-              const inner = dfs(c);
-              if (inner) return inner;
-            }
-            return n;
-          }
-        }
-        return null;
-      };
-
-      const bottomBranch = dfs(node);
-      if (!bottomBranch) return;
-      if (bottomBranch.data.length >= 2) {
-        distributeSizes(
-          bottomBranch,
-          bottomBranch.data.map((_) => 1),
-        );
-      }
-    };
-
-    const equalizeRow = (node: GridNode, rowSet: Set<string>): void => {
-      const rowBranch = findDeepestBranchContainingAny(node, rowSet);
-      if (!rowBranch) return;
-      const weights = rowBranch.data.map((c) => Math.max(0, countVisualLeaves(c, rowSet)));
-      const sum = weights.reduce((a, b) => a + b, 0);
-      if (sum > 0) distributeSizes(rowBranch, weights);
-    };
-
+  const applyLayoutSizes = (api: DockviewApi) => {
+    const rows = cameraRowsRef.current.filter((row) => row.length > 0);
+    const { width, height } = api;
+    if (rows.length === 0 || width <= 0 || height <= 0) return;
+    const cameraArea = cameraAreaHeight({
+      height,
+      width,
+      rows: rows.length,
+      perRow: Math.max(...rows.map((row) => row.length)),
+      aspect: layoutInputRef.current.aspect,
+    });
+    const rowHeight = Math.max(1, Math.floor(cameraArea / rows.length));
+    const groupOf = (id: string) => api.getPanel(id)?.group;
     try {
-      const state = api.toJSON() as DockviewSerializedGrid;
-      const root = state.grid?.root;
-      if (!root || root.type !== 'branch' || !Array.isArray(root.data)) return;
-
-      const visualSet = new Set(visualPanelIds);
-      const row1Set = new Set(row1PanelIds);
-      const row2Set = new Set(row2PanelIds);
-      const bottomSet = new Set(['chart-panel', 'raw-panel']);
-
-      const children: GridNode[] = root.data;
-      if (children.length >= 2) {
-        const bottomIdx = children.findIndex((c) => containsAnyPanel(c, bottomSet));
-        const topIdx = children.findIndex((c) => containsAnyPanel(c, visualSet));
-        if (bottomIdx !== -1 && topIdx !== -1 && bottomIdx !== topIdx) {
-          const topWeight = 2;
-          const bottomWeight = 1;
-          const total = topWeight + bottomWeight;
-          const topSize = Math.max(1, Math.round((root.size * topWeight) / total));
-          children[topIdx].size = topSize;
-          children[bottomIdx].size = Math.max(1, root.size - topSize);
-        }
+      for (const row of rows) {
+        const columnWidth = Math.max(1, Math.floor(width / row.length));
+        for (const id of row) groupOf(id)?.api.setSize({ width: columnWidth, height: rowHeight });
       }
-
-      const topBranch = findDeepestBranchContainingAny(root, visualSet);
-      if (topBranch && row2PanelIds.length > 0 && topBranch.data.length >= 2) {
-        const rowWeights = topBranch.data.map((c): number =>
-          containsAnyPanel(c, row1Set) || containsAnyPanel(c, row2Set) ? 1 : 0,
-        );
-        if (rowWeights.reduce((a, b) => a + b, 0) > 1) {
-          distributeSizes(topBranch, rowWeights);
-        }
-      }
-
-      equalizeRow(root, row1Set);
-      if (row2PanelIds.length > 0) {
-        equalizeRow(root, row2Set);
-      }
-      equalizeBottom(root);
-
-      api.fromJSON(state as Parameters<DockviewApi['fromJSON']>[0]);
+      const bottomHeight = Math.max(1, height - rowHeight * rows.length);
+      const halfWidth = Math.max(1, Math.floor(width / 2));
+      groupOf('chart-panel')?.api.setSize({ width: halfWidth, height: bottomHeight });
+      groupOf('raw-panel')?.api.setSize({ width: halfWidth, height: bottomHeight });
     } catch {
-      // fromJSON/toJSON 失败时保持原布局（Dockview 会自恢复）
+      // Keep dockview's own sizes when a group is mid-update.
     }
   };
+
+  // Size changes (window, sidebar, host notices) resize the rows in place.
+  useEffect(() => {
+    const api = apiRef.current;
+    if (!api || stacked) return;
+    const frame = window.requestAnimationFrame(() => applyLayoutSizes(api));
+    return () => window.cancelAnimationFrame(frame);
+  }, [box.width, box.height, aspect, stacked]);
 
   useEffect(() => {
     if (dockviewRef.current) {
@@ -287,6 +237,9 @@ export const DockviewLayout: React.FC = () => {
     const visibleVisual = [...row1Visual, ...row2Visual];
 
     setPanelCount(0);
+    cameraRowsRef.current = stacked
+      ? []
+      : [row1Visual.map((v) => v.id), row2Visual.map((v) => v.id)];
 
     // 如果没有视觉源，降级为 chart + raw 横向均分（避免空白）
     if (visibleVisual.length === 0) {
@@ -405,11 +358,7 @@ export const DockviewLayout: React.FC = () => {
       position: { referencePanel: 'chart-panel', direction: 'right' },
     });
 
-    rebalanceLayout(
-      api,
-      row1Visual.map((v) => v.id),
-      row2Visual.map((v) => v.id),
-    );
+    applyLayoutSizes(api);
   }, [info, t, maxPerRow, stacked]);
 
   const onReady = (event: DockviewReadyEvent) => {

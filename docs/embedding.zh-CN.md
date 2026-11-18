@@ -194,9 +194,153 @@ const dataSource = createEpisodeSetDataSource(
 - 采样保持原有频率，不会重采样到视频帧率。图表按每像素最小值/最大值抽取绘制全部采样，原始数据面板显示离播放线最近的采样。
 - 时间换算为相对 episode 起点的秒数。所有单位都会加上 `timeOffsetNs`；`ns` 时精确相加（字符串，因此 int64 时间戳不丢精度）。`frame` 除以数据集的 fps。
 - parquet 时间戳列（例如 pandas 的 `datetime64[ns]`）按纳秒精确读取，需要 `timeUnit: 'ns'`；其他单位给出 `TIME_UNIT_MISMATCH`。
-- 缺少的列会产生警告（`COLUMN_MISSING`，另有 `TIME_COLUMN_MISSING`、`TIME_UNIT_MISMATCH`、`READ_FAILED`），每个只报告一次，其他序列照常绘制。只在部分文件中缺少的列，在这些文件的采样处留空。
+- `timeColumn: null` 搭配 `timeUnit: 'frame'` 表示行号就是时间：第 `i` 行（按 `files` 的顺序连续计数）对应第 `i` 帧。适用于没有时间列的逐帧输出，所有数值列都会绘制。`null` 搭配其他单位会在读取任何内容之前被拒绝，给出 `ROW_TIME_NEEDS_FRAME_UNIT`。
+- 缺少的列会产生警告（`COLUMN_MISSING`，另有 `TIME_COLUMN_MISSING`、`TIME_UNIT_MISMATCH`、`ROW_TIME_NEEDS_FRAME_UNIT`、`READ_FAILED`），每个只报告一次，其他序列照常绘制。只在部分文件中缺少的列，在这些文件的采样处留空。
 - 用新 URL（同样的 `logicalPath`）再次传入同一序列时，只替换 URL，已加载的数据不会重新读取。
 - 额外序列只用于单个数据集的视图。在 episode 集合上会被忽略，并给出 `EPISODE_SET_UNSUPPORTED`。
+
+## 构建完整的宿主 {#build-a-complete-host}
+
+下面的宿主编辑一个录制的分段，显示检查结果和另一个程序的建议，加入自己的操作，在 URL 中跟随选择，并匹配自己的配色。所有内容都以数据和回调传入：
+
+```tsx
+import { useMemo, useState } from 'react';
+import {
+  LeRobotViewer,
+  createEpisodeSetDataSource,
+  createRemoteManifestDataSource,
+  type AnnotationField,
+  type LeRobotExtension,
+  type TimelineMarker,
+} from '@ioai/lerobot-studio';
+
+const fields: AnnotationField[] = [
+  {
+    id: 'outcome',
+    label: '结果',
+    kind: 'select',
+    options: [
+      { value: 'success', label: '成功', key: '1' },
+      { value: 'failure', label: '失败', key: '2' },
+    ],
+  },
+  { id: 'tags', label: '标签', kind: 'tags' },
+];
+
+export function RecordingStudio({ view, url, navigate }: HostProps) {
+  // 一个录制（签名文件会刷新），或一组冻结的 episode（按需签名）。
+  const dataSource = useMemo(
+    () =>
+      view.kind === 'episodeSet'
+        ? createEpisodeSetDataSource(view.manifest, { resolve: (ids) => signRecordings(ids) })
+        : createRemoteManifestDataSource(view.files, {
+            refresh: () => fetchSignedFiles(view.id),
+            expiresAt: view.expiresAt,
+          }),
+    [view],
+  );
+  const { value, saveState, onChange } = useEpisodeDocument(view.id); // 宿主自己的存储
+  const [rendition, setRendition] = useState<'original' | 'anonymized'>('original');
+
+  // 标记：label 是显示文本，请先把检查 id 本地化。
+  const markers: TimelineMarker[] = view.checks.map((check) => ({
+    id: check.id,
+    episodeIndex: 0,
+    startFrame: check.startFrame,
+    endFrame: check.endFrame,
+    severity: check.severity, // 'info' | 'warn' | 'fail'
+    label: t(`checks.${check.checkId}`),
+    checkId: check.checkId,
+  }));
+
+  const extensions: LeRobotExtension[] = [
+    {
+      id: 'host',
+      toolbar: [
+        {
+          kind: 'button',
+          id: 'propose',
+          label: t('propose'),
+          icon: 'sparkles',
+          variant: 'primary',
+          onSelect: startProposals,
+          disabled: proposalsRunning,
+          disabledReason: t('proposalsRunning'),
+        },
+        {
+          kind: 'toggle',
+          id: 'rendition',
+          label: t('frames'),
+          options: [
+            { value: 'original', label: t('original') },
+            { value: 'anonymized', label: t('anonymized') },
+          ],
+          value: rendition,
+          onChange: (next) => setRendition(next as typeof rendition),
+        },
+      ],
+      notices: proposalsRunning
+        ? [{ id: 'proposals', severity: 'info', text: t('proposing'), progress: 'indeterminate' }]
+        : [],
+    },
+  ];
+
+  return (
+    <div style={{ height: '100%' }}>
+      <LeRobotViewer
+        dataSource={dataSource}
+        language={locale} // BCP 47：'zh-CN'、'zh'、'en' 等；未知标签回退到英文
+        theme={colorScheme}
+        themeTokens={{ primary: brand, primaryForeground: '#fff', radius: '0.5rem' }}
+        annotation={{ value, onChange, saveState, createSegmentId: uuidv7 }}
+        fields={fields}
+        messages={{ 'segments.title': '片段', 'overlay.legend': '正在生成的建议' }}
+        markers={markers}
+        overlaySegments={[{ episodeIndex: 0, segments: view.proposals }]}
+        extensions={extensions}
+        auxiliarySeries={view.imu ? [view.imu] : undefined}
+        initialSelection={{ segmentId: url.episode, timeS: url.t }}
+        onSelectionChange={({ segmentId, timeS }) =>
+          navigate({ episode: segmentId, t: timeS.toFixed(2) }, { replace: true })
+        }
+      />
+    </div>
+  );
+}
+```
+
+切换 `rendition` 会传入帧相同的另一个 `dataSource`；查看器保留所在的 episode、分段和时间（见[选择与深层链接](#selection-and-deep-links)）。
+
+### 标记与只读建议 {#markers-and-read-only-suggestions}
+
+- **`markers`** 是时间轴上的区间（或单帧刻度），按 `severity` 着色，`label` 显示在提示框和无障碍名称中。点击标记跳到它的第一帧；标记行只占一个 Tab 停靠点，用方向键在标记间移动。与 `warn` 或 `fail` 标记重叠的分段会进入 **有问题** 筛选并显示问题数。`checkId` 留给宿主使用，不会显示。
+- **`overlaySegments`** 是只读分段（例如另一个程序的建议），显示在分段轨道上方的细条中。细条的图例是 `overlay.legend` 文案（默认“建议（只读）”）。点击其中一段会跳到该段；细条中的内容都不能编辑。
+
+### 工具栏与通知 {#toolbar-and-notices}
+
+`extensions` 以查看器自己的样式、焦点顺序、主题和窄屏布局加入宿主控件。它们是声明式的：查看器从不渲染宿主的 React 元素。
+
+- `toolbar` 项：`button`（`icon` 为 `sparkles`、`refresh`、`external`、`download` 或 `none`；`variant` 为 `primary` 或 `default`；`busy` 显示加载图标并忽略点击）、`toggle`（分段切换，对辅助技术呈现为单选组）和 `link`（`external` 在新标签页打开）。
+- 带 `disabledReason` 的禁用按钮仍可获得焦点；原因同时作为提示框和 `aria-describedby`。
+- `notices` 有 `severity`（`error` 通知会立即朗读）、可选的 `progress`（`'indeterminate'` 或 0–1）和一个 `action`（链接或回调）。更新通知只重新渲染通知本身，不会触及相机面板。
+- 有侧栏时它们位于侧栏顶部；没有侧栏时位于播放栏上方。
+
+### 选择与深层链接 {#selection-and-deep-links}
+
+- `initialSelection`（`episodeIndex`、`segmentId`、`timeS`）在第一次加载后应用一次。查看器打开该 episode（只给 `segmentId` 时打开分段所在的 episode），选中分段，并**暂停**在包含 `timeS` 的那一帧（没有 `timeS` 时为分段的第一帧）。
+- `onSelectionChange` 在打开 episode 后报告 `{ episodeIndex, segmentId, timeS }`：episode 或分段变化时立即报告，时间变化时每秒最多四次。深层链接尚未落地时不会报告，因此第一次报告就是链接落地的位置。
+- 传入时间轴相同的新 `dataSource`（同一个 episode、帧数相同，例如同一录制的另一种版本）时，保留 episode、分段和帧；原本在播放就继续播放。时间轴不同时照常打开。
+
+### 主题变量 {#theme-tokens}
+
+`themeTokens` 在查看器根元素上设置 `primary`、`primaryForeground`、`radius` 和 `fontFamily`（即 CSS 变量 `--primary`、`--primary-foreground`、`--radius` 以及 `font-family`）。值可以是任意 CSS 值。浅色与深色仍由 `theme` 决定；查看器为深色时，`themeTokens.dark` 中的值替换其他值。
+
+### 布局 {#layout}
+
+- 相机优先获得高度：相机行取画面所需的高度，至少占面板区域的 62%，下方图表至少保留 200 px。查看器选择画面最大的排列方式（三到四个相机在一行更大时保持一行）。
+- 图表数据到达之前，图表面板显示与最终图表布局相同的占位，内容不会跳动。
+- 同一条时间轴：进度条、分段轨道、子任务轨道、标记、建议细条和每个图表都把同一帧放在宽度的同一比例处（共 `N` 帧时，第 `k` 帧从 `k / N` 开始；时间轴止于最后一帧的结束）。播放栏中的各行还共用同一左边缘，所有图表也共用各自的左边缘。
+- 查看器宽度小于 768 px 时，可编辑的分段只显示一行“编辑需要更宽的窗口”，不显示编辑控件；播放、分段列表和导航快捷键照常可用。
 
 ## 自定义欢迎页
 
@@ -266,22 +410,28 @@ const LeRobotViewer = dynamic(
 
 常用属性：
 
-| 属性                       | 作用                                                              |
-| -------------------------- | ----------------------------------------------------------------- |
-| `dataSource`               | 远程归档 URL、远程文件清单或自定义 `DataSource`                   |
-| `theme`                    | `light`、`dark` 或 `system`                                       |
-| `language`                 | `en`、`zh` 或 `ja`                                                |
-| `showSidebar`              | 显示或隐藏 Episode 侧栏                                           |
-| `showPlaybackBar`          | 显示或隐藏播放控制栏                                              |
-| `enableKeyboardShortcuts`  | 启用或关闭查看器快捷键                                            |
-| `onFatalError`             | 接收加载失败信息，并自行显示错误状态                              |
-| `onExport`                 | 用户点击宿主导出按钮时的回调                                      |
-| `auxiliarySeries`          | 要绘制的额外时间序列，见[绘制额外的时间序列](#绘制额外的时间序列) |
-| `onAuxiliarySeriesWarning` | 接收额外序列的警告                                                |
-| `annotation`               | 由宿主控制的分段：`value`、`onChange`、`saveState`                |
-| `readOnly`                 | 只显示分段和审核，不显示任何编辑控件                              |
-| `fields`                   | 每个分段上可设置的值（`select`、`tags`、`text`）                  |
-| `messages`                 | 按键替换内置的分段文案                                            |
+| 属性                       | 作用                                                                       |
+| -------------------------- | -------------------------------------------------------------------------- |
+| `dataSource`               | 远程归档 URL、远程文件清单或自定义 `DataSource`                            |
+| `theme`                    | `light`、`dark` 或 `system`                                                |
+| `language`                 | `en`、`zh` 或 `ja`                                                         |
+| `showSidebar`              | 显示或隐藏 Episode 侧栏                                                    |
+| `showPlaybackBar`          | 显示或隐藏播放控制栏                                                       |
+| `enableKeyboardShortcuts`  | 启用或关闭查看器快捷键                                                     |
+| `onFatalError`             | 接收加载失败信息，并自行显示错误状态                                       |
+| `onExport`                 | 用户点击宿主导出按钮时的回调                                               |
+| `auxiliarySeries`          | 要绘制的额外时间序列，见[绘制额外的时间序列](#绘制额外的时间序列)          |
+| `onAuxiliarySeriesWarning` | 接收额外序列的警告                                                         |
+| `annotation`               | 由宿主控制的分段：`value`、`onChange`、`saveState`                         |
+| `readOnly`                 | 只显示分段和审核，不显示任何编辑控件                                       |
+| `fields`                   | 每个分段上可设置的值（`select`、`tags`、`text`）                           |
+| `messages`                 | 按键替换内置的分段文案                                                     |
+| `markers`                  | 时间轴上按严重程度着色的区间，见[标记](#markers-and-read-only-suggestions) |
+| `overlaySegments`          | 分段轨道上方细条中的只读分段                                               |
+| `extensions`               | 宿主工具栏项和通知，见[工具栏与通知](#toolbar-and-notices)                 |
+| `initialSelection`         | 打开时定位到某个 episode、分段和时间（只应用一次）                         |
+| `onSelectionChange`        | 跟随 episode、分段和时间，见[选择](#selection-and-deep-links)              |
+| `themeTokens`              | 在查看器根元素上设置宿主的颜色、圆角和字体                                 |
 
 `onExport` 只是回调，不包含独立应用中的导出引擎。
 
@@ -296,4 +446,4 @@ const LeRobotViewer = dynamic(
 - 加载前会检查每个相机声明的编码（`info.features[key].info["video.codec"]`）。浏览器无法解码时，该相机显示注明编码的提示，而不是一个坏掉的播放器。
 - 使用远程压缩包时，请检查 CORS 和 HTTP Range 响应头。
 - 在 Next.js 中，请将查看器置于 Client Component，并使用 `ssr: false`。
-- 需要编辑或内置导出时，请使用独立应用。欢迎页组件只负责选数据和构造本地 `DataSource`。
+- 需要内置导出时，请使用独立应用。欢迎页组件只负责选数据和构造本地 `DataSource`。

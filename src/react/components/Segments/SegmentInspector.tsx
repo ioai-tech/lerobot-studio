@@ -428,6 +428,11 @@ export const SegmentInspector: React.FC = () => {
       aria-label={t('segments.inspector.label')}
       data-testid="lerobot-segment-inspector"
     >
+      {segments.editNeedsWiderWindow ? (
+        <p className="text-xs text-muted-foreground" data-testid="lerobot-narrow-editing">
+          {t('segments.narrowEditing')}
+        </p>
+      ) : null}
       {segment ? (
         <div className="flex min-w-0 flex-wrap items-start gap-x-3 gap-y-1.5">
           <span className="flex items-center gap-1.5 self-center text-xs font-medium">

@@ -45,6 +45,12 @@ export {
   getFirstAvailableEpisodeIndex,
 } from './playback/episodeLoadPlan';
 export { shouldStartAutoplay } from './playback/playbackAutoplay';
+export type { PendingSelection } from './playback/selection';
+export {
+  frameAtSeconds,
+  pendingSelectionEpisode,
+  pendingSelectionFrame,
+} from './playback/selection';
 export type { AutoplayDecisionInput } from './playback/playbackAutoplay';
 
 export * from './utils/featureUtils';
@@ -56,6 +62,7 @@ export * from './utils/episodeKeyboard';
 export * from './utils/chartTooltipPlacement';
 
 export * from './panels/selectionModel';
+export * from './panels/visualFit';
 export * from './panels/filterGrouping';
 export * from './panels/chartFeatureSelection';
 export * from './panels/chartFilterGrouping';
@@ -70,3 +77,4 @@ export * from './subtask';
 export * from './export/trim';
 export { fixedTrim, suggestTrim } from './export/suggestTrim';
 export * from './annotation';
+export * from './timeline/scale';

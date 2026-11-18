@@ -194,9 +194,153 @@ const dataSource = createEpisodeSetDataSource(
 - Samples keep their own rate; they are not resampled to the video frame rate. Charts draw every sample with min/max-per-pixel decimation, and the raw panel shows the sample nearest the playhead.
 - Time is converted to seconds from the episode start. `timeOffsetNs` is added for every unit; with `ns` it is exact (it is a string, so int64 timestamps keep full precision). `frame` divides by the dataset fps.
 - A parquet timestamp column (for example pandas `datetime64[ns]`) is read exactly as nanoseconds and needs `timeUnit: 'ns'`; any other unit gives `TIME_UNIT_MISMATCH`.
-- A missing column gives a warning (`COLUMN_MISSING`, or `TIME_COLUMN_MISSING`, `TIME_UNIT_MISMATCH`, `READ_FAILED`), reported once. The other series still draw. A column missing from only some files is left empty for those files' samples.
+- `timeColumn: null` with `timeUnit: 'frame'` means the row index is the time: row `i` (counted across `files` in order) is frame `i`. Use it for per-frame outputs that carry no time column; every numeric column is plotted. `null` with another unit is refused with `ROW_TIME_NEEDS_FRAME_UNIT` before anything is read.
+- A missing column gives a warning (`COLUMN_MISSING`, or `TIME_COLUMN_MISSING`, `TIME_UNIT_MISMATCH`, `ROW_TIME_NEEDS_FRAME_UNIT`, `READ_FAILED`), reported once. The other series still draw. A column missing from only some files is left empty for those files' samples.
 - Passing the same series with new URLs (same `logicalPath`s) only swaps URLs; loaded data is not read again.
 - Auxiliary series work in single-dataset views only. On an episode set they are ignored with `EPISODE_SET_UNSUPPORTED`.
+
+## Build a complete host
+
+One host that edits a recording's segments, shows checks and another process's proposals, adds its own actions, follows the selection in its URL and matches its colours. Everything is passed as data and callbacks:
+
+```tsx
+import { useMemo, useState } from 'react';
+import {
+  LeRobotViewer,
+  createEpisodeSetDataSource,
+  createRemoteManifestDataSource,
+  type AnnotationField,
+  type LeRobotExtension,
+  type TimelineMarker,
+} from '@ioai/lerobot-studio';
+
+const fields: AnnotationField[] = [
+  {
+    id: 'outcome',
+    label: 'Outcome',
+    kind: 'select',
+    options: [
+      { value: 'success', label: 'Success', key: '1' },
+      { value: 'failure', label: 'Failure', key: '2' },
+    ],
+  },
+  { id: 'tags', label: 'Tags', kind: 'tags' },
+];
+
+export function RecordingStudio({ view, url, navigate }: HostProps) {
+  // One recording (signed files that refresh) or a set of frozen episodes (signed lazily).
+  const dataSource = useMemo(
+    () =>
+      view.kind === 'episodeSet'
+        ? createEpisodeSetDataSource(view.manifest, { resolve: (ids) => signRecordings(ids) })
+        : createRemoteManifestDataSource(view.files, {
+            refresh: () => fetchSignedFiles(view.id),
+            expiresAt: view.expiresAt,
+          }),
+    [view],
+  );
+  const { value, saveState, onChange } = useEpisodeDocument(view.id); // your store
+  const [rendition, setRendition] = useState<'original' | 'anonymized'>('original');
+
+  // Markers: the label is display text, so localize check ids first.
+  const markers: TimelineMarker[] = view.checks.map((check) => ({
+    id: check.id,
+    episodeIndex: 0,
+    startFrame: check.startFrame,
+    endFrame: check.endFrame,
+    severity: check.severity, // 'info' | 'warn' | 'fail'
+    label: t(`checks.${check.checkId}`),
+    checkId: check.checkId,
+  }));
+
+  const extensions: LeRobotExtension[] = [
+    {
+      id: 'host',
+      toolbar: [
+        {
+          kind: 'button',
+          id: 'propose',
+          label: t('propose'),
+          icon: 'sparkles',
+          variant: 'primary',
+          onSelect: startProposals,
+          disabled: proposalsRunning,
+          disabledReason: t('proposalsRunning'),
+        },
+        {
+          kind: 'toggle',
+          id: 'rendition',
+          label: t('frames'),
+          options: [
+            { value: 'original', label: t('original') },
+            { value: 'anonymized', label: t('anonymized') },
+          ],
+          value: rendition,
+          onChange: (next) => setRendition(next as typeof rendition),
+        },
+      ],
+      notices: proposalsRunning
+        ? [{ id: 'proposals', severity: 'info', text: t('proposing'), progress: 'indeterminate' }]
+        : [],
+    },
+  ];
+
+  return (
+    <div style={{ height: '100%' }}>
+      <LeRobotViewer
+        dataSource={dataSource}
+        language={locale} // BCP 47: 'zh-CN', 'zh', 'en' …; unknown tags fall back to English
+        theme={colorScheme}
+        themeTokens={{ primary: brand, primaryForeground: '#fff', radius: '0.5rem' }}
+        annotation={{ value, onChange, saveState, createSegmentId: uuidv7 }}
+        fields={fields}
+        messages={{ 'segments.title': 'Episodes', 'overlay.legend': 'Proposals in progress' }}
+        markers={markers}
+        overlaySegments={[{ episodeIndex: 0, segments: view.proposals }]}
+        extensions={extensions}
+        auxiliarySeries={view.imu ? [view.imu] : undefined}
+        initialSelection={{ segmentId: url.episode, timeS: url.t }}
+        onSelectionChange={({ segmentId, timeS }) =>
+          navigate({ episode: segmentId, t: timeS.toFixed(2) }, { replace: true })
+        }
+      />
+    </div>
+  );
+}
+```
+
+Switching `rendition` passes another `dataSource` with the same frames; the viewer keeps the episode, segment and time (see [Selection and deep links](#selection-and-deep-links)).
+
+### Markers and read-only suggestions
+
+- **`markers`** are ranges (or one-frame ticks) on the time axis, coloured by `severity`, with the `label` in a tooltip and in the accessible name. Clicking one seeks to its first frame; the lane is one tab stop and arrow keys move between markers. A segment that overlaps a `warn` or `fail` marker is in the **Issues** filter and shows an issue count. `checkId` is kept for the host and never shown.
+- **`overlaySegments`** are read-only segments (for example another process's proposals) in a thin band above the segment track. The band's legend is the `overlay.legend` message (default "Suggestions (read-only)"). Clicking one seeks to it; nothing in the band edits.
+
+### Toolbar and notices
+
+`extensions` add host controls in the viewer's own style, focus order, theme and narrow layout. They are declarative: the viewer never renders host React elements.
+
+- `toolbar` items: `button` (`icon` `sparkles`, `refresh`, `external`, `download` or `none`; `variant` `primary` or `default`; `busy` shows a spinner and ignores presses), `toggle` (a segmented switch, a radio group to assistive technology) and `link` (`external` opens a new tab).
+- A disabled button with `disabledReason` stays focusable; the reason is its tooltip and its `aria-describedby`.
+- `notices` have a `severity` (`error` notices are announced at once), optional `progress` (`'indeterminate'` or 0–1) and one `action` (a link or a callback). Updating a notice re-renders only the notices, never the camera panels.
+- With a sidebar they sit at its top; without one, above the playback bar.
+
+### Selection and deep links
+
+- `initialSelection` (`episodeIndex`, `segmentId`, `timeS`) applies once, after the first load. The viewer opens the episode (the segment's episode when only `segmentId` is given), selects the segment and lands **paused** on the frame that contains `timeS` (the segment's first frame without `timeS`).
+- `onSelectionChange` reports `{ episodeIndex, segmentId, timeS }` once an episode is open: at once when the episode or segment changes, and at most four times a second while time moves. Nothing is reported while a deep link is still on its way, so the first report is where the link landed.
+- Passing a new `dataSource` with the same timeline (the same episode with the same number of frames, for example another rendition of the same recording) keeps the episode, segment and frame, and keeps playing if it was playing. Another timeline opens as usual.
+
+### Theme tokens
+
+`themeTokens` sets `primary`, `primaryForeground`, `radius` and `fontFamily` on the viewer root (the `--primary`, `--primary-foreground` and `--radius` CSS variables and `font-family`). Values are any CSS value. Light and dark still follow `theme`; values under `themeTokens.dark` replace the others while the viewer is dark.
+
+### Layout
+
+- Cameras get the height first: their row takes what the frames need, at least 62 % of the panel area, and the charts below keep at least 200 px. The arrangement that shows the biggest frames is chosen (three or four cameras stay in one row while that is larger).
+- Before the charts' data arrives, the chart panel shows placeholders laid out like the charts, so nothing jumps.
+- One time axis: the slider, segment track, subtask track, markers, overlay band and every chart place a frame at the same fraction of their width (frame `k` of `N` starts at `k / N`; the axis ends at the end of the last frame). The lanes of the playback bar also share one left edge, and all charts share theirs.
+- Below 768 px of viewer width, editable segments show one line, "Editing needs a wider window", instead of edit controls; playback, the segment list and navigation keys still work.
 
 ## Custom welcome page
 
@@ -266,22 +410,28 @@ const LeRobotViewer = dynamic(
 
 Common props include:
 
-| Prop                       | Use                                                                              |
-| -------------------------- | -------------------------------------------------------------------------------- |
-| `dataSource`               | Remote archive URL, remote file manifest, or a custom `DataSource`               |
-| `theme`                    | `light`, `dark`, or `system`                                                     |
-| `language`                 | `en`, `zh`, or `ja`                                                              |
-| `showSidebar`              | Show or hide the episode sidebar                                                 |
-| `showPlaybackBar`          | Show or hide playback controls                                                   |
-| `enableKeyboardShortcuts`  | Enable or disable viewer shortcuts                                               |
-| `onFatalError`             | Receive a loading error and render your own error state                          |
-| `onExport`                 | Respond when a user clicks your export button                                    |
-| `auxiliarySeries`          | Extra time series to plot; see [Plot extra time series](#plot-extra-time-series) |
-| `onAuxiliarySeriesWarning` | Receive auxiliary-series warnings                                                |
-| `annotation`               | Host-controlled segments: `value`, `onChange`, `saveState`                       |
-| `readOnly`                 | Show segments and review without any edit control                                |
-| `fields`                   | Values a person sets on each segment (`select`, `tags`, `text`)                  |
-| `messages`                 | Replace built-in segment copy by key                                             |
+| Prop                       | Use                                                                                    |
+| -------------------------- | -------------------------------------------------------------------------------------- |
+| `dataSource`               | Remote archive URL, remote file manifest, or a custom `DataSource`                     |
+| `theme`                    | `light`, `dark`, or `system`                                                           |
+| `language`                 | `en`, `zh`, or `ja`                                                                    |
+| `showSidebar`              | Show or hide the episode sidebar                                                       |
+| `showPlaybackBar`          | Show or hide playback controls                                                         |
+| `enableKeyboardShortcuts`  | Enable or disable viewer shortcuts                                                     |
+| `onFatalError`             | Receive a loading error and render your own error state                                |
+| `onExport`                 | Respond when a user clicks your export button                                          |
+| `auxiliarySeries`          | Extra time series to plot; see [Plot extra time series](#plot-extra-time-series)       |
+| `onAuxiliarySeriesWarning` | Receive auxiliary-series warnings                                                      |
+| `annotation`               | Host-controlled segments: `value`, `onChange`, `saveState`                             |
+| `readOnly`                 | Show segments and review without any edit control                                      |
+| `fields`                   | Values a person sets on each segment (`select`, `tags`, `text`)                        |
+| `messages`                 | Replace built-in segment copy by key                                                   |
+| `markers`                  | Ranges on the time axis by severity; see [Markers](#markers-and-read-only-suggestions) |
+| `overlaySegments`          | Read-only segments in a band above the segment track                                   |
+| `extensions`               | Host toolbar items and notices; see [Toolbar and notices](#toolbar-and-notices)        |
+| `initialSelection`         | Open at an episode, segment and time, once                                             |
+| `onSelectionChange`        | Follow episode, segment and time; see [Selection](#selection-and-deep-links)           |
+| `themeTokens`              | Host colours, radius and font on the viewer root                                       |
 
 `onExport` is a callback only. It does not include the standalone app's export engine.
 
@@ -296,4 +446,4 @@ For segments, review and change ops, see [API — Segments and review](./api.md#
 - Each camera's declared codec (`info.features[key].info["video.codec"]`) is checked before loading. If the browser cannot decode it, the camera shows a notice naming the codec instead of a broken player.
 - For a remote archive, check CORS and HTTP Range headers.
 - In Next.js, keep the viewer in a Client Component with `ssr: false`.
-- For editing or built-in export, use the standalone application. Welcome-page helpers only help you pick data and build a local `DataSource`.
+- For built-in export, use the standalone application. Welcome-page helpers only help you pick data and build a local `DataSource`.

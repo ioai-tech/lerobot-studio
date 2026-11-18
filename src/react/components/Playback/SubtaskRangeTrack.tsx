@@ -3,7 +3,14 @@ import { useTranslation } from 'react-i18next';
 import { Trash2 } from 'lucide-react';
 import type { SubtaskSegment } from '@/core';
 import type { PendingSubtaskRange } from '../../contexts/useSubtaskAnnotation';
-import { buildSubtaskLane, colorForSubtaskLabel, resizeSubtaskClipEdge } from '@/core';
+import {
+  buildSubtaskLane,
+  colorForSubtaskLabel,
+  frameAtFraction,
+  frameRangeFractions,
+  frameRangeStyle,
+  resizeSubtaskClipEdge,
+} from '@/core';
 import { cn } from '@/ui';
 
 function sameSegments(left: readonly SubtaskSegment[], right: readonly SubtaskSegment[]): boolean {
@@ -19,8 +26,7 @@ function sameSegments(left: readonly SubtaskSegment[], right: readonly SubtaskSe
 function frameFromClientX(clientX: number, track: HTMLElement, totalFrames: number): number {
   const rect = track.getBoundingClientRect();
   if (rect.width <= 0 || totalFrames <= 0) return 0;
-  const percent = (clientX - rect.left) / rect.width;
-  return Math.round(Math.max(0, Math.min(1, percent)) * (totalFrames - 1));
+  return frameAtFraction((clientX - rect.left) / rect.width, totalFrames);
 }
 
 interface DragState {
@@ -131,7 +137,7 @@ export const SubtaskRangeTrack: React.FC<SubtaskRangeTrackProps> = ({
       onClick={handleTrackClick}
     >
       {lane.map((item) => {
-        const width = ((item.endFrame - item.startFrame + 1) / totalFrames) * 100;
+        const width = frameRangeFractions(item.startFrame, item.endFrame, totalFrames).width * 100;
         const isSegment = item.kind === 'segment';
         const color = isSegment ? colorForSubtaskLabel(item.label, knownLabels) : undefined;
         return (
@@ -213,10 +219,7 @@ export const SubtaskRangeTrack: React.FC<SubtaskRangeTrackProps> = ({
       {pendingRange && totalFrames > 0 ? (
         <div
           className="pointer-events-none absolute inset-y-0 z-[1] rounded-sm bg-primary/35 ring-1 ring-primary/70"
-          style={{
-            left: `${(pendingRange.startFrame / totalFrames) * 100}%`,
-            width: `${((pendingRange.endFrame - pendingRange.startFrame + 1) / totalFrames) * 100}%`,
-          }}
+          style={frameRangeStyle(pendingRange.startFrame, pendingRange.endFrame, totalFrames)}
         />
       ) : null}
     </div>

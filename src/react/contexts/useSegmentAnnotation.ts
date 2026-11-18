@@ -9,6 +9,7 @@ import {
   findSegment,
   getEpisodeSegments,
   isNoopPatch,
+  markersOfEpisode,
   matchesSegmentFilter,
   nearerEdge,
   newSegmentRangeAt,
@@ -34,6 +35,7 @@ import {
   type SegmentFilter,
   type SegmentPatch,
   type SubtaskSegment,
+  type TimelineMarker,
 } from '@/core';
 import type { AnnotationConfig } from './annotationTypes';
 
@@ -167,12 +169,18 @@ export function useSegmentAnnotation({
 
   const readOnly = Boolean(config.readOnly);
   const supported = versionCapability?.status === 'supported';
-  /** Segment edit chrome and keys. `readOnly` always wins. */
-  const canEdit = readOnly
+  /** The viewer is narrower than editing needs (set by the layout). */
+  const [narrow, setNarrow] = useState(false);
+  /** Editing is configured; the window may still be too narrow for it. */
+  const editable = readOnly
     ? false
     : controlled
       ? typeof annotation?.onChange === 'function'
       : supported && episodeEditMode;
+  /** Segment edit chrome and keys. `readOnly` always wins; a narrow viewer only plays and lists. */
+  const canEdit = editable && !narrow;
+  /** True when editing is configured but the viewer is too narrow to show it. */
+  const editNeedsWiderWindow = editable && narrow;
   /** Subtask edits additionally need a dataset that can store them when uncontrolled. */
   const canEditSubtasks = canEdit && (controlled || canMutateSubtasks(versionCapability));
 
@@ -821,6 +829,16 @@ export function useSegmentAnnotation({
         : undefined,
     [loopEnd, loopStart],
   );
+  const markers = config.markers;
+  /** Host markers of one episode, in time order (they feed the Issues filter). */
+  const markersOf = useCallback(
+    (episodeIndex: number | null): TimelineMarker[] => markersOfEpisode(markers, episodeIndex),
+    [markers],
+  );
+  const episodeMarkers = useMemo(
+    () => markersOf(selectedEpisodeIndex),
+    [markersOf, selectedEpisodeIndex],
+  );
   /** To-review segments of the selected episode that the current filter shows (Shift+A). */
   const toReviewInView = useMemo(
     () =>
@@ -828,9 +846,9 @@ export function useSegmentAnnotation({
         ? []
         : episodeSegments
             .filter((segment) => segment.review === 'to_review' && !segment.readOnly)
-            .filter((segment) => matchesSegmentFilter(segment, filter))
+            .filter((segment) => matchesSegmentFilter(segment, filter, episodeMarkers))
             .map((segment) => ({ episodeIndex: selectedEpisodeIndex, id: segment.id })),
-    [episodeSegments, filter, selectedEpisodeIndex],
+    [episodeMarkers, episodeSegments, filter, selectedEpisodeIndex],
   );
   const shownSaveState = saveState ?? null;
   /**
@@ -857,6 +875,10 @@ export function useSegmentAnnotation({
       ctx,
       canEdit,
       canEditSubtasks,
+      editNeedsWiderWindow,
+      setNarrow,
+      markersOf,
+      episodeMarkers,
       readOnly,
       fields: resolvedFields,
       active,
@@ -914,6 +936,9 @@ export function useSegmentAnnotation({
       ctx,
       canEdit,
       canEditSubtasks,
+      editNeedsWiderWindow,
+      markersOf,
+      episodeMarkers,
       readOnly,
       resolvedFields,
       active,

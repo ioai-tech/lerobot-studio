@@ -11,7 +11,13 @@ import type { LeRobotDataLoader } from '@/platform';
 import type { NumericalColumnMap } from '@/platform';
 import type { DataSource } from '@/platform';
 import type { ParquetImageServiceImpl } from '@/platform';
-import type { ValidationReport, SubtaskSegment, SubtaskCoverage, SubtaskTable } from '@/core';
+import type {
+  PendingSelection,
+  ValidationReport,
+  SubtaskSegment,
+  SubtaskCoverage,
+  SubtaskTable,
+} from '@/core';
 import type { PendingSubtaskRange } from './useSubtaskAnnotation';
 import type { PlaybackClock } from '../services/PlaybackClock';
 import type { SegmentAnnotationState } from './useSegmentAnnotation';
@@ -41,6 +47,12 @@ export interface LeRobotDataContextType {
   clearError: () => void;
   error: string | null;
   isLoading: boolean;
+  /** Open this selection once its episode loads (deep link, data-source swap); `null` drops it. */
+  setPendingSelection: (selection: PendingSelection | null) => void;
+  /** True while a selection waits for its episode (autoplay holds; selection reports wait). */
+  /** The selection still waiting to land, if any. */
+  getPendingSelection: () => PendingSelection | null;
+  hasPendingSelection: () => boolean;
 }
 
 /** Episode / export selection — changes shouldn't re-render video panels */

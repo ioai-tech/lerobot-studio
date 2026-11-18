@@ -1,6 +1,6 @@
 /**
  * Built-in messages a host may replace through `messages` (e.g. to call
- * segments "Episodes"). Values are ICU messages in the viewer's current
+ * segments "Episodes"): every `segments.*`, `overlay.*` and `markers.*` key. Values are ICU messages in the viewer's current
  * language; `{{name}}` placeholders are accepted too.
  */
 export const LEROBOT_MESSAGE_KEYS = [
@@ -117,6 +117,16 @@ export const LEROBOT_MESSAGE_KEYS = [
   'segments.shortcuts.frameStep',
   'segments.shortcuts.frameStep10',
   'segments.shortcuts.firstLast',
+  'segments.narrowEditing',
+  'overlay.legend',
+  'overlay.item',
+  'markers.label',
+  'markers.item',
+  'markers.severity.info',
+  'markers.severity.warn',
+  'markers.severity.fail',
+  'markers.issueCount',
+  'markers.issueList',
 ] as const;
 
 /** A built-in message a host may replace. */

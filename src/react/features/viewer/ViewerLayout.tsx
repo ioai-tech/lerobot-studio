@@ -4,10 +4,14 @@ import { cn } from '@/ui';
 import { ResizableSidebar } from '../../components/Sidebar/ResizableSidebar';
 import { PlaybackBar } from '../../components/Playback/PlaybackBar';
 import { Toaster } from '../../components/ui/toaster';
-import { useLeRobotData } from '../../contexts/LeRobotContext';
+import { useLeRobotData, useLeRobotSegments } from '../../contexts/LeRobotContext';
 import { useLoading } from '../../contexts/LoadingContext';
 import { ErrorState } from '../../components/Commons/ErrorState';
-import { useStackedLayout } from '../../hooks/useStackedLayout';
+import {
+  EDITING_MIN_WIDTH_PX,
+  useNarrowerThan,
+  useStackedLayout,
+} from '../../hooks/useStackedLayout';
 import { SegmentDialogs } from '../../components/Segments/SegmentDialogs';
 
 const loadDockviewLayout = () => import('../../components/DockviewLayout');
@@ -26,6 +30,11 @@ export type ViewerLayoutProps = {
   emptyState?: ReactNode;
   /** Optional chrome above the sidebar (back/export buttons, etc.). */
   sidebarHeader?: ReactNode;
+  /**
+   * Host toolbar and notices: at the top of the sidebar, or above the
+   * playback bar when there is no sidebar.
+   */
+  hostChrome?: ReactNode;
   /** When true, show Toaster inside the layout. */
   showToaster?: boolean;
   onRetry?: () => void;
@@ -42,6 +51,7 @@ export function ViewerLayout({
   sidebar,
   emptyState,
   sidebarHeader,
+  hostChrome,
   showToaster = true,
   onRetry,
 }: ViewerLayoutProps) {
@@ -50,6 +60,10 @@ export function ViewerLayout({
   const { tasks } = useLoading();
   const layoutRef = useRef<HTMLDivElement>(null);
   const stacked = useStackedLayout(layoutRef);
+  // Segment editing needs room for its controls; narrower, the viewer plays and lists only.
+  const narrow = useNarrowerThan(layoutRef, EDITING_MIN_WIDTH_PX);
+  const { setNarrow } = useLeRobotSegments();
+  useEffect(() => setNarrow(narrow), [narrow, setNarrow]);
 
   const hasData = info !== null && episodes.length > 0;
   const shouldShowSidebar = hasData && showSidebar && Boolean(sidebar);
@@ -83,6 +97,7 @@ export function ViewerLayout({
       className="min-w-0 overflow-hidden"
     >
       {sidebarHeader}
+      {hostChrome ? <div className="shrink-0 border-b border-border/50">{hostChrome}</div> : null}
       <div className="flex flex-1 min-h-0 flex-col overflow-hidden">{sidebar}</div>
     </ResizableSidebar>
   ) : null;
@@ -162,6 +177,9 @@ export function ViewerLayout({
           ))
         )}
       </div>
+      {hostChrome && hasData && !shouldShowSidebar ? (
+        <div className="shrink-0 border-t border-border/50">{hostChrome}</div>
+      ) : null}
       {showPlaybackBar && hasData && <PlaybackBar />}
     </div>
   );
