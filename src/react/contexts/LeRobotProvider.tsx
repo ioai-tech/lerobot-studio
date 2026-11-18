@@ -258,6 +258,7 @@ export const LeRobotDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
   });
 
   const {
+    clock,
     currentFrameIndex,
     setCurrentFrameIndex,
     isPlaying,
@@ -775,6 +776,7 @@ export const LeRobotDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
 
   const playbackValue = useMemo(
     () => ({
+      clock,
       currentFrames,
       chartData,
       currentFrameIndex,
@@ -789,6 +791,7 @@ export const LeRobotDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
       setPlaybackSpeed,
     }),
     [
+      clock,
       currentFrames,
       chartData,
       currentFrameIndex,

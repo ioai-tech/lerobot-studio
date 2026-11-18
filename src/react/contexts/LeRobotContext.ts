@@ -13,6 +13,7 @@ import type { DataSource } from '@/platform';
 import type { ParquetImageServiceImpl } from '@/platform';
 import type { ValidationReport, SubtaskSegment, SubtaskCoverage, SubtaskTable } from '@/core';
 import type { PendingSubtaskRange } from './useSubtaskAnnotation';
+import type { PlaybackClock } from '../services/PlaybackClock';
 
 // 帧索引订阅者回调类型
 export type FrameIndexSubscriber = (frameIndex: number) => void;
@@ -65,6 +66,8 @@ export interface LeRobotSelectionContextType {
 
 /** 播放控制、帧与 chart 数据 */
 export interface LeRobotPlaybackContextType {
+  /** The one playback time owner; cameras follow it. */
+  clock: PlaybackClock;
   currentFrames: FrameData[];
   chartData: NumericalColumnMap;
   currentFrameIndex: number;

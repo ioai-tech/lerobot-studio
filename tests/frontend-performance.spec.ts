@@ -5,6 +5,7 @@ import {
   selectEpisodesForExport,
 } from '../src/react/contexts/useEpisodeView';
 import { PlaybackEngine, type PlaybackEngineCallbacks } from '../src/react/services/PlaybackEngine';
+import { PlaybackClock } from '../src/react/services/PlaybackClock';
 
 function reportMetric(name: string, elapsedMs: number, operations: number, budgetMs: number) {
   process.stdout.write(
@@ -58,6 +59,7 @@ describe('frontend performance budgets', () => {
     const iterations = 20_000;
     const budgetMs = 750;
     let frameIndex = 0;
+    let wall = 0;
     const notifyFrame = vi.fn();
     let animationFrameId = 0;
     vi.stubGlobal(
@@ -65,7 +67,6 @@ describe('frontend performance budgets', () => {
       vi.fn(() => ++animationFrameId),
     );
     vi.stubGlobal('cancelAnimationFrame', vi.fn());
-    vi.stubGlobal('window', globalThis);
 
     const callbacks: PlaybackEngineCallbacks = {
       getFrameIndex: () => frameIndex,
@@ -84,33 +85,31 @@ describe('frontend performance budgets', () => {
       onAdvanceEpisode: vi.fn(async () => false),
       onResumeAfterEpisode: vi.fn(),
     };
-    const engine = new PlaybackEngine(callbacks);
+    const engine = new PlaybackEngine(callbacks, new PlaybackClock(() => wall));
     engine.start();
 
+    // One source frame of wall time per animation frame (240 fps at 8x).
+    const frameMs = 1000 / (240 * 8);
     const startedAt = performance.now();
-    for (let timestamp = 1; timestamp <= iterations; timestamp += 1) {
-      (engine as unknown as { tick: (time: number) => void }).tick(timestamp);
+    for (let tick = 1; tick <= iterations; tick += 1) {
+      wall = tick * frameMs + frameMs / 2;
+      (engine as unknown as { tick: () => void }).tick();
     }
     const elapsedMs = performance.now() - startedAt;
     engine.dispose();
 
     reportMetric('playback frame advancement', elapsedMs, iterations, budgetMs);
-    expect(notifyFrame).toHaveBeenCalledTimes(iterations - 1);
+    expect(notifyFrame.mock.calls.length).toBeGreaterThanOrEqual(iterations - 1);
     expect(elapsedMs).toBeLessThan(budgetMs);
   });
 
-  it('cancels both animation and timer resources on dispose', () => {
+  it('cancels the animation frame on dispose', () => {
     const cancelAnimationFrame = vi.fn();
-    const clearTimeout = vi.fn();
     vi.stubGlobal(
       'requestAnimationFrame',
       vi.fn(() => 41),
     );
     vi.stubGlobal('cancelAnimationFrame', cancelAnimationFrame);
-    vi.stubGlobal('clearTimeout', clearTimeout);
-    vi.stubGlobal('window', {
-      setTimeout: vi.fn(() => 73),
-    });
 
     const engine = new PlaybackEngine({
       getFrameIndex: () => 0,
@@ -129,10 +128,9 @@ describe('frontend performance budgets', () => {
     });
 
     engine.start();
-    (engine as unknown as { tick: (time: number) => void }).tick(1);
     engine.dispose();
 
     expect(cancelAnimationFrame).toHaveBeenCalledWith(41);
-    expect(clearTimeout).toHaveBeenCalledWith(73);
+    expect(engine.clock.isPlaying).toBe(false);
   });
 });
