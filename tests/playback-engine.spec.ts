@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { PlaybackEngine, type PlaybackEngineCallbacks } from '../src/react/services/PlaybackEngine';
-import { PlaybackClock } from '../src/react/services/PlaybackClock';
+import { frameAtTime, PlaybackClock } from '../src/react/services/PlaybackClock';
 
 let scheduled: (() => void) | null = null;
 vi.stubGlobal('requestAnimationFrame', (callback: () => void) => {
@@ -45,6 +45,10 @@ function setup(overrides: Partial<PlaybackEngineCallbacks> = {}) {
     clock,
     state,
     frame: () => frame,
+    /** Advance wall time without running an animation frame. */
+    atWithoutTick(ms: number) {
+      wall = ms;
+    },
     at(ms: number) {
       wall = ms;
       const run = scheduled;
@@ -64,6 +68,20 @@ describe('PlaybackEngine (clock-driven)', () => {
     expect(t.frame()).toBe(10);
     expect(t.state.notifyFrame).toHaveBeenCalledWith(10);
     t.engine.dispose();
+  });
+
+  it('pauses exactly on the frame the last animation frame published', () => {
+    const t = setup({ getFrameCount: () => 100 });
+    t.engine.start();
+    t.at(190); // published frame 1
+    expect(t.frame()).toBe(1);
+    // The user pauses 20 ms later, after the clock crossed into frame 2.
+    t.atWithoutTick(210);
+    expect(frameAtTime(t.clock.now(), 10)).toBe(2);
+    t.engine.stop();
+    expect(t.frame()).toBe(1);
+    expect(frameAtTime(t.clock.now(), 10)).toBe(1);
+    expect(t.clock.isPlaying).toBe(false);
   });
 
   it('holds the frame while the clock is held and resumes without a jump', () => {

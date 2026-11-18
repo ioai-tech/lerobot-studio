@@ -4,6 +4,8 @@ import { frameAtTime, type PlaybackClock } from './PlaybackClock';
 export const HARD_SEEK_DRIFT_S = 0.5;
 /** While held, a camera further than this many frames from the clock seeks to it. */
 export const HELD_SEEK_FRAMES = 2;
+/** A paused camera this close (in frames) to its target is already there. */
+const SAME_POSITION_FRAMES = 0.1;
 /** Rate trim per second of smoothed drift (0.033 s ahead → 6.6 % slower until aligned). */
 const RATE_GAIN = 1;
 const MAX_RATE_TRIM = 0.1;
@@ -60,6 +62,8 @@ export class CameraFollower {
   private smoothedDrift: number | null = null;
   private trimming = false;
   private lastRateChange = 0;
+  /** Last paused seek target; never re-sought without a new clock seek (no loops). */
+  private lastPausedTarget: number | null = null;
 
   constructor(video: HTMLVideoElement, clock: PlaybackClock, options: CameraFollowerOptions) {
     this.video = video as VideoWithFrameCallback;
@@ -108,13 +112,19 @@ export class CameraFollower {
     if (!this.clock.isPlaying) {
       this.release();
       if (!video.paused) video.pause();
-      const frame = frameAtTime(this.clock.now(), fps);
-      if (seekRequested || this.presentedFrame(range.start, fps) !== frame) {
-        this.seekTo(this.frameCentre(frame, range, fps));
+      // Compare with the clamped target, not the frame: a video shorter than
+      // the data can never present the last data frames, and chasing them
+      // would seek forever.
+      const target = this.frameCentre(frameAtTime(this.clock.now(), fps), range, fps);
+      if (seekRequested || Math.abs(video.currentTime - target) > SAME_POSITION_FRAMES / fps) {
+        if (!seekRequested && this.lastPausedTarget === target) return;
+        this.lastPausedTarget = target;
+        this.seekTo(target);
       }
       return;
     }
 
+    this.lastPausedTarget = null;
     const target = this.clampTime(range.start + this.clock.now(), range, fps);
     if (seekRequested || Math.abs(video.currentTime - target) > HARD_SEEK_DRIFT_S) {
       this.seekTo(target);
@@ -146,10 +156,6 @@ export class CameraFollower {
     if (this.frameCallback != null) this.video.cancelVideoFrameCallback?.(this.frameCallback);
     this.frameCallback = null;
     for (const cleanup of this.cleanups.splice(0)) cleanup();
-  }
-
-  private presentedFrame(start: number, fps: number): number {
-    return Math.floor((this.video.currentTime - start) * fps + 1e-3);
   }
 
   private frameCentre(frame: number, range: { start: number; end: number }, fps: number): number {

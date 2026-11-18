@@ -61,10 +61,20 @@ export class PlaybackEngine {
     this.animationFrameId = requestAnimationFrame(this.tick);
   }
 
+  /**
+   * Pause exactly on the frame the UI shows: the clock (which cameras follow)
+   * snaps back to the frame index the last animation frame published, so the
+   * slider, charts, raw panel and every camera land on the same frame.
+   */
   stop(): void {
+    const wasRunning = this.running;
     this.running = false;
     this.clock.pause();
     this.cancelScheduled();
+    if (!wasRunning) return;
+    const fps = this.fps();
+    const frame = this.callbacks.getFrameIndex();
+    if (frameAtTime(this.clock.now(), fps) !== frame) this.clock.seek(timeOfFrame(frame, fps));
   }
 
   dispose(): void {

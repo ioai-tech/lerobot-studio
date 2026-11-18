@@ -215,4 +215,39 @@ describe('browser: data foundations', () => {
     expect(reads()).toBe(1);
     expect(host.querySelector('[data-chart-group="aux:extra"]')).not.toBeNull();
   }, 60_000);
+
+  it('pauses exactly: the slider frame equals every camera frame, pause after pause', async () => {
+    const fps = 30;
+    await render(
+      <LeRobotViewer
+        dataSource={new FetchDataSource('/tests/fixtures/datasets/frame-coded-v3')}
+        language="en"
+      />,
+    );
+    const videos = () => Array.from(host.querySelectorAll('video'));
+    const slider = () => host.querySelector<HTMLElement>('[role="slider"]')!;
+    const button = () => host.querySelector<HTMLButtonElement>('button[aria-label="Play/pause"]')!;
+    const playing = () => videos().some((v) => !v.paused);
+    await waitFor(() => videos().length === 2 && videos().every((v) => v.readyState >= 2));
+    await waitFor(() => button() !== null && !button().disabled);
+    if (!playing()) await act(async () => button().click());
+
+    for (let cycle = 0; cycle < 5; cycle++) {
+      await waitFor(() => playing());
+      await new Promise((resolve) => setTimeout(resolve, 250 + 97 * cycle));
+      await act(async () => button().click());
+      await waitFor(
+        () =>
+          videos().every((v) => v.paused && !v.seeking && v.readyState >= 2) &&
+          slider().getAttribute('aria-valuenow') != null,
+      );
+      // Let any settle-seek land.
+      await new Promise((resolve) => setTimeout(resolve, 150));
+      await waitFor(() => videos().every((v) => !v.seeking));
+      const sliderFrame = Number(slider().getAttribute('aria-valuenow'));
+      const cameraFrames = videos().map((v) => Math.floor(v.currentTime * fps + 1e-3));
+      expect(cameraFrames, `cycle ${cycle}`).toEqual([sliderFrame, sliderFrame]);
+      if (cycle < 4) await act(async () => button().click());
+    }
+  }, 120_000);
 });
