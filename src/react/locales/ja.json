@@ -75,7 +75,8 @@
     "reload": "アプリケーションを再読み込み"
   },
   "lazyChunk": {
-    "failed": "ビューアーの一部を読み込めませんでした（CHUNK_LOAD_FAILED）。接続を確認して再試行してください。"
+    "failed": "ビューアーの一部を読み込めませんでした（CHUNK_LOAD_FAILED）。接続を確認して再試行してください。",
+    "reload": "ページを再読み込み"
   },
   "panelErrorBoundary": {
     "title": "パネルの読み込みに失敗しました",

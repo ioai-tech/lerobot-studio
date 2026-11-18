@@ -26,13 +26,13 @@ export function lazyChunk<P extends object>(
     });
   let Chunk = make();
   function LazyChunk(props: P) {
-    const [, setAttempt] = useState(0);
+    const [attempt, setAttempt] = useState(0);
     const retry = () => {
       Chunk = make();
-      setAttempt((attempt) => attempt + 1);
+      setAttempt((previous) => previous + 1);
     };
     return (
-      <ChunkBoundary onRetry={retry}>
+      <ChunkBoundary onRetry={retry} retried={attempt > 0}>
         <Suspense fallback={fallback}>
           <Chunk {...props} />
         </Suspense>

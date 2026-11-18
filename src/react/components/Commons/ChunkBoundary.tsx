@@ -5,7 +5,7 @@ import { useTranslation } from 'react-i18next';
 import { Button } from '@/ui';
 import { CHUNK_LOAD_FAILED, ChunkLoadError } from './chunkLoadError';
 
-function ChunkLoadFailedNotice({ onRetry }: { onRetry: () => void }) {
+function ChunkLoadFailedNotice({ onRetry, retried }: { onRetry: () => void; retried: boolean }) {
   const { t } = useTranslation();
   return (
     <div
@@ -18,13 +18,30 @@ function ChunkLoadFailedNotice({ onRetry }: { onRetry: () => void }) {
         <RotateCcw className="h-3 w-3" aria-hidden />
         {t('common.retry')}
       </Button>
+      {retried ? (
+        // A retry that failed too: the browser may keep the failed module
+        // fetch, so a page reload is the remaining way back.
+        <Button
+          variant="outline"
+          size="sm"
+          className="h-7 text-xs"
+          onClick={() => window.location.reload()}
+        >
+          {t('lazyChunk.reload')}
+        </Button>
+      ) : null}
     </div>
   );
 }
 
 /** Shows a failed chunk import as a named notice with a retry; other errors pass on. */
 export class ChunkBoundary extends Component<
-  { children: ReactNode; onRetry: () => void },
+  {
+    children: ReactNode;
+    onRetry: () => void;
+    /** The chunk failed again after a retry: also offer a page reload. */
+    retried: boolean;
+  },
   { error: Error | null }
 > {
   state: { error: Error | null } = { error: null };
@@ -50,6 +67,6 @@ export class ChunkBoundary extends Component<
     // Only a failed import is this boundary's to show; anything else goes on
     // to the boundaries above, as it would without the chunk.
     if (!(error instanceof ChunkLoadError)) throw error;
-    return <ChunkLoadFailedNotice onRetry={this.retry} />;
+    return <ChunkLoadFailedNotice onRetry={this.retry} retried={this.props.retried} />;
   }
 }

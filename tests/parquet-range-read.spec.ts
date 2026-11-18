@@ -465,6 +465,24 @@ describe('hostile parquet footers', () => {
   });
 });
 
+describe('the footer probe', () => {
+  it('must end at the end of the file, else the file is read whole by name', async () => {
+    const source = new (class extends RangeSource {
+      override async readRange(path: string, start: number, end?: number) {
+        const result = await super.readRange(path, start, end);
+        // A misbehaving server: the suffix answer stops 10 bytes short.
+        if (start < 0) return { ...result, bytes: result.bytes.subarray(0, -10) };
+        return result;
+      }
+    })({ 'data.parquet': NO_PAGE_INDEX });
+    const reader = new ParquetRangeReader(source, { footerProbeBytes: 1024 });
+    const error = await reader.prepare('data.parquet', ['action'], 0, 10).catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(RangeFallback);
+    expect((error as RangeFallback).reason).toBe('FOOTER_INCOMPLETE');
+    expect(source.reads).toHaveLength(1);
+  });
+});
+
 describe('a file that changes between range reads', () => {
   it('re-opens the new version once instead of stitching its bytes to the old footer', async () => {
     const files: Record<string, Uint8Array> = { 'data.parquet': NO_PAGE_INDEX };
