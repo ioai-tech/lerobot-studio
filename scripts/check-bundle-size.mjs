@@ -36,7 +36,7 @@ const budgets = {
   webInitialJs: { raw: 2_700_000, gzip: 745_000 },
   webInitialCss: { raw: 200_000, gzip: 25_000 },
   libDataLoader: { raw: 280_000, gzip: 60_000 },
-  webDataLoader: { raw: 40_000, gzip: 10_000 },
+  webDataLoader: { raw: 40_000, gzip: 11_000 },
   libDockview: { raw: 680_000, gzip: 160_000 },
   webDockview: { raw: 100_000, gzip: 30_000 },
   libWorkerWasm: { raw: 9_200_000, gzip: 3_000_000 },

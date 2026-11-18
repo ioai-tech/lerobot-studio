@@ -95,6 +95,103 @@ export function SignedManifestViewer({ files }: { files: RemoteFileEntry[] }) {
 
 Each entry needs a logical dataset path and an HTTP(S) URL. Optional `contentType` and `sizeBytes` help the viewer and the built-in safety limits.
 
+### Refresh expiring URLs
+
+Signed URLs expire. Pass `refresh` and the viewer re-signs instead of failing:
+
+```tsx
+const dataSource = createRemoteManifestDataSource(files, {
+  // Return the same logical paths with new URLs.
+  refresh: () => fetchSignedManifest(datasetId),
+  // Default expiry for entries without their own `expiresAt` (ISO 8601).
+  expiresAt: manifestExpiresAt,
+});
+```
+
+- A 401 or 403, or a URL within 60 s of its `expiresAt`, triggers one `refresh` call. Concurrent failures share it.
+- The new URLs replace the old ones by path, and the failed read is retried once. Playing videos switch to the new URL at the same time and keep playing or stay paused.
+- If the retry fails too, the read fails with a `RemoteSourceError` (`code`: `HTTP_STATUS`, `NETWORK` or `REFRESH_FAILED`, plus `path` and `status`).
+- Without `refresh`, a failed read is not retried.
+
+### Show only some episodes
+
+`episodeScope` limits a dataset to a list of `episode_index` values. It works for v2.1 and v3.0:
+
+```tsx
+createRemoteManifestDataSource(files, { episodeScope: [3, 4, 9] });
+```
+
+Only those episodes are listed and read, so the manifest only needs their files. The health report marks the other episodes as **not evaluated** (`EPISODES_OUT_OF_SCOPE`); they are not reported as missing.
+
+## Show episodes from many recordings
+
+`createEpisodeSetDataSource` shows episodes from many one-episode LeRobot v3 recordings as one dataset. Each episode is a row range of one recording. The viewer signs nothing up front:
+
+```tsx
+import { createEpisodeSetDataSource, LeRobotViewer } from '@ioai/lerobot-studio';
+
+const dataSource = createEpisodeSetDataSource(
+  {
+    fps: 30,
+    features, // the recordings' shared info.json features
+    recordings: recordingIds.map((id) => ({ id })),
+    episodes: [
+      {
+        recordingId: 'r7',
+        task: 'pick cube',
+        fromRow: 300,
+        toRow: 600,
+        fromS: 10,
+        toS: 20,
+        meta: { split: 'train' },
+      },
+      // ...
+    ],
+  },
+  {
+    // Sign the files of up to 50 recordings: [{ id, files: RemoteFileEntry[] }].
+    resolve: (ids) => signRecordings(ids),
+  },
+);
+
+<LeRobotViewer dataSource={dataSource} />;
+```
+
+- Opening the set calls nothing. The first read of a recording resolves it, together with the recordings of the next two episodes.
+- URL refresh re-signs only recordings already resolved (`refresh`, default `resolve`).
+- Every recording must be one episode: one data parquet and one MP4 per camera. Other layouts fail with an `EpisodeSetError` (`RECORDING_LAYOUT_REFUSED`). A failed `resolve` gives `RECORDING_RESOLVE_FAILED` for that recording; other episodes still play.
+- Rows do not need to start at 0. `meta` values become extra episode columns.
+- `previewVideoPath` (for example `'videos/{video_key}/preview.mp4'`) plays a lighter copy of each camera when the recording has one.
+
+## Plot extra time series
+
+`auxiliarySeries` adds time series from separate parquet files, such as a 200 Hz IMU or another process's outputs. They are drawn as extra chart groups on the same playhead:
+
+```tsx
+<LeRobotViewer
+  dataSource={dataSource}
+  auxiliarySeries={[
+    {
+      id: 'imu',
+      label: 'Head IMU',
+      files: [{ logicalPath: 'imu.parquet', presignedUrl: imuUrl }],
+      timeColumn: 'timestamp_ns',
+      timeUnit: 'ns', // 's', 'ns', or 'frame'
+      timeOffsetNs: '-1763000000123456789', // optional; makes absolute times episode-relative
+      columns: ['gyro_x', 'gyro_y', 'gyro_z'], // optional; default all numeric columns
+      episodeIndex: 0, // optional; default every episode
+    },
+  ]}
+  onAuxiliarySeriesWarning={(warning) => console.warn(warning.code, warning.message)}
+/>
+```
+
+- Samples keep their own rate; they are not resampled to the video frame rate. Charts draw every sample with min/max-per-pixel decimation, and the raw panel shows the sample nearest the playhead.
+- Time is converted to seconds from the episode start: `ns` adds `timeOffsetNs` exactly (it is a string, so int64 timestamps keep full precision), and `frame` divides by the dataset fps.
+- A missing column gives a warning (`COLUMN_MISSING`, or `TIME_COLUMN_MISSING`, `READ_FAILED`). The other series still draw.
+- Passing the same series with new URLs (same `logicalPath`s) only swaps URLs; loaded data is not read again.
+- Auxiliary series work in single-dataset views only. On an episode set they are ignored with `EPISODE_SET_UNSUPPORTED`.
+
 ## Custom welcome page
 
 Most embeds show a landing screen first, then the viewer. Wrap the page in `LeRobotStudioProvider` so that screen and the viewer share theme, language, and styles. Render `LeRobotViewerContent` once you have a `DataSource`:
@@ -163,16 +260,18 @@ const LeRobotViewer = dynamic(
 
 Common props include:
 
-| Prop                      | Use                                                                |
-| ------------------------- | ------------------------------------------------------------------ |
-| `dataSource`              | Remote archive URL, remote file manifest, or a custom `DataSource` |
-| `theme`                   | `light`, `dark`, or `system`                                       |
-| `language`                | `en`, `zh`, or `ja`                                                |
-| `showSidebar`             | Show or hide the episode sidebar                                   |
-| `showPlaybackBar`         | Show or hide playback controls                                     |
-| `enableKeyboardShortcuts` | Enable or disable viewer shortcuts                                 |
-| `onFatalError`            | Receive a loading error and render your own error state            |
-| `onExport`                | Respond when a user clicks your export button                      |
+| Prop                       | Use                                                                              |
+| -------------------------- | -------------------------------------------------------------------------------- |
+| `dataSource`               | Remote archive URL, remote file manifest, or a custom `DataSource`               |
+| `theme`                    | `light`, `dark`, or `system`                                                     |
+| `language`                 | `en`, `zh`, or `ja`                                                              |
+| `showSidebar`              | Show or hide the episode sidebar                                                 |
+| `showPlaybackBar`          | Show or hide playback controls                                                   |
+| `enableKeyboardShortcuts`  | Enable or disable viewer shortcuts                                               |
+| `onFatalError`             | Receive a loading error and render your own error state                          |
+| `onExport`                 | Respond when a user clicks your export button                                    |
+| `auxiliarySeries`          | Extra time series to plot; see [Plot extra time series](#plot-extra-time-series) |
+| `onAuxiliarySeriesWarning` | Receive auxiliary-series warnings                                                |
 
 `onExport` is a callback only. It does not include the standalone app's export engine.
 
@@ -183,6 +282,8 @@ For custom `DataSource` implementations and the full type list, see [API referen
 ## Integration notes
 
 - Give the viewer's parent an explicit height.
+- The viewer's root is a labelled `region` landmark (never `main`), so it can sit inside your page's own `main`.
+- Each camera's declared codec (`info.features[key].info["video.codec"]`) is checked before loading. If the browser cannot decode it, the camera shows a notice naming the codec instead of a broken player.
 - For a remote archive, check CORS and HTTP Range headers.
 - In Next.js, keep the viewer in a Client Component with `ssr: false`.
 - For editing or built-in export, use the standalone application. Welcome-page helpers only help you pick data and build a local `DataSource`.

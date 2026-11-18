@@ -32,6 +32,16 @@ Archives are treated as untrusted input. A failed load does not change the sourc
 
 ---
 
+## Optional v3 columns
+
+| Column                 | Where                     | Meaning                                                                                                                                                                                                                                                   |
+| ---------------------- | ------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `data/file_from_index` | `meta/episodes/*.parquet` | Global index of the first row of the episode's data file. When present, the viewer uses it instead of the smallest `dataset_from_index` of the episodes in that file, so a file whose rows do not start at its first listed episode still maps correctly. |
+
+`meta/episodes` files may also be Arrow IPC files (`ARROW1` magic) instead of parquet; they are read as-is. Episode sets use this for the table they synthesize.
+
+---
+
 ## Export (standalone app only)
 
 Export is available only in the hosted or self-hosted standalone application, not in the npm viewer API.
