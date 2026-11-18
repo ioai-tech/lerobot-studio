@@ -234,15 +234,16 @@ export const LeRobotDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
     }
   };
 
-  // The episode whose load is in flight. A load that no longer matches it
-  // (another episode was selected, or its loader is being disposed) drops
-  // its results and errors.
-  const loadingEpisodeRef = useRef<number | null>(null);
+  // The one owner of "is this episode load still current": each load holds a
+  // token; selecting another episode replaces it, and disposing a loader
+  // (unmount, reset, a new data source) clears it before the loader goes.
+  // A load whose token is gone drops its results and errors.
+  const episodeLoadRef = useRef<object | null>(null);
 
   // 卸载时清理资源
   useEffect(() => {
     return () => {
-      loadingEpisodeRef.current = null;
+      episodeLoadRef.current = null;
       // 这里的 reset 是异步的，但在卸载时我们主要关心同步清理（如 worker terminate 和 ObjectURL 撤销）
       // DataLoader.dispose 会处理这些。
       if (dataLoaderRef.current) {
@@ -389,7 +390,7 @@ export const LeRobotDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
     // 清理旧资源，回到欢迎页；bump generation 使在途 initialize 失效
     initGenerationRef.current += 1;
     pendingSelectionRef.current = null;
-    loadingEpisodeRef.current = null;
+    episodeLoadRef.current = null;
     try {
       if (dataLoaderRef.current) {
         await dataLoaderRef.current.dispose();
@@ -477,7 +478,7 @@ export const LeRobotDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
       let loader: LeRobotDataLoader | null = null;
       try {
         // 先清理旧数据源
-        loadingEpisodeRef.current = null;
+        episodeLoadRef.current = null;
         if (dataLoaderRef.current) {
           await dataLoaderRef.current.dispose();
         }
@@ -604,7 +605,9 @@ export const LeRobotDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
       setPendingChartColumns(getEagerEpisodeColumns(info));
       setFeatureData({});
       setSourceSubtaskIndices([]);
-      loadingEpisodeRef.current = index;
+      const load = {};
+      episodeLoadRef.current = load;
+      const isCurrent = () => episodeLoadRef.current === load;
 
       // 若新 episode 对应的 parquet 与当前缓存不同（v3 分片 / v2.1 多文件），主动释放
       // 旧文件的解析缓存（主线程 Arrow Table + worker 内部 fileCache），避免叠加式内存占用。
@@ -648,7 +651,7 @@ export const LeRobotDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
           onFetched: firstFetched,
         });
 
-        if (loadingEpisodeRef.current !== index) return false;
+        if (!isCurrent()) return false;
 
         upsertTask({
           id: taskId,
@@ -662,14 +665,14 @@ export const LeRobotDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
 
         if (laterRead) {
           const later = await laterRead;
-          if (loadingEpisodeRef.current !== index) return false;
+          if (!isCurrent()) return false;
           numericalData = { ...numericalData, ...later };
           setChartData(numericalData);
           setPendingChartColumns([]);
         }
 
         const subtaskSource = await dataLoader.loadEpisodeSubtaskSource(index);
-        if (loadingEpisodeRef.current === index) {
+        if (isCurrent()) {
           setSourceSubtaskIndices(subtaskSource.indices);
           setSourceSubtasks((previous) => ({ ...previous, ...subtaskSource.table }));
         }
@@ -694,7 +697,7 @@ export const LeRobotDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
               ? await dataLoader.loadFeatureData(index, missingFeatures)
               : {};
 
-          if (loadingEpisodeRef.current === index) {
+          if (isCurrent()) {
             setFeatureData({ ...eagerFeatureData, ...extraFeatureData });
           }
         }
@@ -702,7 +705,7 @@ export const LeRobotDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
 
         // 触发图像预加载（后台异步，不阻塞播放）
         // 仅对 image dtype 的特征有效（video dtype 使用 <video> 元素，无需预加载）
-        if (loadingEpisodeRef.current === index) {
+        if (isCurrent()) {
           const imageFeatureNames = getImageFeatureNames(info);
           if (imageFeatureNames.length > 0) {
             const pathResult = dataLoader.getEpisodeDataPath(index);
@@ -715,7 +718,7 @@ export const LeRobotDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
               imageService
                 .ensureFileLoaded(path, firstColumn)
                 .then(() => {
-                  if (loadingEpisodeRef.current !== index) return;
+                  if (!isCurrent()) return;
                   return imageService.preloadEpisode(firstColumn, startRow, endRow, episodeKey);
                 })
                 .catch((e) => {
@@ -725,9 +728,9 @@ export const LeRobotDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
             }
           }
         }
-        return loadingEpisodeRef.current === index;
+        return isCurrent();
       } catch (e) {
-        if (loadingEpisodeRef.current === index) {
+        if (isCurrent()) {
           setPendingChartColumns([]);
           console.error('Failed to load episode data', e);
           const msg = e instanceof Error ? e.message : 'Unknown error while loading episode';
@@ -736,7 +739,7 @@ export const LeRobotDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
         }
         return false;
       } finally {
-        if (loadingEpisodeRef.current === index) {
+        if (isCurrent()) {
           setIsLoading(false);
         }
       }

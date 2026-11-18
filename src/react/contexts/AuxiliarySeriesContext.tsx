@@ -9,7 +9,7 @@ import {
   type AuxiliarySeriesWarning,
   type LoadedAuxiliarySeries,
 } from '../../platform/services/auxiliarySeries';
-import { useLeRobotData, useLeRobotSelection } from './LeRobotContext';
+import { useLeRobotData, useLeRobotPlayback, useLeRobotSelection } from './LeRobotContext';
 
 export interface AuxiliarySample {
   id: string;
@@ -59,8 +59,15 @@ export function AuxiliarySeriesProvider({
   onWarning?: (warning: AuxiliarySeriesWarning) => void;
   children: React.ReactNode;
 }) {
-  const { dataLoader, info } = useLeRobotData();
+  const { dataLoader, info, isLoading } = useLeRobotData();
   const { selectedEpisodeIndex } = useLeRobotSelection();
+  const { currentFrames, pendingChartColumns } = useLeRobotPlayback();
+  // Series are read after the episode's charts (or its failure), so they
+  // never compete with them for the link.
+  const chartsSettled =
+    selectedEpisodeIndex !== null &&
+    pendingChartColumns.length === 0 &&
+    (currentFrames.length > 0 || !isLoading);
   const [entries, setEntries] = useState<Map<string, Entry>>(new Map());
   /** Latest entries, updated synchronously so overlapping effect runs never double-read. */
   const entriesRef = useRef(entries);
@@ -84,7 +91,7 @@ export function AuxiliarySeriesProvider({
   const isEpisodeSet = dataLoader?.dataSource instanceof EpisodeSetDataSource;
 
   useEffect(() => {
-    if (!dataLoader || !info || !series?.length) return;
+    if (!dataLoader || !info || !series?.length || !chartsSettled) return;
     if (isEpisodeSet) {
       for (const item of series) {
         warnRef.current({
@@ -125,7 +132,7 @@ export function AuxiliarySeriesProvider({
           settle({ key, state: 'failed' });
         });
     }
-  }, [series, dataLoader, info, fps, isEpisodeSet]);
+  }, [series, dataLoader, info, fps, isEpisodeSet, chartsSettled]);
 
   const applicable = useMemo(
     () =>

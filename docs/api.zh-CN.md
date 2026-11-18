@@ -107,7 +107,7 @@ const fields: AnnotationField[] = [
 
 如果应用需要按路径读取字节或文本，请实现 `DataSource`。路径和内容都应视为不可信输入，并在 `clear()` 中释放 object URL。
 
-可选成员：`episodeScope` 把数据集限制在部分 `episode_index` 上。查看器从 `getObjectUrl` 得到的 URL 失败时会调用 `invalidateObjectUrl(path)`；`subscribeUrlChanges(listener)` 告诉查看器哪些路径有了新 URL，视频可以切换而不丢失播放位置；`focusEpisode(episodeIndex)` 提示查看器即将读取该 episode（按需加载的数据源可以预取其后的内容）；`readRange(path, start, end?)` 读取文件的一部分（语义同 `Blob.slice`，`start` 为负数时读取末尾的若干字节），返回 `ByteRangeResult`（`bytes`、`start` 与整个文件的 `size`）。有 `readRange` 时，图表只读取 parquet 文件尾和所选 episode 的列块；服务器忽略范围请求时数据源返回整个文件（`start` 为 0，`bytes.length === size`），查看器随后整文件读取该文件。远程清单、episode 集合和本地文件夹数据源都实现了它。
+可选成员：`episodeScope` 把数据集限制在部分 `episode_index` 上。查看器从 `getObjectUrl` 得到的 URL 失败时会调用 `invalidateObjectUrl(path)`；`subscribeUrlChanges(listener)` 告诉查看器哪些路径有了新 URL，视频可以切换而不丢失播放位置；`focusEpisode(episodeIndex)` 提示查看器即将读取该 episode（按需加载的数据源可以预取其后的内容）；`readRange(path, start, end?)` 读取文件的一部分（语义同 `Blob.slice`，`start` 为负数时读取末尾的若干字节），返回 `ByteRangeResult`（`bytes`、`start`、整个文件的 `size`，以及已知时文件版本的 `etag`）。有 `readRange` 时，图表只读取 parquet 文件尾和所选 episode 的列块；服务器忽略范围请求时数据源返回整个文件（`start` 为 0，`bytes.length === size`），查看器随后整文件读取该文件。远程清单、episode 集合和本地文件夹数据源都实现了它。
 
 类型化错误：`RemoteSourceError`（清单读取）和 `EpisodeSetError`（episode 集合）带有机器可读的 `code`。`RANGE_SIZE_UNKNOWN` 表示范围读取无法得知文件大小（没有 `sizeBytes`，也读不到 `Content-Range`）。
 

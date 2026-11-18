@@ -103,6 +103,11 @@ export function SignedManifestViewer({ files }: { files: RemoteFileEntry[] }) {
 - 时间轴和最上面的图表组先到，其余组随后：每个图表在自己的列到达后立即绘制，仍在加载的组显示占位（`aria-busy`）。原始数据面板需要的其他列在图表之后读取。
 - 有 `sizeBytes` 时，请求是普通的 `bytes=a-b` 范围，属于 CORS 安全请求头（不触发预检）。没有它时，文件尾请求是后缀范围，大小取自 `Content-Range`，跨域服务器必须暴露该响应头（`Access-Control-Expose-Headers: Content-Range`）。
 - 服务器忽略 `Range`（返回 `200`）时，代价是下载一次整个文件，所有列都复用它；查看器记录一次 `RANGE_UNSUPPORTED`，此后整文件读取该数据源的文件。`RANGE_SIZE_UNKNOWN`（大小未知）和不是 parquet 的文件同样按名称回退。
+- 同一文件的多次读取，只有在报告相同大小、且（服务器暴露时）相同 `ETag`（`Access-Control-Expose-Headers: ETag`）时才会合并。文件发生变化时，查看器从新的文件尾重新打开一次；若再次变化，则整文件读取（`FILE_CHANGED`）。
+- 不可信的文件尾（范围超出数据区、列表元素数超过剩余字节、文件尾超过 64 MiB）在用于任何读取之前就被拒绝，该文件整文件读取（`FOOTER_INVALID`）。
+- 每种回退原因在一个查看器中只记录一次。
+
+第一个图表在首个视频帧之后很快绘制；其余图表受其字节在链路上的到达速度限制，该链路与相机共享。
 
 行组是最小单位：写入方把许多 episode 放进同一个行组时（pyarrow 对小文件的默认做法），读取一个 episode 的列仍要读取整个行组的这些列。
 
@@ -181,7 +186,7 @@ const dataSource = createEpisodeSetDataSource(
 
 ## 绘制额外的时间序列
 
-`auxiliarySeries` 从单独的 parquet 文件加入时间序列，例如 200 Hz 的 IMU 或其他程序的输出。它们作为额外的图表组，与数据集共用同一条播放线：
+`auxiliarySeries` 从单独的 parquet 文件加入时间序列，例如 200 Hz 的 IMU 或其他程序的输出。它们作为额外的图表组，与数据集共用同一条播放线。它们在该 episode 的图表之后读取，不会拖慢图表：
 
 ```tsx
 <LeRobotViewer

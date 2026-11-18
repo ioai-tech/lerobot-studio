@@ -1,4 +1,4 @@
-import React, { Suspense, useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   useLeRobotData,
@@ -18,11 +18,11 @@ import { EpisodeSearch } from './episodes/EpisodeSearch';
 import { EpisodeFilters } from './episodes/EpisodeFilters';
 import { EpisodeToolbar } from './episodes/EpisodeToolbar';
 import { EpisodeList } from './episodes/EpisodeList';
+import { lazyChunk } from '../Commons/lazyChunk';
 
-const BatchTrimDialog = React.lazy(async () => {
-  const mod = await import('../dialogs/BatchTrimDialog');
-  return { default: mod.BatchTrimDialog };
-});
+const BatchTrimDialog = lazyChunk(
+  async () => (await import('../dialogs/BatchTrimDialog')).BatchTrimDialog,
+);
 
 export const EpisodeSidebar: React.FC = () => {
   const { t } = useTranslation();
@@ -320,12 +320,7 @@ export const EpisodeSidebar: React.FC = () => {
       </div>
 
       {!mutationDisabled && batchTrimEpisodes && (
-        <Suspense fallback={null}>
-          <BatchTrimDialog
-            episodes={batchTrimEpisodes}
-            onClose={() => setBatchTrimEpisodes(null)}
-          />
-        </Suspense>
+        <BatchTrimDialog episodes={batchTrimEpisodes} onClose={() => setBatchTrimEpisodes(null)} />
       )}
       {!mutationDisabled && (
         <LazyEditTaskDialog

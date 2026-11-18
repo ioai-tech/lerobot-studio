@@ -380,26 +380,37 @@ export class LeRobotDataLoader {
     }
 
     const { path, start, end } = this.getEpisodeRange(episodeIndex);
-    const prepared = await this.prepareRangedRead(path, columns, start, end);
-    let result: Awaited<ReturnType<ParquetWorkerAPI['readNumericColumns']>>;
-    if (!prepared) {
-      result = await this.readWholeFile(path, (buffer) => {
-        options.onFetched?.();
+    let fetched = false;
+    const onFetched = () => {
+      if (fetched) return;
+      fetched = true;
+      options.onFetched?.();
+    };
+    const result = await this.readRangedOrWhole(
+      path,
+      columns,
+      start,
+      end,
+      (prepared) => {
+        onFetched();
+        if (prepared.read.limit === 0) {
+          return Promise.resolve(
+            Object.fromEntries(
+              columns.map((column) => [column, { values: new ArrayBuffer(0), rows: 0, width: 1 }]),
+            ),
+          );
+        }
+        return this.worker.readNumericColumnsRanged(
+          prepared.source,
+          proxy(prepared.fetchRange),
+          prepared.read,
+        );
+      },
+      (buffer) => {
+        onFetched();
         return this.worker.readNumericColumns(buffer, columns, start, end);
-      });
-    } else if (prepared.read.limit === 0) {
-      options.onFetched?.();
-      result = Object.fromEntries(
-        columns.map((column) => [column, { values: new ArrayBuffer(0), rows: 0, width: 1 }]),
-      );
-    } else {
-      options.onFetched?.();
-      result = await this.worker.readNumericColumnsRanged(
-        prepared.source,
-        proxy(prepared.fetchRange),
-        prepared.read,
-      );
-    }
+      },
+    );
 
     return Object.fromEntries(
       Object.entries(result).map(([column, data]) => [
@@ -425,6 +436,31 @@ export class LeRobotDataLoader {
       return { mode: 'whole-file', reason: null };
     const reason = this.rangeReader.refusal;
     return reason ? { mode: 'whole-file', reason } : { mode: 'range', reason: null };
+  }
+
+  /**
+   * Read by range when possible, else the file whole. A decoder read that
+   * meets a new version of the file (`FILE_CHANGED`) is planned again once,
+   * from the new footer.
+   */
+  private async readRangedOrWhole<T>(
+    path: string,
+    columns: string[],
+    start: number,
+    end: number,
+    ranged: (prepared: PreparedRangedRead) => Promise<T>,
+    whole: (buffer: ArrayBuffer) => Promise<T>,
+  ): Promise<T> {
+    for (let attempt = 0; ; attempt++) {
+      const prepared = await this.prepareRangedRead(path, columns, start, end);
+      if (!prepared) return this.readWholeFile(path, whole);
+      try {
+        return await ranged(prepared);
+      } catch (error) {
+        if (attempt === 0 && this.rangeReader.takeChanged(path)) continue;
+        throw error;
+      }
+    }
   }
 
   private async prepareRangedRead(
@@ -501,19 +537,20 @@ export class LeRobotDataLoader {
     if (featureNames.length === 0) return {};
 
     const { path, start, end } = this.getEpisodeRange(episodeIndex);
-    const prepared = await this.prepareRangedRead(path, featureNames, start, end);
-    if (prepared) {
-      if (prepared.read.limit === 0) {
-        return Object.fromEntries(featureNames.map((name) => [name, []]));
-      }
-      return this.worker.readFeatureDataRanged(
-        prepared.source,
-        proxy(prepared.fetchRange),
-        prepared.read,
-      );
-    }
-    return this.readWholeFile(path, (buffer) =>
-      this.worker.readFeatureData(buffer, featureNames, start, end),
+    return this.readRangedOrWhole(
+      path,
+      featureNames,
+      start,
+      end,
+      (prepared) =>
+        prepared.read.limit === 0
+          ? Promise.resolve(Object.fromEntries(featureNames.map((name) => [name, []])))
+          : this.worker.readFeatureDataRanged(
+              prepared.source,
+              proxy(prepared.fetchRange),
+              prepared.read,
+            ),
+      (buffer) => this.worker.readFeatureData(buffer, featureNames, start, end),
     );
   }
 

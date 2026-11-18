@@ -103,6 +103,11 @@ The charts of an episode need its numeric columns, not the whole data file. The 
 - The time axis and the top chart group arrive first, then the other groups: each chart draws as soon as its columns are in, and groups still loading show a placeholder (`aria-busy`). The raw panel's other columns are read after the charts.
 - With `sizeBytes` the requests are plain `bytes=a-b` ranges, a CORS-safelisted header (no preflight). Without it the footer request is a suffix range and the size comes from `Content-Range`, which a cross-origin server must expose (`Access-Control-Expose-Headers: Content-Range`).
 - A server that ignores `Range` (answers `200`) costs one whole-file download, reused for every column; the viewer logs `RANGE_UNSUPPORTED` once and reads that source's files whole. `RANGE_SIZE_UNKNOWN` (no size) and a file that is not parquet fall back the same way, by name.
+- Reads of one file are combined only when they report the same size and, when the server exposes it, the same `ETag` (`Access-Control-Expose-Headers: ETag`). A file that changed is opened again from its new footer once; if it changes again, it is read whole (`FILE_CHANGED`).
+- A footer that cannot be trusted (spans outside the data, oversized lists, a footer over 64 MiB) is refused before anything is read with it, and the file is read whole (`FOOTER_INVALID`).
+- Each fallback reason is logged once per viewer.
+
+The first chart is drawn soon after the first video frame; the other charts are limited by how fast their bytes arrive on the link, which they share with the cameras.
 
 Row groups are the smallest unit: a writer that puts many episodes in one row group (pyarrow's default for small files) still costs the episode's columns for the whole group.
 
@@ -181,7 +186,7 @@ const dataSource = createEpisodeSetDataSource(
 
 ## Plot extra time series
 
-`auxiliarySeries` adds time series from separate parquet files, such as a 200 Hz IMU or another process's outputs. They are drawn as extra chart groups on the same playhead:
+`auxiliarySeries` adds time series from separate parquet files, such as a 200 Hz IMU or another process's outputs. They are drawn as extra chart groups on the same playhead. They are read after the episode's charts, so they never delay them:
 
 ```tsx
 <LeRobotViewer

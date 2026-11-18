@@ -11,7 +11,7 @@
 ```http
 Access-Control-Allow-Origin: *
 Accept-Ranges: bytes
-Access-Control-Expose-Headers: Accept-Ranges, Content-Length, Content-Range
+Access-Control-Expose-Headers: Accept-Ranges, Content-Length, Content-Range, ETag
 ```
 
 查看器请求 `Range: bytes=0-65535` 时，应返回：

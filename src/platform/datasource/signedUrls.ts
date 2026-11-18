@@ -316,9 +316,13 @@ export async function fetchByteRange(
   }
   const res = await fetchWithRefresh(path, getUrl, refresher, { headers: { Range: header } });
   const bytes = await readResponseBytes(res, path, limits);
+  // A readable ETag names the file version (cross-origin servers expose it
+  // with Access-Control-Expose-Headers).
+  const etag = res.headers.get('etag') ?? undefined;
+  const version = etag ? { etag } : {};
   if (res.status !== 206) {
     // The server ignored the range and sent the whole file.
-    return { bytes, start: 0, size: bytes.length };
+    return { bytes, start: 0, size: bytes.length, ...version };
   }
   const contentRange = CONTENT_RANGE.exec(res.headers.get('content-range') ?? '');
   const rangeStart = contentRange ? Number(contentRange[1]) : expectedStart;
@@ -332,7 +336,7 @@ export async function fetchByteRange(
       { status: res.status },
     );
   }
-  return { bytes, start: rangeStart, size };
+  return { bytes, start: rangeStart, size, ...version };
 }
 
 /** Read a response body into memory within the materialization limits. */

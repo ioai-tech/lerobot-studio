@@ -23,10 +23,12 @@ export const RANGE_CACHE_BYTES = 64 * 1024 * 1024;
  * Why the viewer reads a parquet file whole instead of by range:
  * `RANGE_UNSUPPORTED` the server answered a range request with the whole
  * file; `RANGE_SIZE_UNKNOWN` the file size is unknown (no `sizeBytes`, no
- * readable `Content-Range`); the others are footers that cannot be planned.
+ * readable `Content-Range`); `FILE_CHANGED` the file changed (size or ETag)
+ * between reads, again after re-opening it once; the others are footers that
+ * cannot be planned.
  */
 export type ParquetRangeFallbackReason =
-  'RANGE_UNSUPPORTED' | 'RANGE_SIZE_UNKNOWN' | ParquetFooterErrorCode;
+  'RANGE_UNSUPPORTED' | 'RANGE_SIZE_UNKNOWN' | 'FILE_CHANGED' | ParquetFooterErrorCode;
 
 /** Internal signal: read this file whole (the bytes when a range read already returned them). */
 export class RangeFallback extends Error {
@@ -40,14 +42,33 @@ export class RangeFallback extends Error {
   }
 }
 
+/**
+ * A range read answered from another version of the file than the footer
+ * (other size or ETag). Its bytes are never combined with the cached ones.
+ */
+export class ParquetFileChangedError extends Error {
+  readonly code = 'FILE_CHANGED';
+  readonly path: string;
+  constructor(path: string, detail: string) {
+    super(`FILE_CHANGED: ${path} changed between range reads (${detail})`);
+    this.name = 'ParquetFileChangedError';
+    this.path = path;
+  }
+}
+
+/** The file version a footer was read from. */
+interface FileVersion {
+  path: string;
+  size: number;
+  etag: string | null;
+}
+
 interface Part {
   start: number;
   bytes: Uint8Array;
 }
 
-interface FileState {
-  path: string;
-  size: number;
+interface FileState extends FileVersion {
   footer: ParquetFooter;
   parts: Part[];
   cachedBytes: number;
@@ -82,6 +103,8 @@ export class ParquetRangeReader {
   private opening: { path: string; promise: Promise<FileState> } | null = null;
   private readonly refusedPaths = new Map<string, ParquetRangeFallbackReason>();
   private sourceRefusal: ParquetRangeFallbackReason | null = null;
+  /** Paths whose decoder read found a new file version (see `takeChanged`). */
+  private readonly changedPaths = new Set<string>();
   private readonly footerProbeBytes: number;
   private readonly coalesceGapBytes: number;
 
@@ -128,6 +151,41 @@ export class ParquetRangeReader {
     }
     const refused = this.refusedPaths.get(path);
     if (refused) throw new RangeFallback(refused, path, null);
+    try {
+      return await this.prepareOnce(path, columns, startRow, endRow);
+    } catch (error) {
+      if (!(error instanceof ParquetFileChangedError)) throw error;
+    }
+    // Re-open once: a new footer for the new version of the file.
+    try {
+      return await this.prepareOnce(path, columns, startRow, endRow);
+    } catch (error) {
+      if (!(error instanceof ParquetFileChangedError)) throw error;
+      this.forget(path);
+      throw new RangeFallback('FILE_CHANGED', path, null);
+    }
+  }
+
+  /**
+   * True once after a decoder read of `path` failed because the file changed:
+   * the caller plans the read again (from a new footer) instead of failing.
+   */
+  takeChanged(path: string): boolean {
+    return this.changedPaths.delete(path);
+  }
+
+  /** Drop what is cached for `path` (its footer and bytes). */
+  forget(path: string): void {
+    if (this.file?.path === path) this.file = null;
+    if (this.opening?.path === path) this.opening = null;
+  }
+
+  private async prepareOnce(
+    path: string,
+    columns: string[],
+    startRow: number,
+    endRow: number,
+  ): Promise<PreparedRangedRead> {
     const file = await this.open(path);
     const { footer } = file;
     const plan = planParquetRead(footer, columns, startRow, endRow);
@@ -137,7 +195,12 @@ export class ParquetRangeReader {
     // The decoder reads whole column chunks (and their page indexes, when
     // the writer wrote them): fetch them together up front.
     const prefetch = [...plan.spans, ...plan.indexSpans];
-    await this.ensure(file, prefetch, this.coalesceGapBytes);
+    try {
+      await this.ensure(file, prefetch, this.coalesceGapBytes);
+    } catch (error) {
+      if (error instanceof ParquetFileChangedError) this.forget(path);
+      throw error;
+    }
     const wanted = [...plan.spans, ...plan.indexSpans, tail];
     const parts = file.parts
       .filter((part) => wanted.some((span) => overlaps(span, toSpan(part))))
@@ -150,10 +213,19 @@ export class ParquetRangeReader {
         offset: start - plan.firstRow,
         limit: end - start,
       },
+      // The decoder's own reads are of the version this plan was made from:
+      // a changed file fails the read by name (the loader re-plans it once).
       fetchRange: async (from, to) => {
-        const current = this.file === file ? file : await this.open(path);
-        const bytes = await this.bytesOf(current, from, to);
-        return bytes.slice();
+        try {
+          const bytes = await this.bytesOf(file, from, to);
+          return bytes.slice();
+        } catch (error) {
+          if (error instanceof ParquetFileChangedError) {
+            this.forget(path);
+            this.changedPaths.add(path);
+          }
+          throw error;
+        }
       },
     };
   }
@@ -187,27 +259,28 @@ export class ParquetRangeReader {
       this.sourceRefusal = 'RANGE_UNSUPPORTED';
       throw new RangeFallback('RANGE_UNSUPPORTED', path, probe.bytes);
     }
+    if (probe.start < 0 || probe.start + probe.bytes.length !== probe.size) {
+      // A footer probe must end at the end of the file.
+      throw new RangeFallback('FOOTER_INCOMPLETE', path, null);
+    }
+    const version: FileVersion = { path, size: probe.size, etag: probe.etag ?? null };
     const size = probe.size;
     let tail = probe.bytes;
     let tailStart = probe.start;
     try {
       const needed = parquetMetadataLength(tail) + PARQUET_TRAILER_BYTES;
       if (needed > tail.length && needed <= size) {
-        const rest = await this.source.readRange!(path, size - needed, tailStart);
-        if (isWholeFile(rest, tailStart - (size - needed))) {
-          this.sourceRefusal = 'RANGE_UNSUPPORTED';
-          throw new RangeFallback('RANGE_UNSUPPORTED', path, rest.bytes);
-        }
-        const joined = new Uint8Array(rest.bytes.length + tail.length);
-        joined.set(rest.bytes, 0);
-        joined.set(tail, rest.bytes.length);
+        const restStart = size - needed;
+        const rest = await this.readSpan(version, restStart, tailStart);
+        const joined = new Uint8Array(rest.length + tail.length);
+        joined.set(rest, 0);
+        joined.set(tail, rest.length);
         tail = joined;
-        tailStart = rest.start;
+        tailStart = restStart;
       }
       const footer = parseParquetFooter(tail, size);
       return {
-        path,
-        size,
+        ...version,
         footer,
         parts: [{ start: tailStart, bytes: tail }],
         cachedBytes: tail.length,
@@ -257,30 +330,52 @@ export class ParquetRangeReader {
     }
     if (filled < end - start) {
       // Evicted while waiting (cache limit): read the range directly.
-      const result = await this.source.readRange!(file.path, start, end);
-      return result.bytes;
+      return this.readSpan(file, start, end);
     }
     return out;
   }
 
   private async fetchInto(file: FileState, start: number, end: number): Promise<void> {
-    const result = await this.source.readRange!(file.path, start, end);
-    if (isWholeFile(result, end - start)) {
-      this.sourceRefusal = 'RANGE_UNSUPPORTED';
-      throw new RangeFallback('RANGE_UNSUPPORTED', file.path, result.bytes);
-    }
-    if (result.start !== start || result.bytes.length !== end - start) {
-      throw new Error(
-        `Range read of ${file.path} returned bytes ${result.start}+${result.bytes.length}, asked ${start}-${end}`,
-      );
-    }
-    if (file.cachedBytes + result.bytes.length > RANGE_CACHE_BYTES) {
+    const bytes = await this.readSpan(file, start, end);
+    if (file.cachedBytes + bytes.length > RANGE_CACHE_BYTES) {
       // Keep the footer; drop older chunks.
       file.parts = file.parts.slice(0, 1);
       file.cachedBytes = file.parts[0]!.bytes.length;
     }
-    file.parts.push({ start, bytes: result.bytes });
-    file.cachedBytes += result.bytes.length;
+    file.parts.push({ start, bytes });
+    file.cachedBytes += bytes.length;
+  }
+
+  /**
+   * The one way bytes [start, end) of a known file are read: the span must
+   * lie inside the file (a negative start is never sent, as it would read a
+   * suffix), and the answer must be exactly those bytes of the same version.
+   */
+  private async readSpan(version: FileVersion, start: number, end: number): Promise<Uint8Array> {
+    const { path } = version;
+    if (!(Number.isSafeInteger(start) && Number.isSafeInteger(end))) {
+      throw new RangeFallback('FOOTER_INVALID', path, null);
+    }
+    if (start < 0 || end <= start || end > version.size) {
+      throw new RangeFallback('FOOTER_INVALID', path, null);
+    }
+    const result = await this.source.readRange!(path, start, end);
+    if (result.size !== version.size) {
+      throw new ParquetFileChangedError(path, `size ${version.size} → ${result.size}`);
+    }
+    if (version.etag && result.etag && result.etag !== version.etag) {
+      throw new ParquetFileChangedError(path, `ETag ${version.etag} → ${result.etag}`);
+    }
+    if (isWholeFile(result, end - start)) {
+      this.sourceRefusal = 'RANGE_UNSUPPORTED';
+      throw new RangeFallback('RANGE_UNSUPPORTED', path, result.bytes);
+    }
+    if (result.start !== start || result.bytes.length !== end - start) {
+      throw new Error(
+        `Range read of ${path} returned bytes ${result.start}+${result.bytes.length}, asked ${start}-${end}`,
+      );
+    }
+    return result.bytes;
   }
 }
 

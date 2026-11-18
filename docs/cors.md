@@ -11,7 +11,7 @@ Remote archives are requested from the URL you provide. CORS, range requests, au
 ```http
 Access-Control-Allow-Origin: *
 Accept-Ranges: bytes
-Access-Control-Expose-Headers: Accept-Ranges, Content-Length, Content-Range
+Access-Control-Expose-Headers: Accept-Ranges, Content-Length, Content-Range, ETag
 ```
 
 When the viewer asks for `Range: bytes=0-65535`, answer with:

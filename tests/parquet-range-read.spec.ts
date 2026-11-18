@@ -1,23 +1,26 @@
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { Float64, Table, tableToIPC, vectorFromArray } from 'apache-arrow';
+import { Float64, Table, tableFromIPC, tableToIPC, vectorFromArray } from 'apache-arrow';
 import { describe, expect, it } from 'vitest';
 import type { ByteRangeResult, DataSource } from '@/core';
 import {
   coalesceSpans,
+  MAX_PARQUET_FOOTER_BYTES,
   parseParquetFooter,
   ParquetFooterError,
   planParquetRead,
 } from '../src/core/parquet/footer';
 import { RemoteSourceError } from '../src/platform/datasource/signedUrls';
 import {
+  ParquetFileChangedError,
   ParquetRangeReader,
   RangeFallback,
   type PreparedRangedRead,
 } from '../src/platform/services/parquetRangeReader';
 import { readRangedTable } from '../src/platform/workers/parquetDecode';
 import { RangeNotFetchedError, SparseFile } from '../src/platform/workers/sparseFile';
+import { readParquetToIPC } from './helpers/parquet';
 import { getParquetWasmNode } from './helpers/parquetWasmNode';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -57,6 +60,8 @@ class RangeSource implements DataSource {
   readonly reads: Array<{ path: string; start: number; end: number }> = [];
   ignoreRanges = false;
   failSize = false;
+  /** ETag per path, when the "server" sends one. */
+  readonly etags: Record<string, string> = {};
   constructor(private readonly files: Record<string, Uint8Array>) {}
   async exists(path: string) {
     return path in this.files;
@@ -83,7 +88,13 @@ class RangeSource implements DataSource {
     const from = start < 0 ? Math.max(0, bytes.length + start) : Math.min(start, bytes.length);
     const to = start < 0 || end === undefined ? bytes.length : Math.min(end, bytes.length);
     this.reads.push({ path, start: from, end: to });
-    return { bytes: bytes.slice(from, to), start: from, size: bytes.length };
+    const etag = this.etags[path];
+    return {
+      bytes: bytes.slice(from, to),
+      start: from,
+      size: bytes.length,
+      ...(etag ? { etag } : {}),
+    };
   }
   bytesRead(): number {
     return this.reads.reduce((sum, read) => sum + read.end - read.start, 0);
@@ -143,6 +154,14 @@ describe('parquet footer', () => {
     // endRow 0 reads to the end; an empty range selects nothing.
     expect(planParquetRead(footer, ['index'], 0, 0).rowGroups).toEqual([0, 1, 2]);
     expect(planParquetRead(footer, ['index'], 300, 300).rowGroups).toEqual([]);
+  });
+
+  it('selects exactly the groups a read aligned to group bounds covers', () => {
+    const footer = parseParquetFooter(NO_PAGE_INDEX, NO_PAGE_INDEX.length);
+    expect(planParquetRead(footer, ['index'], 0, 200).rowGroups).toEqual([0]);
+    expect(planParquetRead(footer, ['index'], 200, 400).rowGroups).toEqual([1]);
+    expect(planParquetRead(footer, ['index'], 400, 600).rowGroups).toEqual([2]);
+    expect(planParquetRead(footer, ['index'], 199, 201).rowGroups).toEqual([0, 1]);
   });
 
   it('merges nearby ranges only', () => {
@@ -334,3 +353,193 @@ describe('ParquetRangeReader', () => {
     await expect(reader.prepare('data.parquet', ['index'], 0, 1)).resolves.toBeTruthy();
   });
 });
+
+// Hand-made thrift (compact protocol) footers for hostile inputs.
+function varint(n: number): number[] {
+  const out: number[] = [];
+  while (n >= 0x80) {
+    out.push((n % 128) | 0x80);
+    n = Math.floor(n / 128);
+  }
+  out.push(n);
+  return out;
+}
+const zigzag = (n: number) => varint(n >= 0 ? n * 2 : -n * 2 - 1);
+/** Metadata plus the 8-byte trailer (length, PAR1). */
+function tailOf(metadata: number[], length = metadata.length): Uint8Array {
+  return new Uint8Array([
+    ...metadata,
+    length & 255,
+    (length >> 8) & 255,
+    (length >> 16) & 255,
+    length >>> 24,
+    0x50,
+    0x41,
+    0x52,
+    0x31,
+  ]);
+}
+/** One row group with one column chunk at [4, 14) and an offset index at `at`. */
+function footerWithOffsetIndex(at: number, length: number): number[] {
+  return [
+    0x36, ...zigzag(5), // num_rows (field 3, i64)
+    0x19, 0x1c, // row_groups (field 4): list of 1 struct
+    0x19, 0x1c, // columns (field 1): list of 1 struct
+    0x3c, // meta_data (field 3, struct)
+    0x39, 0x18, 1, 0x61, // path_in_schema (field 3): ['a']
+    0x46, ...zigzag(10), // total_compressed_size (field 7)
+    0x26, ...zigzag(4), // data_page_offset (field 9)
+    0x00,
+    0x16, ...zigzag(at), // offset_index_offset (field 4, i64)
+    0x15, ...zigzag(length), // offset_index_length (field 5, i32)
+    0x00,
+    0x26, ...zigzag(5), // num_rows (field 3)
+    0x00,
+    0x00,
+  ]; // prettier-ignore
+}
+/** A file of `size` bytes ending in `tail`. */
+function fileEndingIn(tail: Uint8Array, size: number): Uint8Array {
+  const file = new Uint8Array(size);
+  file.set(tail, size - tail.length);
+  return file;
+}
+const footerCode = (run: () => unknown) => {
+  try {
+    run();
+  } catch (error) {
+    return (error as ParquetFooterError).code;
+  }
+  return 'parsed';
+};
+
+describe('hostile parquet footers', () => {
+  it('parses the hand-made footer', () => {
+    const footer = parseParquetFooter(tailOf(footerWithOffsetIndex(20, 8)), 1000);
+    expect(footer.rowGroups[0]!.columns[0]).toMatchObject({ start: 4, end: 14 });
+    expect(footer.pageIndex).toEqual({ start: 20, end: 28 });
+  });
+
+  it('refuses page indexes outside the data region', () => {
+    for (const [at, length] of [
+      [10_000_000, 8],
+      [-5000, 8],
+      [2, 8],
+      [990, 8], // runs into the footer
+      [20, -4],
+    ] as const) {
+      expect(
+        footerCode(() => parseParquetFooter(tailOf(footerWithOffsetIndex(at, length)), 1000)),
+      ).toBe('FOOTER_INVALID');
+    }
+  });
+
+  it('refuses collections that claim more elements than bytes, at once', () => {
+    const started = performance.now();
+    // A list<bool> of 2^26 elements, a list<double> of 2^49, a map of 2^40 entries.
+    for (const metadata of [
+      [0x19, 0xf1, ...varint(2 ** 26), 0x00],
+      [0x19, 0xf7, ...varint(2 ** 49), 0x00],
+      [0x1b, ...varint(2 ** 40), 0x11, 0x00],
+    ]) {
+      expect(footerCode(() => parseParquetFooter(tailOf(metadata), 1000))).toBe('FOOTER_INVALID');
+    }
+    expect(performance.now() - started).toBeLessThan(50);
+  });
+
+  it('refuses integers past 2^53 and footers longer than the cap', () => {
+    const huge = [0x36, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x7f, 0x00];
+    expect(footerCode(() => parseParquetFooter(tailOf(huge), 1000))).toBe('FOOTER_INVALID');
+    const capped = tailOf([0x00], MAX_PARQUET_FOOTER_BYTES + 1);
+    expect(footerCode(() => parseParquetFooter(capped, 2 ** 30))).toBe('FOOTER_INVALID');
+  });
+
+  it('falls back by name, without reading outside the file, when a footer is hostile', async () => {
+    const file = fileEndingIn(tailOf(footerWithOffsetIndex(-5000, 8)), 1000);
+    const source = new RangeSource({ 'bad.parquet': file });
+    const reader = new ParquetRangeReader(source, { footerProbeBytes: 256 });
+    const error = await reader.prepare('bad.parquet', ['a'], 0, 5).catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(RangeFallback);
+    expect((error as RangeFallback).reason).toBe('FOOTER_INVALID');
+    expect(source.reads.every((read) => read.start >= 0 && read.end <= 1000)).toBe(true);
+  });
+});
+
+describe('a file that changes between range reads', () => {
+  it('re-opens the new version once instead of stitching its bytes to the old footer', async () => {
+    const files: Record<string, Uint8Array> = { 'data.parquet': NO_PAGE_INDEX };
+    const source = new RangeSource(files);
+    const reader = new ParquetRangeReader(source, { footerProbeBytes: 1024 });
+    await reader.prepare('data.parquet', ['observation.state'], 0, 10);
+    // A new version of the object: the old footer's offsets are now wrong.
+    const next = await rewrittenWithPadding();
+    files['data.parquet'] = next;
+    const prepared = await reader.prepare('data.parquet', ['action'], 450, 460);
+    expect(prepared.source.size).toBe(next.length);
+    const { table } = await decode(prepared);
+    expect(Array.from(table.getChild('action')!.get(0) as Iterable<number>)).toEqual([450.5, 0, 1]);
+  });
+
+  it('falls back by name when the file keeps changing', async () => {
+    const versions = [NO_PAGE_INDEX, await rewrittenWithPadding()];
+    const files: Record<string, Uint8Array> = { 'data.parquet': versions[0]! };
+    const source = new (class extends RangeSource {
+      calls = 0;
+      override async readRange(path: string, start: number, end?: number) {
+        // Every read sees the other version of the object.
+        files[path] = versions[this.calls++ % 2]!;
+        return super.readRange(path, start, end);
+      }
+    })(files);
+    const reader = new ParquetRangeReader(source, { footerProbeBytes: 1024 });
+    const error = await reader.prepare('data.parquet', ['action'], 0, 10).catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(RangeFallback);
+    expect((error as RangeFallback).reason).toBe('FILE_CHANGED');
+    // Not a source-wide refusal: the next read tries ranges again.
+    expect(reader.available).toBe(true);
+  });
+
+  it('treats another ETag as another version', async () => {
+    const source = new RangeSource({ 'data.parquet': NO_PAGE_INDEX });
+    source.etags['data.parquet'] = '"v1"';
+    const reader = new ParquetRangeReader(source, { footerProbeBytes: 1024 });
+    await reader.prepare('data.parquet', ['observation.state'], 0, 10);
+    const footerReads = () =>
+      source.reads.filter((read) => read.end === NO_PAGE_INDEX.length).length;
+    expect(footerReads()).toBe(1);
+    source.etags['data.parquet'] = '"v2"';
+    await reader.prepare('data.parquet', ['action'], 450, 460);
+    expect(footerReads()).toBe(2);
+  });
+
+  it('fails a decoder read of a changed file by name, once', async () => {
+    const files: Record<string, Uint8Array> = { 'data.parquet': NO_PAGE_INDEX };
+    const reader = new ParquetRangeReader(new RangeSource(files), { footerProbeBytes: 1024 });
+    const prepared = await reader.prepare('data.parquet', ['action'], 0, 10);
+    files['data.parquet'] = await rewrittenWithPadding();
+    const error = await prepared.fetchRange(4, 64).catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(ParquetFileChangedError);
+    expect(reader.takeChanged('data.parquet')).toBe(true);
+    expect(reader.takeChanged('data.parquet')).toBe(false);
+  });
+});
+
+/** The fixture's rows in a new version of the file: an extra first column moves every offset. */
+async function rewrittenWithPadding(): Promise<Uint8Array> {
+  const parquet = await getParquetWasmNode();
+  const table = tableFromIPC(await readParquetToIPC(NO_PAGE_INDEX));
+  const columns = Object.fromEntries(
+    table.schema.fields.map((field) => [field.name, table.getChild(field.name)!]),
+  );
+  const padding = vectorFromArray(
+    Array.from({ length: table.numRows }, (_, i) => i * 1.5),
+    new Float64(),
+  );
+  const props = new parquet.WriterPropertiesBuilder().setMaxRowGroupSize(200).build();
+  return new Uint8Array(
+    parquet.writeParquet(
+      parquet.Table.fromIPCStream(tableToIPC(new Table({ padding, ...columns }), 'stream')),
+      props,
+    ),
+  );
+}

@@ -1,4 +1,4 @@
-import React, { Suspense, useEffect, useRef, type ReactNode } from 'react';
+import { useEffect, useRef, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/ui';
 import { ResizableSidebar } from '../../components/Sidebar/ResizableSidebar';
@@ -13,12 +13,36 @@ import {
   useStackedLayout,
 } from '../../hooks/useStackedLayout';
 import { LazySegmentDialogs } from '../../components/Segments/lazySegments';
+import { lazyChunk } from '../../components/Commons/lazyChunk';
 
 const loadDockviewLayout = () => import('../../components/DockviewLayout');
-const LazyDockviewLayout = React.lazy(async () => {
-  const mod = await loadDockviewLayout();
-  return { default: mod.DockviewLayout };
-});
+
+function DockviewLoading() {
+  const { t } = useTranslation();
+  return (
+    <div
+      className="w-full h-full flex items-center justify-center text-muted-foreground bg-background/50 backdrop-blur-sm z-50"
+      role="status"
+      aria-live="polite"
+    >
+      <div className="flex flex-col items-center gap-4">
+        <div className="flex items-center gap-3">
+          <div
+            className="h-5 w-5 border-2 border-primary border-t-transparent rounded-full animate-spin motion-reduce:animate-none"
+            aria-hidden
+          />
+          <span className="text-sm font-medium">{t('common.loadingLayout')}</span>
+        </div>
+        <p className="text-xs text-muted-foreground">{t('common.firstLoadNote')}</p>
+      </div>
+    </div>
+  );
+}
+
+const LazyDockviewLayout = lazyChunk(
+  async () => (await loadDockviewLayout()).DockviewLayout,
+  <DockviewLoading />,
+);
 
 export type ViewerLayoutProps = {
   showSidebar?: boolean;
@@ -112,28 +136,7 @@ export function ViewerLayout({
                 {error}
               </div>
             ) : null}
-            <Suspense
-              fallback={
-                <div
-                  className="w-full h-full flex items-center justify-center text-muted-foreground bg-background/50 backdrop-blur-sm z-50"
-                  role="status"
-                  aria-live="polite"
-                >
-                  <div className="flex flex-col items-center gap-4">
-                    <div className="flex items-center gap-3">
-                      <div
-                        className="h-5 w-5 border-2 border-primary border-t-transparent rounded-full animate-spin motion-reduce:animate-none"
-                        aria-hidden
-                      />
-                      <span className="text-sm font-medium">{t('common.loadingLayout')}</span>
-                    </div>
-                    <p className="text-xs text-muted-foreground">{t('common.firstLoadNote')}</p>
-                  </div>
-                </div>
-              }
-            >
-              <LazyDockviewLayout />
-            </Suspense>
+            <LazyDockviewLayout />
           </>
         ) : activeTask ? (
           <div

@@ -150,6 +150,7 @@ export type AuxiliarySeriesWarningCode = 'COLUMN_MISSING' | 'TIME_COLUMN_MISSING
 // @public
 export interface ByteRangeResult {
     bytes: Uint8Array;
+    etag?: string;
     size: number;
     start: number;
 }

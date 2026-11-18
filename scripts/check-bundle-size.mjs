@@ -22,16 +22,17 @@ if (!Number.isFinite(scale) || scale <= 0 || scale > 1) {
 // at 7cfdf5e measured 2.37 MiB raw / 685.9 KiB gzip counted once (768.1 KiB
 // counted twice). This change loads the segment inspector, list and dialogs,
 // the edit dialogs and the zh/ja locales on demand (web initial JS
-// 2,392,936 raw / 678,159 gzip; library entry 434,676 / 134,279, from
-// 463.2 KiB / 139.3 KiB) and adds parquet range reads to the lazy DataLoader
-// (web 49,061 / 14,406, from 37.5 KiB / 10.5 KiB).
+// 2,393,864 raw / 678,606 gzip; library entry 435,721 / 134,749, from
+// 463.2 KiB / 139.3 KiB) and adds parquet range reads, with footer and
+// file-version checks, to the lazy DataLoader (web 50,958 / 14,934, from
+// 37.5 KiB / 10.5 KiB; library 62,355 / 16,563).
 const budgets = {
   libEntry: { raw: 448_000, gzip: 138_500 },
   libCss: { raw: 360_000, gzip: 107_000 },
   webInitialJs: { raw: 2_465_000, gzip: 699_000 },
   webInitialCss: { raw: 199_000, gzip: 24_700 },
-  libDataLoader: { raw: 62_000, gzip: 16_500 },
-  webDataLoader: { raw: 50_500, gzip: 14_900 },
+  libDataLoader: { raw: 64_300, gzip: 17_100 },
+  webDataLoader: { raw: 52_500, gzip: 15_400 },
   libDockview: { raw: 638_000, gzip: 149_500 },
   webDockview: { raw: 92_800, gzip: 27_600 },
   libWorkerWasm: { raw: 6_800_000, gzip: 2_360_000 },

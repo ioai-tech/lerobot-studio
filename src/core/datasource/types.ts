@@ -24,6 +24,11 @@ export interface ByteRangeResult {
   start: number;
   /** Size of the whole file in bytes. */
   size: number;
+  /**
+   * Version of the file the bytes came from (an HTTP `ETag`), when known.
+   * Reads of one file whose `size` or `etag` differ are not combined.
+   */
+  etag?: string;
 }
 
 /** Browser-readable storage abstraction consumed by the viewer. */

@@ -8,6 +8,12 @@
 /** Byte length of the trailer: 4-byte footer length + `PAR1`. */
 export const PARQUET_TRAILER_BYTES = 8;
 
+/**
+ * Largest serialized footer accepted. Real footers are kilobytes to a few
+ * megabytes; a larger declared length is refused rather than read.
+ */
+export const MAX_PARQUET_FOOTER_BYTES = 64 * 1024 * 1024;
+
 /** One column chunk of a row group: where its pages live in the file. */
 export interface ParquetColumnChunk {
   /** Top-level column name (first element of `path_in_schema`). */
@@ -83,7 +89,14 @@ export function parquetMetadataLength(tail: Uint8Array): number {
     throw new ParquetFooterError('NOT_PARQUET', 'File does not end with the parquet magic PAR1');
   }
   const view = new DataView(tail.buffer, tail.byteOffset + tail.length - 8, 4);
-  return view.getUint32(0, true);
+  const length = view.getUint32(0, true);
+  if (length > MAX_PARQUET_FOOTER_BYTES) {
+    throw new ParquetFooterError(
+      'FOOTER_INVALID',
+      `Parquet footer declares ${length} bytes, more than ${MAX_PARQUET_FOOTER_BYTES}`,
+    );
+  }
+  return length;
 }
 
 // Thrift compact protocol types.
@@ -115,6 +128,29 @@ class CompactReader {
     return this.bytes[this.pos++]!;
   }
 
+  /** Skip `count` bytes, refusing to run past the footer. */
+  private advance(count: number): void {
+    if (this.pos + count > this.bytes.length) {
+      throw new ParquetFooterError('FOOTER_INVALID', 'Parquet footer ends unexpectedly');
+    }
+    this.pos += count;
+  }
+
+  /**
+   * A collection's element count. Every element takes at least one byte, so
+   * a count above the bytes left is refused before any element is read (a
+   * hostile varint could otherwise claim 2^63 elements).
+   */
+  private count(size: number): number {
+    if (size > this.bytes.length - this.pos) {
+      throw new ParquetFooterError(
+        'FOOTER_INVALID',
+        `Parquet footer collection claims ${size} elements in ${this.bytes.length - this.pos} bytes`,
+      );
+    }
+    return size;
+  }
+
   /** Unsigned varint as a JS number (exact below 2^53). */
   varint(): number {
     let result = 0;
@@ -122,7 +158,12 @@ class CompactReader {
     for (let shift = 0; shift < 64; shift += 7) {
       const b = this.byte();
       result += (b & 0x7f) * multiplier;
-      if ((b & 0x80) === 0) return result;
+      if ((b & 0x80) === 0) {
+        if (!Number.isSafeInteger(result)) {
+          throw new ParquetFooterError('FOOTER_INVALID', 'Parquet footer integer is too large');
+        }
+        return result;
+      }
       multiplier *= 128;
     }
     throw new ParquetFooterError('FOOTER_INVALID', 'Parquet footer varint is too long');
@@ -136,7 +177,7 @@ class CompactReader {
 
   binary(): Uint8Array {
     const length = this.varint();
-    if (this.pos + length > this.bytes.length) {
+    if (length > this.bytes.length - this.pos) {
       throw new ParquetFooterError('FOOTER_INVALID', 'Parquet footer string overruns the footer');
     }
     const out = this.bytes.subarray(this.pos, this.pos + length);
@@ -151,7 +192,7 @@ class CompactReader {
   listHeader(): { size: number; type: number } {
     const header = this.byte();
     const shortSize = header >> 4;
-    return { size: shortSize === 15 ? this.varint() : shortSize, type: header & 0x0f };
+    return { size: this.count(shortSize === 15 ? this.varint() : shortSize), type: header & 0x0f };
   }
 
   /**
@@ -177,7 +218,7 @@ class CompactReader {
       case T_FALSE:
         return;
       case T_BYTE:
-        this.pos += 1;
+        this.advance(1);
         return;
       case T_I16:
       case T_I32:
@@ -185,7 +226,7 @@ class CompactReader {
         this.varint();
         return;
       case T_DOUBLE:
-        this.pos += 8;
+        this.advance(8);
         return;
       case T_BINARY:
         this.binary();
@@ -194,19 +235,17 @@ class CompactReader {
       case T_SET: {
         const { size, type: elementType } = this.listHeader();
         for (let i = 0; i < size; i++) {
-          // Booleans inside collections take one byte each.
-          if (elementType === T_TRUE || elementType === T_FALSE) this.pos += 1;
-          else this.skip(elementType);
+          this.skipElement(elementType);
         }
         return;
       }
       case T_MAP: {
-        const size = this.varint();
+        const size = this.count(this.varint());
         if (size === 0) return;
         const types = this.byte();
         for (let i = 0; i < size; i++) {
-          this.skip(types >> 4);
-          this.skip(types & 0x0f);
+          this.skipElement(types >> 4);
+          this.skipElement(types & 0x0f);
         }
         return;
       }
@@ -216,6 +255,12 @@ class CompactReader {
       default:
         throw new ParquetFooterError('FOOTER_INVALID', `Unknown thrift type ${type}`);
     }
+  }
+
+  /** Skip one collection element: booleans inside collections take one byte each. */
+  private skipElement(type: number): void {
+    if (type === T_TRUE || type === T_FALSE) this.advance(1);
+    else this.skip(type);
   }
 
   list<T>(read: () => T): T[] {
@@ -319,10 +364,10 @@ function readColumnChunk(reader: CompactReader): ParquetColumnChunk {
     start,
     end: start + m.totalCompressedSize,
   };
-  if (offsetIndexOffset != null && offsetIndexLength != null && offsetIndexLength > 0) {
+  if (offsetIndexOffset != null && offsetIndexLength != null && offsetIndexLength !== 0) {
     chunk.offsetIndex = { start: offsetIndexOffset, end: offsetIndexOffset + offsetIndexLength };
   }
-  if (columnIndexOffset != null && columnIndexLength != null && columnIndexLength > 0) {
+  if (columnIndexOffset != null && columnIndexLength != null && columnIndexLength !== 0) {
     chunk.columnIndex = { start: columnIndexOffset, end: columnIndexOffset + columnIndexLength };
   }
   return chunk;
@@ -385,10 +430,20 @@ export function parseParquetFooter(tail: Uint8Array, fileSize: number): ParquetF
     return out;
   });
   const metadataStart = fileSize - needed;
+  // Every span the reader may fetch lies inside the data region
+  // [4, metadataStart): never negative (which a range read would take as a
+  // suffix), never past the footer.
+  const inData = (span: ByteSpan) =>
+    span.start >= 4 && span.start <= span.end && span.end <= metadataStart;
   for (const group of rowGroups) {
     for (const chunk of group.columns) {
-      if (chunk.start < 4 || chunk.end > metadataStart) {
+      if (!inData(chunk)) {
         throw new ParquetFooterError('FOOTER_INVALID', 'Column chunk lies outside the data region');
+      }
+      for (const span of [chunk.offsetIndex, chunk.columnIndex]) {
+        if (span && !(inData(span) && span.start < span.end)) {
+          throw new ParquetFooterError('FOOTER_INVALID', 'Page index lies outside the data region');
+        }
       }
     }
   }

@@ -38,7 +38,7 @@ class RangeFsSource extends LocalFsDataSource {
   readonly rangeReads: Array<{ path: string; start: number; end: number }> = [];
   constructor(
     root: string,
-    private readonly mode: 'range' | 'ignore' | 'no-size' = 'range',
+    private readonly mode: 'range' | 'ignore' | 'no-size' | 'encrypted' = 'range',
   ) {
     super(root);
   }
@@ -58,8 +58,33 @@ class RangeFsSource extends LocalFsDataSource {
     const from = start < 0 ? Math.max(0, bytes.length + start) : Math.min(start, bytes.length);
     const to = start < 0 || end === undefined ? bytes.length : Math.min(end, bytes.length);
     this.rangeReads.push({ path: relativePath, start: from, end: to });
-    return { bytes: bytes.slice(from, to), start: from, size: bytes.length };
+    const slice = bytes.slice(from, to);
+    if (this.mode === 'encrypted' && to === bytes.length) {
+      // An encrypted footer ends in PARE: a per-file fallback.
+      slice.set([0x50, 0x41, 0x52, 0x45], slice.length - 4);
+    }
+    return { bytes: slice, start: from, size: bytes.length };
   }
+}
+
+/** A copy of the v3 fixture whose data file is larger than the footer probe. */
+async function largeDataset(): Promise<string> {
+  const root = mkdtempSync(path.join(os.tmpdir(), 'lerobot-range-'));
+  cpSync(V3, root, { recursive: true });
+  const rows = 12_000;
+  writeFileSync(
+    path.join(root, DATA),
+    await writeParquetBytes({
+      'observation.state': Array.from({ length: rows }, (_, i) => i),
+      action: Array.from({ length: rows }, (_, i) => -i),
+      timestamp: Array.from({ length: rows }, (_, i) => i / 10),
+      frame_index: Array.from({ length: rows }, (_, i) => BigInt(i)),
+      episode_index: Array.from({ length: rows }, (_, i) => BigInt(i < 3 ? 0 : 1)),
+      index: Array.from({ length: rows }, (_, i) => BigInt(i)),
+      task_index: Array.from({ length: rows }, () => 0n),
+    }),
+  );
+  return root;
 }
 
 async function open(source: LocalFsDataSource) {
@@ -105,22 +130,8 @@ describe('LeRobotDataLoader range reads', () => {
 
   it('reads the file whole, once, with a named warning when ranges are ignored', async () => {
     // A data file larger than the footer probe, so a whole-file answer shows.
-    const root = mkdtempSync(path.join(os.tmpdir(), 'lerobot-range-'));
+    const root = await largeDataset();
     try {
-      cpSync(V3, root, { recursive: true });
-      const rows = 12_000;
-      writeFileSync(
-        path.join(root, DATA),
-        await writeParquetBytes({
-          'observation.state': Array.from({ length: rows }, (_, i) => i),
-          action: Array.from({ length: rows }, (_, i) => -i),
-          timestamp: Array.from({ length: rows }, (_, i) => i / 10),
-          frame_index: Array.from({ length: rows }, (_, i) => BigInt(i)),
-          episode_index: Array.from({ length: rows }, (_, i) => BigInt(i < 3 ? 0 : 1)),
-          index: Array.from({ length: rows }, (_, i) => BigInt(i)),
-          task_index: Array.from({ length: rows }, () => 0n),
-        }),
-      );
       const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
       const whole = await open(new LocalFsDataSource(root));
       const source = new RangeFsSource(root, 'ignore');
@@ -165,5 +176,29 @@ describe('LeRobotDataLoader range reads', () => {
     expect(
       warn.mock.calls.some(([message]) => String(message).includes('RANGE_SIZE_UNKNOWN')),
     ).toBe(true);
+  });
+
+  it('warns once per fallback reason, however often it falls back', async () => {
+    const root = await largeDataset();
+    try {
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+      const whole = await open(new LocalFsDataSource(root));
+      const source = new RangeFsSource(root, 'encrypted');
+      const loader = await open(source);
+      for (const episode of [0, 1, 0]) {
+        await loader.releaseParsedCaches();
+        expect(await loader.loadAllNumericalData(episode, ['action'])).toEqual(
+          await whole.loadAllNumericalData(episode, ['action']),
+        );
+      }
+      // Every read fell back (the file is refused; ranges stay on for other files)…
+      expect(source.byteReads.filter((read) => read === DATA).length).toBeGreaterThan(1);
+      expect(loader.getRangeReadStatus()).toEqual({ mode: 'range', reason: null });
+      // …and the reason was reported once.
+      const named = warn.mock.calls.filter(([message]) => String(message).includes('ENCRYPTED'));
+      expect(named).toHaveLength(1);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 });

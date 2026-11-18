@@ -2,16 +2,17 @@
  * Edit dialogs load as their own chunks on first open and then stay mounted
  * (so closing animates as before).
  */
-import React, { Suspense, useState } from 'react';
+import { useState } from 'react';
+import { lazyChunk } from '../Commons/lazyChunk';
 import type { EditSubtaskDialogProps } from './EditSubtaskDialog';
 import type { EditTaskDialogProps } from './EditTaskDialog';
 
-const EditSubtaskDialogChunk = React.lazy(async () => ({
-  default: (await import('./EditSubtaskDialog')).EditSubtaskDialog,
-}));
-const EditTaskDialogChunk = React.lazy(async () => ({
-  default: (await import('./EditTaskDialog')).EditTaskDialog,
-}));
+const EditSubtaskDialogChunk = lazyChunk<EditSubtaskDialogProps>(
+  async () => (await import('./EditSubtaskDialog')).EditSubtaskDialog,
+);
+const EditTaskDialogChunk = lazyChunk<EditTaskDialogProps>(
+  async () => (await import('./EditTaskDialog')).EditTaskDialog,
+);
 
 /** True from the first time `open` was true. */
 function useOpenedOnce(open: boolean): boolean {
@@ -22,18 +23,10 @@ function useOpenedOnce(open: boolean): boolean {
 
 export function LazyEditSubtaskDialog(props: EditSubtaskDialogProps) {
   if (!useOpenedOnce(props.open)) return null;
-  return (
-    <Suspense fallback={null}>
-      <EditSubtaskDialogChunk {...props} />
-    </Suspense>
-  );
+  return <EditSubtaskDialogChunk {...props} />;
 }
 
 export function LazyEditTaskDialog(props: EditTaskDialogProps) {
   if (!useOpenedOnce(props.open)) return null;
-  return (
-    <Suspense fallback={null}>
-      <EditTaskDialogChunk {...props} />
-    </Suspense>
-  );
+  return <EditTaskDialogChunk {...props} />;
 }
