@@ -135,7 +135,7 @@ Changes to public behavior must follow the
 
 ## UI components
 
-UI primitives live in `src/ui` and are managed from the repository root with the shadcn CLI. Keep generated components in `src/ui/components` and use local `@/ui` or relative imports. Do not reintroduce `@radix-ui/*`; prefer Base UI composition via `render`. The CLI's Tailwind theme layer is vendored at `src/ui/shadcn-tailwind.css` rather than imported from the `shadcn` package: that package depends on `fast-glob` → `micromatch` → `braces`, which has no patched release, so installing it keeps `npm audit --audit-level=high` red in CI. Scaffold with `npx shadcn@latest add <component>`; `components.json` is unchanged, and the header of the vendored file explains how to refresh it.
+UI primitives live in `src/ui` and are managed from the repository root with the shadcn CLI. Keep generated components in `src/ui/components` and use local `@/ui` or relative imports. Do not reintroduce `@radix-ui/*`; prefer Base UI composition via `render`. The CLI's Tailwind theme layer is vendored at `src/ui/shadcn-tailwind.css` rather than imported from the `shadcn` package: that package depends on `fast-glob` → `micromatch` → `braces`, which has no patched release, so installing it would make CI's `npm run check:audit` fail (see [SECURITY.md](https://github.com/ioai-tech/lerobot-studio/blob/main/SECURITY.md#dependency-vulnerabilities)). Scaffold with `npx shadcn@latest add <component>`; `components.json` is unchanged, and the header of the vendored file explains how to refresh it.
 
 ## Documentation i18n
 
