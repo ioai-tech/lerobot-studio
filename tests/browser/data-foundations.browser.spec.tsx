@@ -236,6 +236,47 @@ describe('browser: data foundations', () => {
     expect(host.querySelector('[data-chart-group="aux:extra"]')).not.toBeNull();
   }, 60_000);
 
+  it('shows an auxiliary series that loads after the dataset charts with its dimensions on', async () => {
+    const realFetch = globalThis.fetch.bind(globalThis);
+    let releaseAux!: () => void;
+    const auxGate = new Promise<void>((resolve) => (releaseAux = resolve));
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+      if (String(input).includes('?aux=1')) await auxGate;
+      return realFetch(input, init);
+    });
+    const series: AuxiliarySeries[] = [
+      {
+        id: 'late',
+        label: 'Late sensor',
+        files: [
+          {
+            logicalPath: 'late.parquet',
+            presignedUrl: `${location.origin}${DATASET}/data/chunk-000/file-000.parquet?aux=1`,
+          },
+        ],
+        timeColumn: 'timestamp',
+        timeUnit: 's',
+        columns: ['action'],
+      },
+    ];
+    await render(
+      <LeRobotViewer
+        dataSource={new SignedFixtureSource()}
+        language="en"
+        showPlaybackBar={false}
+        auxiliarySeries={series}
+      />,
+    );
+    const chip = (group: string) =>
+      host.querySelector<HTMLButtonElement>(`[data-chart-group="${group}"] button[aria-pressed]`);
+    await waitFor(() => chip('action')?.getAttribute('aria-pressed') === 'true');
+    releaseAux();
+    await waitFor(() => chip('aux:late') !== null);
+    // Defaults apply in the effect after the group first renders.
+    await waitFor(() => chip('aux:late')!.getAttribute('aria-pressed') === 'true', 3_000);
+    expect(chip('action')!.getAttribute('aria-pressed')).toBe('true');
+  }, 60_000);
+
   it('pauses exactly: the slider frame equals every camera frame, pause after pause', async () => {
     const fps = 30;
     await render(

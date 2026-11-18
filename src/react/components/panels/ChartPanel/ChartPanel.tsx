@@ -113,16 +113,25 @@ const ChartPanelContent: React.FC<ChartPanelProps> = ({ params }) => {
   );
   const jointColorMap = chartCore?.jointColorMap ?? fallbackJointColorMap;
 
-  // 仅在没有“用户主动清空”时做默认全选；用户点击清空后不再自动填回
+  // Defaults (the first dimensions of every group) are offered once per
+  // series id, so a group that appears later (an auxiliary series loaded
+  // after the dataset) starts visible too, unless the user cleared the
+  // selection. A new dataset starts over.
   const userClearedJointsRef = useRef(false);
+  const offeredDefaultsRef = useRef<Set<string>>(new Set());
   useEffect(() => {
+    offeredDefaultsRef.current = new Set();
     userClearedJointsRef.current = false;
-  }, [allSeriesIds]);
+    setSelectedSeriesIds(new Set());
+  }, [info]);
   useEffect(() => {
-    if (selectedSeriesIds.size === 0 && allSeriesIds.length > 0 && !userClearedJointsRef.current) {
-      setSelectedSeriesIds(new Set([...defaultVisibleIds, ...auxiliaryDefaultIds]));
-    }
-  }, [allSeriesIds, selectedSeriesIds.size, defaultVisibleIds, auxiliaryDefaultIds]);
+    const offered = offeredDefaultsRef.current;
+    const fresh = [...defaultVisibleIds, ...auxiliaryDefaultIds].filter((id) => !offered.has(id));
+    if (fresh.length === 0) return;
+    for (const id of fresh) offered.add(id);
+    if (userClearedJointsRef.current) return;
+    setSelectedSeriesIds((prev) => new Set([...prev, ...fresh]));
+  }, [defaultVisibleIds, auxiliaryDefaultIds]);
 
   /** Frame → time, from the same timestamps the player uses. */
   const frameTimes = useMemo(() => {
