@@ -416,7 +416,11 @@ describe('browser: embedding — layout and time axis', () => {
     await expect
       .poll(() => Math.abs(groupOf(videos()[0]).height - expected()), { timeout: 10_000 })
       .toBeLessThanOrEqual(2);
-    const chart = groupOf(host.querySelector('[data-testid="chart-groups"]')!);
+    // The chart panel (its charts, or their placeholders while loading).
+    const chartPanel = () =>
+      host.querySelector('[data-testid="chart-groups"], [data-testid="chart-groups-placeholder"]');
+    await expect.poll(() => chartPanel() != null, { timeout: 30_000 }).toBe(true);
+    const chart = groupOf(chartPanel()!);
     expect(Math.abs(chart.height - (dock().height - expected()))).toBeLessThanOrEqual(2);
   });
 
