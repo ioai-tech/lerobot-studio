@@ -37,7 +37,7 @@ The viewer supports in-session episode changes when the dataset allows them. `on
 
 Implement `DataSource` if your application needs to read bytes or text by path. Treat paths and content as untrusted, and release object URLs in `clear()`.
 
-Optional members: `episodeScope` limits the dataset to some `episode_index` values. `invalidateObjectUrl(path)` is called when a URL the viewer got from `getObjectUrl` fails, and `subscribeUrlChanges(listener)` tells the viewer which paths have new URLs so videos can switch without losing their place.
+Optional members: `episodeScope` limits the dataset to some `episode_index` values. `invalidateObjectUrl(path)` is called when a URL the viewer got from `getObjectUrl` fails, `subscribeUrlChanges(listener)` tells the viewer which paths have new URLs so videos can switch without losing their place, and `focusEpisode(episodeIndex)` is a hint that the viewer is about to read that episode (lazy sources can prefetch what follows).
 
 Typed errors: `RemoteSourceError` (manifest reads) and `EpisodeSetError` (episode sets) carry a machine-readable `code`.
 

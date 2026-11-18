@@ -101,14 +101,19 @@ export function SignedManifestViewer({ files }: { files: RemoteFileEntry[] }) {
 
 ```tsx
 const dataSource = createRemoteManifestDataSource(files, {
-  // 返回同样的逻辑路径和新的 URL。
-  refresh: () => fetchSignedManifest(datasetId),
-  // 条目没有自己的 `expiresAt` 时使用的默认过期时间（ISO 8601）。
+  // 返回同样的逻辑路径、新的 URL 及其过期时间。
+  refresh: async () => {
+    const signed = await fetchSignedManifest(datasetId);
+    return { files: signed.files, expiresAt: signed.expiresAt };
+  },
+  // 初始 `files` 中没有自己 `expiresAt` 的条目的过期时间（ISO 8601）。
   expiresAt: manifestExpiresAt,
 });
 ```
 
-- 遇到 401 或 403，或者 URL 距 `expiresAt` 不足 60 秒时，调用一次 `refresh`；同时发生的失败共用这一次调用。
+- 遇到 401 或 403，或者 URL 距过期不足 60 秒时，调用一次 `refresh`；同时发生的失败共用这一次调用。URL 早于某次已完成刷新的读取，会直接用新 URL 重试。
+- 刷新会替换过期时间。每个刷新后的条目按自己的 `expiresAt` 过期，否则按随文件一起返回的 `expiresAt`，否则视为未知；此时只有 401 或 403 才会触发下一次刷新。`refresh` 也可以只返回条目数组。
+- 因临近过期触发的刷新每 30 秒最多一次。后台刷新失败，或返回的 URL 仍在 60 秒内过期时，下次等待时间逐次加倍（从 5 秒到最多 5 分钟）。
 - 新 URL 按路径替换旧 URL，失败的读取重试一次。正在播放的视频在同一时间点切换到新 URL，播放或暂停状态保持不变。
 - 重试仍然失败时，读取以 `RemoteSourceError` 失败（`code` 为 `HTTP_STATUS`、`NETWORK` 或 `REFRESH_FAILED`，并带有 `path` 和 `status`）。
 - 不传 `refresh` 时，失败的读取不会重试。
@@ -157,7 +162,7 @@ const dataSource = createEpisodeSetDataSource(
 <LeRobotViewer dataSource={dataSource} />;
 ```
 
-- 打开数据集时不调用任何函数。第一次读取某个录制时才解析它，并顺带解析后两个 episode 的录制。
+- 打开数据集时不调用任何函数。第一次读取某个录制时才解析它，并顺带解析正在打开的 episode 之后两个 episode 的录制。这次调用失败时，会单独解析所选录制，预取失败不会妨碍正在打开的 episode。
 - URL 刷新只重新签名已经解析过的录制（`refresh`，默认等于 `resolve`）。
 - 每个录制必须只有一个 episode：一个数据 parquet，每个相机一个 MP4。其他布局以 `EpisodeSetError`（`RECORDING_LAYOUT_REFUSED`）失败。`resolve` 失败时，该录制得到 `RECORDING_RESOLVE_FAILED`，其他 episode 仍可播放。
 - 行号不必从 0 开始。`meta` 中的值会成为额外的 episode 列。
@@ -187,8 +192,9 @@ const dataSource = createEpisodeSetDataSource(
 ```
 
 - 采样保持原有频率，不会重采样到视频帧率。图表按每像素最小值/最大值抽取绘制全部采样，原始数据面板显示离播放线最近的采样。
-- 时间换算为相对 episode 起点的秒数：`ns` 精确加上 `timeOffsetNs`（字符串，因此 int64 时间戳不丢精度），`frame` 除以数据集的 fps。
-- 缺少的列会产生警告（`COLUMN_MISSING`，另有 `TIME_COLUMN_MISSING`、`READ_FAILED`），其他序列照常绘制。
+- 时间换算为相对 episode 起点的秒数。所有单位都会加上 `timeOffsetNs`；`ns` 时精确相加（字符串，因此 int64 时间戳不丢精度）。`frame` 除以数据集的 fps。
+- parquet 时间戳列（例如 pandas 的 `datetime64[ns]`）按纳秒精确读取，需要 `timeUnit: 'ns'`；其他单位给出 `TIME_UNIT_MISMATCH`。
+- 缺少的列会产生警告（`COLUMN_MISSING`，另有 `TIME_COLUMN_MISSING`、`TIME_UNIT_MISMATCH`、`READ_FAILED`），每个只报告一次，其他序列照常绘制。只在部分文件中缺少的列，在这些文件的采样处留空。
 - 用新 URL（同样的 `logicalPath`）再次传入同一序列时，只替换 URL，已加载的数据不会重新读取。
 - 额外序列只用于单个数据集的视图。在 episode 集合上会被忽略，并给出 `EPISODE_SET_UNSUPPORTED`。
 

@@ -37,7 +37,7 @@ import '@ioai/lerobot-studio/style.css';
 
 如果应用需要按路径读取字节或文本，请实现 `DataSource`。路径和内容都应视为不可信输入，并在 `clear()` 中释放 object URL。
 
-可选成员：`episodeScope` 把数据集限制在部分 `episode_index` 上。查看器从 `getObjectUrl` 得到的 URL 失败时会调用 `invalidateObjectUrl(path)`；`subscribeUrlChanges(listener)` 告诉查看器哪些路径有了新 URL，视频可以切换而不丢失播放位置。
+可选成员：`episodeScope` 把数据集限制在部分 `episode_index` 上。查看器从 `getObjectUrl` 得到的 URL 失败时会调用 `invalidateObjectUrl(path)`；`subscribeUrlChanges(listener)` 告诉查看器哪些路径有了新 URL，视频可以切换而不丢失播放位置；`focusEpisode(episodeIndex)` 提示查看器即将读取该 episode（按需加载的数据源可以预取其后的内容）。
 
 类型化错误：`RemoteSourceError`（清单读取）和 `EpisodeSetError`（episode 集合）带有机器可读的 `code`。
 

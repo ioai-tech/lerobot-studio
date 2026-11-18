@@ -31,7 +31,7 @@ export interface AuxiliarySeriesWarning {
 }
 
 // @public
-export type AuxiliarySeriesWarningCode = 'COLUMN_MISSING' | 'TIME_COLUMN_MISSING' | 'READ_FAILED' | 'EPISODE_SET_UNSUPPORTED';
+export type AuxiliarySeriesWarningCode = 'COLUMN_MISSING' | 'TIME_COLUMN_MISSING' | 'TIME_UNIT_MISMATCH' | 'READ_FAILED' | 'EPISODE_SET_UNSUPPORTED';
 
 // @public
 export function createArchiveDataSourceFromFile(file: File): DataSource;
@@ -74,6 +74,7 @@ export interface DataSource {
     clear(): void | Promise<void>;
     readonly episodeScope?: readonly number[];
     exists(path: string): Promise<boolean>;
+    focusEpisode?(episodeIndex: number): void;
     getObjectUrl(path: string, mimeType?: string, onProgress?: ProgressHandler): Promise<string>;
     invalidateObjectUrl?(path: string): void | Promise<void>;
     listPaths?(): Promise<string[]>;
@@ -277,7 +278,14 @@ export interface RemoteFileEntry {
 export interface RemoteManifestOptions {
     episodeScope?: readonly number[];
     expiresAt?: string | null;
-    refresh?: () => Promise<RemoteFileEntry[]>;
+    refresh?: () => Promise<RemoteFileEntry[] | RemoteManifestRefreshResult>;
+}
+
+// @public
+export interface RemoteManifestRefreshResult {
+    expiresAt?: string | null;
+    // (undocumented)
+    files: RemoteFileEntry[];
 }
 
 // @public

@@ -101,14 +101,19 @@ Signed URLs expire. Pass `refresh` and the viewer re-signs instead of failing:
 
 ```tsx
 const dataSource = createRemoteManifestDataSource(files, {
-  // Return the same logical paths with new URLs.
-  refresh: () => fetchSignedManifest(datasetId),
-  // Default expiry for entries without their own `expiresAt` (ISO 8601).
+  // Return the same logical paths with new URLs, and when they expire.
+  refresh: async () => {
+    const signed = await fetchSignedManifest(datasetId);
+    return { files: signed.files, expiresAt: signed.expiresAt };
+  },
+  // Expiry (ISO 8601) of the initial `files` that have no `expiresAt` of their own.
   expiresAt: manifestExpiresAt,
 });
 ```
 
-- A 401 or 403, or a URL within 60 s of its `expiresAt`, triggers one `refresh` call. Concurrent failures share it.
+- A 401 or 403, or a URL within 60 s of its expiry, triggers one `refresh` call. Concurrent failures share it, and a read whose URL predates a finished refresh just retries with the new URL.
+- A refresh replaces the expiry. Each refreshed entry expires at its own `expiresAt`, else at the `expiresAt` returned with the files, else at an unknown time; then only a 401 or 403 triggers the next refresh. `refresh` may also return just the entry array.
+- Refreshes caused by a near expiry happen at most once per 30 s. A background refresh that fails, or returns URLs that still expire within 60 s, waits longer each time (5 s, doubling up to 5 min).
 - The new URLs replace the old ones by path, and the failed read is retried once. Playing videos switch to the new URL at the same time and keep playing or stay paused.
 - If the retry fails too, the read fails with a `RemoteSourceError` (`code`: `HTTP_STATUS`, `NETWORK` or `REFRESH_FAILED`, plus `path` and `status`).
 - Without `refresh`, a failed read is not retried.
@@ -157,7 +162,7 @@ const dataSource = createEpisodeSetDataSource(
 <LeRobotViewer dataSource={dataSource} />;
 ```
 
-- Opening the set calls nothing. The first read of a recording resolves it, together with the recordings of the next two episodes.
+- Opening the set calls nothing. The first read of a recording resolves it, together with the recordings of the two episodes after the one being opened. If that call fails, the selected recording is resolved on its own, so a failing prefetch never blocks the episode being opened.
 - URL refresh re-signs only recordings already resolved (`refresh`, default `resolve`).
 - Every recording must be one episode: one data parquet and one MP4 per camera. Other layouts fail with an `EpisodeSetError` (`RECORDING_LAYOUT_REFUSED`). A failed `resolve` gives `RECORDING_RESOLVE_FAILED` for that recording; other episodes still play.
 - Rows do not need to start at 0. `meta` values become extra episode columns.
@@ -187,8 +192,9 @@ const dataSource = createEpisodeSetDataSource(
 ```
 
 - Samples keep their own rate; they are not resampled to the video frame rate. Charts draw every sample with min/max-per-pixel decimation, and the raw panel shows the sample nearest the playhead.
-- Time is converted to seconds from the episode start: `ns` adds `timeOffsetNs` exactly (it is a string, so int64 timestamps keep full precision), and `frame` divides by the dataset fps.
-- A missing column gives a warning (`COLUMN_MISSING`, or `TIME_COLUMN_MISSING`, `READ_FAILED`). The other series still draw.
+- Time is converted to seconds from the episode start. `timeOffsetNs` is added for every unit; with `ns` it is exact (it is a string, so int64 timestamps keep full precision). `frame` divides by the dataset fps.
+- A parquet timestamp column (for example pandas `datetime64[ns]`) is read exactly as nanoseconds and needs `timeUnit: 'ns'`; any other unit gives `TIME_UNIT_MISMATCH`.
+- A missing column gives a warning (`COLUMN_MISSING`, or `TIME_COLUMN_MISSING`, `TIME_UNIT_MISMATCH`, `READ_FAILED`), reported once. The other series still draw. A column missing from only some files is left empty for those files' samples.
 - Passing the same series with new URLs (same `logicalPath`s) only swaps URLs; loaded data is not read again.
 - Auxiliary series work in single-dataset views only. On an episode set they are ignored with `EPISODE_SET_UNSUPPORTED`.
 
