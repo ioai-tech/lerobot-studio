@@ -5,6 +5,7 @@ import type { MetadataLoadingHelpers } from './types';
 import { BaseLeRobotValidator, createReport } from './validation';
 import { convertArrowValue } from './arrowUtils';
 import { classifyLeRobotVersion } from './versionCapability';
+import { formatLeRobotPath } from './pathTemplate';
 
 const INFO_JSON = 'meta/info.json';
 const EPISODES_PARQUET_PATH = 'meta/episodes/chunk-000/file-000.parquet';
@@ -248,17 +249,29 @@ export class V3FormatValidator extends BaseLeRobotValidator {
     let episodeCount = 0;
     let episodesTableSchema: { name: string }[] = [];
     let firstEpisodeRow: Record<string, unknown> | null = null;
+    const scope = dataSource.episodeScope ? new Set(dataSource.episodeScope) : null;
     if (helpers?.readParquetToIPC) {
       try {
         const ipcBytes = await helpers.readParquetToIPC(EPISODES_PARQUET_PATH);
         const table = tableFromIPC(ipcBytes);
         episodeCount = table.numRows;
         episodesTableSchema = table.schema.fields.map((f) => ({ name: f.name }));
-        if (table.numRows > 0) {
+        const indexVector = table.getChild('episode_index');
+        const episodeIndices = Array.from({ length: table.numRows }, (_, row) =>
+          Number(convertArrowValue(indexVector?.get(row) ?? row)),
+        );
+        if (scope) this.reportEpisodeScope(dataSource.episodeScope, episodeIndices);
+        // The first episode whose files are checked: the first one in scope.
+        const firstRow = scope
+          ? episodeIndices.findIndex((index) => scope.has(index))
+          : table.numRows > 0
+            ? 0
+            : -1;
+        if (firstRow >= 0) {
           const row: Record<string, unknown> = {};
           table.schema.fields.forEach((field) => {
             const vector = table.getChild(field.name);
-            if (vector) row[field.name] = convertArrowValue(vector.get(0));
+            if (vector) row[field.name] = convertArrowValue(vector.get(firstRow));
           });
           firstEpisodeRow = row;
         }
@@ -386,8 +399,11 @@ export class V3FormatValidator extends BaseLeRobotValidator {
       this.pass('file_structure', SUBTASKS_PARQUET_PATH, 'Exists', 'Path or file exists');
     }
 
-    // ── 9. First data file existence ────────────────────────────────────────
-    const firstDataPath = 'data/chunk-000/file-000.parquet';
+    // ── 9. First data file existence (of the first checked episode) ──────────
+    const firstDataPath = formatLeRobotPath(infoV3.data_path || DEFAULT_DATA_PATH, {
+      chunk_index: Number(firstEpisodeRow?.['data/chunk_index'] ?? 0),
+      file_index: Number(firstEpisodeRow?.['data/file_index'] ?? 0),
+    });
     try {
       const dataExists = await dataSource.exists(firstDataPath);
       this.reportExists(
@@ -421,7 +437,13 @@ export class V3FormatValidator extends BaseLeRobotValidator {
       for (const featureKey of videoFeatureKeys) {
         const chunk = Number(firstEpisodeRow[`videos/${featureKey}/chunk_index`] ?? 0);
         const file = Number(firstEpisodeRow[`videos/${featureKey}/file_index`] ?? 0);
-        const videoPath = `videos/${featureKey}/chunk-${pad3(chunk)}/file-${pad3(file)}.mp4`;
+        const videoPath = infoV3.video_path
+          ? formatLeRobotPath(infoV3.video_path, {
+              video_key: featureKey,
+              chunk_index: chunk,
+              file_index: file,
+            })
+          : `videos/${featureKey}/chunk-${pad3(chunk)}/file-${pad3(file)}.mp4`;
         try {
           const videoExists = await dataSource.exists(videoPath);
           this.reportExists(

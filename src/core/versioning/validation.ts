@@ -3,7 +3,12 @@
  * Validators run before load; error = cannot parse, warning = issues, info = hints.
  */
 
-export type ValidationLevel = 'error' | 'warning' | 'info';
+/**
+ * `info` is a passed check. `not_evaluated` is a check the validator skipped on
+ * purpose (for example files of episodes outside a host-given episode scope);
+ * it is neither a pass nor a failure.
+ */
+export type ValidationLevel = 'error' | 'warning' | 'info' | 'not_evaluated';
 
 export type ValidationCategory =
   'file_structure' | 'meta_info' | 'features' | `feature:${string}` | 'episodes';
@@ -75,6 +80,50 @@ export abstract class BaseLeRobotValidator {
       current,
       expected: expected ?? current,
     });
+  }
+
+  /** Record a check that was deliberately not run (never a pass or a failure). */
+  protected notEvaluated(
+    category: ValidationCategory,
+    field: string,
+    code: string,
+    message: string,
+    current: string,
+    messageValues?: Record<string, string | number>,
+  ): void {
+    this.items.push({
+      level: 'not_evaluated',
+      code,
+      message,
+      category,
+      field,
+      current,
+      messageValues,
+    });
+  }
+
+  /**
+   * Report episodes a host-given scope excludes: their files are not checked.
+   * Returns the set of in-scope episode indices (null when unscoped).
+   */
+  protected reportEpisodeScope(
+    scope: readonly number[] | undefined,
+    episodeIndices: number[],
+  ): Set<number> | null {
+    if (!scope) return null;
+    const allowed = new Set(scope);
+    const outside = episodeIndices.filter((index) => !allowed.has(index)).length;
+    if (outside > 0) {
+      this.notEvaluated(
+        'file_structure',
+        'episode files outside scope',
+        'EPISODES_OUT_OF_SCOPE',
+        'Files of {{count}} episode(s) outside the requested episode scope were not checked',
+        `${outside} episode(s) not checked`,
+        { count: outside },
+      );
+    }
+    return allowed;
   }
 
   /** Add a warning check with structured fields. */

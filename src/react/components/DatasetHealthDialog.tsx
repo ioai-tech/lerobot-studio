@@ -65,27 +65,39 @@ export const DatasetHealthDialog: React.FC<DatasetHealthDialogProps> = ({
   const { t } = useTranslation();
   const [levelFilter, setLevelFilter] = useState<ValidationLevelFilter>('all');
 
-  const { hasError, hasWarning, errorCount, warningCount, passedCount } = useMemo(() => {
-    if (!report)
-      return { hasError: false, hasWarning: false, errorCount: 0, warningCount: 0, passedCount: 0 };
-    const items = report.items;
-    const errorCount = items.filter((i) => i.level === 'error').length;
-    const warningCount = items.filter((i) => i.level === 'warning').length;
-    const passedCount = items.filter((i) => i.level === 'info').length;
-    return {
-      hasError: report.hasError,
-      hasWarning: report.hasWarning,
-      errorCount,
-      warningCount,
-      passedCount,
-    };
-  }, [report]);
+  const { hasError, hasWarning, errorCount, warningCount, passedCount, notEvaluatedCount } =
+    useMemo(() => {
+      if (!report)
+        return {
+          hasError: false,
+          hasWarning: false,
+          errorCount: 0,
+          warningCount: 0,
+          passedCount: 0,
+          notEvaluatedCount: 0,
+        };
+      const items = report.items;
+      const errorCount = items.filter((i) => i.level === 'error').length;
+      const warningCount = items.filter((i) => i.level === 'warning').length;
+      const passedCount = items.filter((i) => i.level === 'info').length;
+      const notEvaluatedCount = items.filter((i) => i.level === 'not_evaluated').length;
+      return {
+        hasError: report.hasError,
+        hasWarning: report.hasWarning,
+        errorCount,
+        warningCount,
+        passedCount,
+        notEvaluatedCount,
+      };
+    }, [report]);
 
   const summaryMessage = hasError
     ? t('health.validation.dialog.summaryErrors')
     : hasWarning
       ? t('health.validation.dialog.summaryWarnings')
-      : t('health.validation.dialog.summaryOk');
+      : notEvaluatedCount > 0
+        ? t('health.validation.dialog.summaryPartial')
+        : t('health.validation.dialog.summaryOk');
 
   const filteredItems = useMemo(() => {
     if (levelFilter === 'all') return report?.items ?? [];

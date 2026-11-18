@@ -71,6 +71,22 @@ function getDataFileValue(episode: EpisodeMetadata): unknown {
 }
 
 /**
+ * Optional `data/file_from_index`: the global index of the first row of this
+ * episode's data file. Writers that store episodes which do not start at the
+ * file's first row (for example a selection of rows 300–600 of a recording)
+ * set it; without it the file's first row is the smallest
+ * `dataset_from_index` of the episodes stored in that file.
+ */
+export const DATA_FILE_FROM_INDEX_COLUMN = 'data/file_from_index';
+
+function getExplicitDataFileStart(episode: EpisodeMetadata): number | null {
+  const value = (episode as Record<string, unknown>)[DATA_FILE_FROM_INDEX_COLUMN];
+  if (value === null || value === undefined) return null;
+  const start = Number(value);
+  return Number.isFinite(start) ? start : null;
+}
+
+/**
  * Adapter for LeRobot codebase v3.0.
  * - Episodes: meta/episodes/ directory (one or more parquet files, all loaded)
  * - Tasks: meta/tasks.jsonl or meta/tasks.parquet
@@ -108,7 +124,9 @@ export class V3Adapter extends LeRobotVersionAdapter {
         return Math.min(min, candidate);
       }, Infinity);
     const fileStart =
-      this.dataFileStartByPath.get(path) ?? (isFinite(fallbackFileStart) ? fallbackFileStart : 0);
+      getExplicitDataFileStart(ep) ??
+      this.dataFileStartByPath.get(path) ??
+      (isFinite(fallbackFileStart) ? fallbackFileStart : 0);
 
     return {
       path,
@@ -218,7 +236,9 @@ export class V3Adapter extends LeRobotVersionAdapter {
         getDataChunkValue(episode),
         getDataFileValue(episode),
       );
-      const datasetFromIndex = Number((episode as Record<string, unknown>).dataset_from_index ?? 0);
+      const datasetFromIndex =
+        getExplicitDataFileStart(episode) ??
+        Number((episode as Record<string, unknown>).dataset_from_index ?? 0);
       const cachedStart = this.dataFileStartByPath.get(path);
       this.dataFileStartByPath.set(
         path,

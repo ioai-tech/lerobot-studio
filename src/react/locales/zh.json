@@ -142,6 +142,7 @@
         "title": "数据集质量报告",
         "summaryErrors": "校验发现错误",
         "summaryWarnings": "校验发现警告",
+        "summaryPartial": "检查通过；部分 episode 未检查",
         "summaryOk": "全部检查通过",
         "errorsCount": "{{count}} 个错误",
         "warningsCount": "{{count}} 个警告",
@@ -267,6 +268,10 @@
         "DATA_FILE_MISSING": {
           "message": "数据文件不存在",
           "suggestion": "按 v2 格式在 data/ 目录下生成分片 parquet 文件"
+        },
+        "EPISODES_OUT_OF_SCOPE": {
+          "message": "请求的 episode 范围之外有 {{count}} 个 episode 的文件未检查",
+          "suggestion": "不限定 episode 范围打开数据集，即可检查全部 episode"
         },
         "EPISODE_DATA_MISSING": {
           "message": "{{total}} 个 episode 中有 {{missing}} 个 parquet 文件缺失",

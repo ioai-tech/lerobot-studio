@@ -34,6 +34,24 @@ import { createParquetWorker, terminateWorker } from '../workers/workerManager';
 
 export type { NumericalColumnData, NumericalColumnMap };
 
+const ARROW_FILE_MAGIC = [0x41, 0x52, 0x52, 0x4f, 0x57, 0x31]; // "ARROW1"
+
+/** True when bytes are an Arrow IPC file (magic `ARROW1`). */
+export function isArrowIpc(bytes: Uint8Array): boolean {
+  if (bytes.byteLength < ARROW_FILE_MAGIC.length) return false;
+  return ARROW_FILE_MAGIC.every((value, index) => bytes[index] === value);
+}
+
+/** Keep only the episodes a scoped source asks for (all when unscoped). */
+export function filterEpisodesToScope<T extends { episode_index: number }>(
+  episodes: T[],
+  scope: readonly number[] | undefined,
+): T[] {
+  if (!scope) return episodes;
+  const allowed = new Set(scope);
+  return episodes.filter((episode) => allowed.has(Number(episode.episode_index)));
+}
+
 // 文件缓存结构
 interface ParsedFileCache {
   path: string;
@@ -69,6 +87,8 @@ export class LeRobotDataLoader {
   private fileBytesCache: FileBytesCache | null = null;
   private pendingParses: Map<string, Promise<Table>> = new Map();
   private fileUrlLoading: Map<string, Promise<string>> = new Map();
+  private readonly urlChangeListeners = new Set<(paths: readonly string[]) => void>();
+  private unsubscribeSourceUrls: (() => void) | null = null;
 
   constructor(dataSource: DataSource) {
     this._dataSource = dataSource;
@@ -76,6 +96,34 @@ export class LeRobotDataLoader {
     this.worker = createParquetWorker();
     // blob URL 由 DataSource 创建与 revoke；本层仅做 path→URL 查表，避免双层 LRU 互相 revoke 导致失效 URL
     this.fileUrlCache = new LRUCache<string, string>(50, false);
+    this.unsubscribeSourceUrls =
+      dataSource.subscribeUrlChanges?.((paths) => this.handleSourceUrlChanges(paths)) ?? null;
+  }
+
+  /**
+   * Subscribe to URL replacements for files this loader has handed out (for
+   * example refreshed signed URLs). The loader's URL cache is already updated
+   * when listeners run; call `getFileUrl` again to get the new URL.
+   */
+  subscribeUrlChanges(listener: (paths: readonly string[]) => void): () => void {
+    this.urlChangeListeners.add(listener);
+    return () => {
+      this.urlChangeListeners.delete(listener);
+    };
+  }
+
+  private handleSourceUrlChanges(paths: readonly string[]): void {
+    for (const path of paths) {
+      this.fileUrlCache.delete(path);
+      this.fileUrlLoading.delete(path);
+    }
+    for (const listener of [...this.urlChangeListeners]) {
+      try {
+        listener(paths);
+      } catch (error) {
+        console.error('URL change listener failed', error);
+      }
+    }
   }
 
   get dataSource(): DataSource {
@@ -85,6 +133,9 @@ export class LeRobotDataLoader {
   async dispose(): Promise<void> {
     if (this.disposed) return;
     this.disposed = true;
+    this.unsubscribeSourceUrls?.();
+    this.unsubscribeSourceUrls = null;
+    this.urlChangeListeners.clear();
     try {
       this.fileUrlCache.clear();
       this.fileUrlLoading.clear();
@@ -144,7 +195,10 @@ export class LeRobotDataLoader {
         throw new Error(`数据集格式校验未通过: ${messages.join('; ')}`);
       }
 
-      this.episodes = await this.adapter.loadEpisodes(this._dataSource, helpers, this.info);
+      this.episodes = filterEpisodesToScope(
+        await this.adapter.loadEpisodes(this._dataSource, helpers, this.info),
+        this._dataSource.episodeScope,
+      );
       this.tasks = await this.adapter.loadTasks(this._dataSource, helpers);
       this.subtasks = this.adapter.loadSubtasks
         ? await this.adapter.loadSubtasks(this._dataSource, helpers)
@@ -262,6 +316,9 @@ export class LeRobotDataLoader {
 
   private async readParquetByPath(path: string, columns?: string[]): Promise<Uint8Array> {
     const bytes = await this.readFileBytesCached(path);
+    // Metadata tables may also be Arrow IPC (sources that synthesize metadata,
+    // such as episode sets, produce IPC directly); Arrow reads it as-is.
+    if (isArrowIpc(bytes)) return bytes;
     const buffer = (bytes.buffer as ArrayBuffer).slice(
       bytes.byteOffset,
       bytes.byteOffset + bytes.byteLength,

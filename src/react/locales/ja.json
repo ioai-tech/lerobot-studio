@@ -142,6 +142,7 @@
         "title": "データセット品質レポート",
         "summaryErrors": "検証でエラーを検出",
         "summaryWarnings": "検証で警告を検出",
+        "summaryPartial": "チェックに合格しました。一部のエピソードは確認していません",
         "summaryOk": "すべてのチェックを通過",
         "errorsCount": "エラー {{count}} 件",
         "warningsCount": "警告 {{count}} 件",
@@ -267,6 +268,10 @@
         "DATA_FILE_MISSING": {
           "message": "データファイルが存在しません",
           "suggestion": "v2 形式で data/ に Parquet ファイルを生成してください"
+        },
+        "EPISODES_OUT_OF_SCOPE": {
+          "message": "指定されたエピソード範囲外の {{count}} 件のエピソードのファイルは確認していません",
+          "suggestion": "エピソード範囲を指定せずにデータセットを開くと、すべてのエピソードを確認できます"
         },
         "EPISODE_DATA_MISSING": {
           "message": "{{total}} 件中 {{missing}} 件の episode parquet がありません",
