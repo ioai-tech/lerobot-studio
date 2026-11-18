@@ -322,7 +322,9 @@ describe('browser: data foundations', () => {
     const fps = 30;
     await render(
       <LeRobotViewer
-        dataSource={new FetchDataSource('/tests/fixtures/datasets/frame-coded-v3')}
+        // Committed, not generated: made once with
+        // scripts/bench/generate-frame-coded-dataset.mjs --minutes 0.2 --cameras 2.
+        dataSource={new FetchDataSource('/tests/fixtures/static/frame-coded-v3')}
         language="en"
       />,
     );

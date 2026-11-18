@@ -117,6 +117,9 @@ export class CameraFollower {
       // would seek forever.
       const target = this.frameCentre(frameAtTime(this.clock.now(), fps), range, fps);
       if (seekRequested || Math.abs(video.currentTime - target) > SAME_POSITION_FRAMES / fps) {
+        // A seek may land off target (decoders that report the frame start,
+        // or a clamp at the media end); seeking the same target again would
+        // loop, so it is sought once per clock seek.
         if (!seekRequested && this.lastPausedTarget === target) return;
         this.lastPausedTarget = target;
         this.seekTo(target);

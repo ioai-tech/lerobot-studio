@@ -227,6 +227,31 @@ describe('remote manifest URL refresh', () => {
     expect(server.refreshCalls).toBe(1);
   });
 
+  it('keeps a refreshed entry without expiry unknown, also past the 30 s near-expiry throttle', async () => {
+    vi.useFakeTimers({ now: Date.parse('2026-01-01T00:00:00Z') });
+    const server = fakeSigningServer();
+    vi.stubGlobal('fetch', server.fetchImpl);
+    const strip = (entries: RemoteFileEntry[]) =>
+      entries.map(({ expiresAt: _drop, ...entry }) => entry);
+    const source = createRemoteManifestDataSource(strip(server.manifest()), {
+      refresh: async () => strip(await server.refresh()),
+      expiresAt: new Date(Date.now() + 10_000).toISOString(),
+    });
+    server.rotate();
+    const first = source.readText('meta/info.json');
+    await vi.advanceTimersByTimeAsync(10);
+    await first;
+    expect(server.refreshCalls).toBe(1);
+    // Well past the throttle: the stale manifest-wide expiry must not come back.
+    for (const step of [31_000, 60_000, 10 * 60_000]) {
+      await vi.advanceTimersByTimeAsync(step);
+      const read = source.readText('meta/info.json');
+      await vi.advanceTimersByTimeAsync(10);
+      await read;
+    }
+    expect(server.refreshCalls).toBe(1);
+  });
+
   it('applies the expiry a refresh returns with its files', async () => {
     vi.useFakeTimers({ now: Date.parse('2026-01-01T00:00:00Z') });
     const server = fakeSigningServer();

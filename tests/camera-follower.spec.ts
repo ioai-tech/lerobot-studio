@@ -17,6 +17,9 @@ class FakeVideo extends EventTarget {
   private time = 0;
   private frameCallback: ((now: number, metadata: object) => void) | null = null;
 
+  /** When set, a seek lands on the start of the frame (as some decoders report). */
+  snapToFrameStart = false;
+
   constructor(public duration: number) {
     super();
   }
@@ -27,7 +30,8 @@ class FakeVideo extends EventTarget {
 
   set currentTime(value: number) {
     this.seeks.push(value);
-    this.time = Math.min(value, this.duration);
+    const landed = this.snapToFrameStart ? Math.floor(value * FPS) / FPS : value;
+    this.time = Math.min(landed, this.duration);
     queueMicrotask(() => this.dispatchEvent(new Event('seeked')));
   }
 
@@ -99,6 +103,17 @@ describe('CameraFollower', () => {
     t.follower.sync();
     await settle(200);
     expect(t.video.seeks.length).toBeLessThanOrEqual(1);
+    t.follower.dispose();
+  });
+
+  it('paused: a seek that lands off target (frame-start snapping) is not repeated', async () => {
+    const t = setup({ videoFrames: 100, dataFrames: 100 });
+    t.video.snapToFrameStart = true;
+    t.clock.seek(timeOfFrame(42, FPS));
+    await settle(200);
+    t.follower.sync();
+    await settle(200);
+    expect(t.video.seeks).toEqual([4.25]);
     t.follower.dispose();
   });
 

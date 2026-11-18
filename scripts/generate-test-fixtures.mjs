@@ -24,6 +24,13 @@ import {
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const outRoot = path.join(root, 'tests/fixtures/datasets');
+/**
+ * The datasets this script owns. It rewrites only these; committed fixtures
+ * that are not generated here live in tests/fixtures/static and are never
+ * touched (CI checks that no tracked fixture is deleted or changed outside
+ * these directories).
+ */
+const GENERATED = ['lerobotv2', 'lerobotv3', 'lerobotv2-image'];
 
 const VIDEO_KEY = 'observation.images.cam';
 const IMAGE_KEY = 'observation.images.cam';
@@ -393,7 +400,9 @@ async function createV2Image() {
 }
 
 async function main() {
-  await fs.rm(outRoot, { recursive: true, force: true });
+  for (const name of GENERATED) {
+    await fs.rm(path.join(outRoot, name), { recursive: true, force: true });
+  }
   await fs.mkdir(outRoot, { recursive: true });
   const mp4Bytes = await createTinyMp4();
   if (mp4Bytes.length < 12 || mp4Bytes[4] !== 0x66) {

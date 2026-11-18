@@ -7,3 +7,4 @@ package-lock.json
 apps/web/dist
 packages/react/dist
 tests/fixtures/datasets
+tests/fixtures/static
