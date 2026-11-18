@@ -78,6 +78,8 @@ const fields: AnnotationField[] = [
 - **`fields`** declares the values a person sets on a segment, in order: `select` (one option; an option's `key` from `1` to `9` sets it from the keyboard), `tags` (a string list, with optional `suggestions`), or `text`. Values are stored in `segment.values[field.id]`. The reducer refuses an unknown field or a value that does not fit its kind.
 - **`messages`** replaces built-in copy by key (`LeRobotMessageKey`: every `segments.*`, `overlay.*` and `markers.*` key, listed in `LEROBOT_MESSAGE_KEYS`) in the current language. Values are ICU messages; `{{name}}` placeholders are accepted too.
 
+Time axis: frame `k` of an `N`-frame episode covers `[k / N, (k + 1) / N)` of every track, marker lane and chart. At the last frame the slider fill stops at `(N − 1) / N`, and the total time shown is the end of the last frame (`N / fps`), the same as a segment's Out time.
+
 Markers (`markers`, which feed the **Issues** filter), read-only suggestions (`overlaySegments`), host toolbar items and notices (`extensions`), deep links (`initialSelection`, `onSelectionChange`) and `themeTokens` are covered in [Build a complete host](./embedding.md#build-a-complete-host).
 
 ### Changes and their inverses

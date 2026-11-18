@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useId, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { AlertTriangle, CircleDot, CircleCheck, Lock } from 'lucide-react';
 import {
@@ -59,6 +59,7 @@ export const SegmentList: React.FC<{ episodeIndex: number; showTitle?: boolean }
   showTitle = true,
 }) => {
   const { t } = useTranslation();
+  const listId = useId();
   const { info } = useLeRobotData();
   const segments = useLeRobotSegments();
   const fps = info?.fps || 30;
@@ -135,6 +136,10 @@ export const SegmentList: React.FC<{ episodeIndex: number; showTitle?: boolean }
               toReview ? 'segments.review.toReview' : 'segments.review.confirmed',
             );
             const markerIssues = segmentIssueMarkers(segment, episodeMarkers);
+            // The row's label hides its content, so the badges are its description.
+            const statusId = segment.status ? `${listId}-status-${number}` : null;
+            const issuesId = markerIssues.length > 0 ? `${listId}-issues-${number}` : null;
+            const describedBy = [statusId, issuesId].filter(Boolean).join(' ') || undefined;
             return (
               <li key={segment.id}>
                 <button
@@ -147,6 +152,7 @@ export const SegmentList: React.FC<{ episodeIndex: number; showTitle?: boolean }
                   )}
                   aria-current={selected ? 'true' : undefined}
                   aria-label={t('segments.row', { n: number, time, review: reviewText })}
+                  aria-describedby={describedBy}
                   onClick={() => segments.selectSegment(segment.id)}
                 >
                   <span className="flex min-w-0 items-center gap-1.5 text-xs">
@@ -181,6 +187,7 @@ export const SegmentList: React.FC<{ episodeIndex: number; showTitle?: boolean }
                       ) : null}
                       {segment.status ? (
                         <span
+                          id={statusId ?? undefined}
                           className={cn(
                             'inline-flex items-center gap-0.5',
                             segment.status.severity !== 'info' && 'text-destructive',
@@ -195,11 +202,17 @@ export const SegmentList: React.FC<{ episodeIndex: number; showTitle?: boolean }
                       ) : null}
                       {markerIssues.length > 0 ? (
                         <span
+                          id={issuesId ?? undefined}
                           className="inline-flex items-center gap-0.5 text-destructive"
                           title={markerIssues.map((marker) => marker.label).join('\n')}
                         >
                           <AlertTriangle className="h-3 w-3" aria-hidden />
                           {t('markers.issueCount', { count: markerIssues.length })}
+                          <span className="sr-only">
+                            {t('markers.issueList', {
+                              labels: markerIssues.map((marker) => marker.label).join(', '),
+                            })}
+                          </span>
                         </span>
                       ) : null}
                     </span>

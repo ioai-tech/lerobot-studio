@@ -3,8 +3,8 @@ import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { page, userEvent } from 'vitest/browser';
 import { LeRobotViewer, type LeRobotViewerProps } from '@/components/LeRobotViewer';
-import type { LeRobotSelection } from '@/contexts/hostTypes';
-import type { AnnotationDocument, Segment } from '@/core';
+import type { LeRobotNotice, LeRobotSelection } from '@/contexts/hostTypes';
+import { cameraAreaHeight, type AnnotationDocument, type Segment } from '@/core';
 import { FetchDataSource } from './fixtures';
 import { expectNoBlockingA11yViolations } from './a11y';
 import '../../src/react/index.css';
@@ -182,6 +182,38 @@ describe('browser: embedding — selection', () => {
     }
   });
 
+  it('a data-source swap before the deep link lands still lands on the link', async () => {
+    const view = (source: FetchDataSource) =>
+      viewer({
+        dataSource: source,
+        annotation: { value: DOC },
+        initialSelection: { segmentId: 'b', timeS: 5 },
+      });
+    await mount(1280, 800, view(new FetchDataSource(FRAME_CODED)));
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    root.render(view(new FetchDataSource(FRAME_CODED)));
+    await videosReady(2);
+    await expect.poll(sliderFrame, { timeout: 30_000 }).toBe(150);
+    await new Promise((resolve) => setTimeout(resolve, 600));
+    expect(isPlaying()).toBe(false);
+    expect(sliderFrame()).toBe(150);
+  });
+
+  it('a burst of seeks while paused ends with the final time reported (trailing report)', async () => {
+    const reports: LeRobotSelection[] = [];
+    await mount(1280, 800, viewer({ onSelectionChange: (selection) => reports.push(selection) }));
+    await videosReady(2);
+    await pause();
+    slider().focus();
+    await userEvent.keyboard('{Home}');
+    await new Promise((resolve) => setTimeout(resolve, 400));
+    // Three quick steps inside one 250 ms window: the last must still be reported.
+    for (let i = 0; i < 3; i++) await userEvent.keyboard('{ArrowRight}');
+    await expect.poll(sliderFrame).toBe(3);
+    await new Promise((resolve) => setTimeout(resolve, 600));
+    expect(reports.at(-1)).toEqual({ episodeIndex: 0, segmentId: null, timeS: 3 / FPS });
+  });
+
   it('swapping the data source on the same timeline keeps episode, segment and time', async () => {
     const reports: LeRobotSelection[] = [];
     const annotation = { value: DOC };
@@ -311,6 +343,15 @@ describe('browser: embedding — host chrome', () => {
     const rows = host.querySelectorAll('[data-testid="lerobot-segment-list"] li');
     expect(rows).toHaveLength(1);
     expect(rows[0]!.textContent).toContain('1 issue');
+    // The row's own label hides its content, so the issues are its description.
+    const row = rows[0]!.querySelector('button')!;
+    const description = (row.getAttribute('aria-describedby') ?? '')
+      .split(' ')
+      .filter(Boolean)
+      .map((id) => document.getElementById(id)?.textContent ?? '')
+      .join(' ');
+    expect(description).toContain('1 issue');
+    expect(description).toContain('Joint jump');
   });
 
   it('theme tokens set the root variables, with dark overrides only in dark', async () => {
@@ -361,6 +402,86 @@ describe('browser: embedding — layout and time axis', () => {
     expect(new Set(tops).size).toBe(1);
     const chart = host.querySelector('[data-testid="chart-groups"]')!.getBoundingClientRect();
     expect(chart.height).toBeGreaterThan(100);
+  });
+
+  it('the camera rows take their height from the grid height, not the root width', async () => {
+    await mount(1440, 900, <LeRobotViewer dataSource={new ThreeCameras()} language="en" />);
+    await videosReady(3);
+    const dock = () => host.querySelector<HTMLElement>('.dv-dockview')!.getBoundingClientRect();
+    const groupOf = (element: Element) => element.closest('.dv-groupview')!.getBoundingClientRect();
+    const expected = () => {
+      const { width, height } = dock();
+      return cameraAreaHeight({ height, width, rows: 1, perRow: 3, aspect: 4 / 3 });
+    };
+    await expect
+      .poll(() => Math.abs(groupOf(videos()[0]).height - expected()), { timeout: 10_000 })
+      .toBeLessThanOrEqual(2);
+    const chart = groupOf(host.querySelector('[data-testid="chart-groups"]')!);
+    expect(Math.abs(chart.height - (dock().height - expected()))).toBeLessThanOrEqual(2);
+  });
+
+  it('a height-only change resizes the rows in place without re-mounting the cameras', async () => {
+    await mount(1440, 900, <LeRobotViewer dataSource={new ThreeCameras()} language="en" />);
+    await videosReady(3);
+    const before = videos();
+    const dock = () => host.querySelector<HTMLElement>('.dv-dockview')!.getBoundingClientRect();
+    const groupHeight = () => before[0].closest('.dv-groupview')!.getBoundingClientRect().height;
+    const expected = () => {
+      const { width, height } = dock();
+      return cameraAreaHeight({ height, width, rows: 1, perRow: 3, aspect: 4 / 3 });
+    };
+    await expect.poll(() => Math.abs(groupHeight() - expected())).toBeLessThanOrEqual(2);
+    // Short enough that the charts' 200 px floor binds (not a proportional resize).
+    const tallDock = dock().height;
+    host.style.height = '560px';
+    await expect.poll(() => dock().height).toBeLessThan(tallDock - 100);
+    await expect
+      .poll(() => Math.abs(groupHeight() - expected()), { timeout: 10_000 })
+      .toBeLessThanOrEqual(2);
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    expect(videos().every((video, index) => video === before[index])).toBe(true);
+    expect(before.every((video) => video.isConnected)).toBe(true);
+  });
+
+  it('a host notice appearing above the playback bar does not re-mount the cameras', async () => {
+    const view = (notices: LeRobotNotice[]) => (
+      <LeRobotViewer
+        dataSource={stableThree}
+        language="en"
+        showSidebar={false}
+        extensions={[{ id: 'host', notices }]}
+      />
+    );
+    const stableThree = new ThreeCameras();
+    await mount(1440, 900, view([]));
+    await videosReady(3);
+    const before = videos();
+    root.render(view([{ id: 'n', severity: 'info', text: 'Working', progress: 'indeterminate' }]));
+    await expect.poll(() => host.querySelector('[data-host-notice="n"]') != null).toBe(true);
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    expect(videos().every((video, index) => video === before[index])).toBe(true);
+    expect(before.every((video) => video.isConnected)).toBe(true);
+  });
+
+  it('during playback the thumb and the fill sit at k / N of the frame shown', async () => {
+    await mount(1280, 800, viewer());
+    await videosReady(2);
+    await expect.poll(isPlaying, { timeout: 30_000 }).toBe(true);
+    const thumb = host.querySelector<HTMLElement>('[data-testid="playback-thumb"]')!;
+    const fill = host.querySelector<HTMLElement>('[data-testid="playback-fill"]')!;
+    const frameText = host.querySelector<HTMLElement>('[data-testid="playback-frame"]')!;
+    let samples = 0;
+    for (let i = 0; i < 12; i++) {
+      await new Promise((resolve) => setTimeout(resolve, 80));
+      const frame = Number(frameText.textContent);
+      const left = Number(/calc\(([\d.]+)%/.exec(thumb.style.left)?.[1]);
+      const scale = Number(/scaleX\(([\d.]+)\)/.exec(fill.style.transform)?.[1]);
+      if (frame <= 0 || frame >= FRAMES - 1) continue;
+      expect(left).toBeCloseTo((frame / FRAMES) * 100, 3);
+      expect(scale).toBeCloseTo(frame / FRAMES, 5);
+      samples += 1;
+    }
+    expect(samples).toBeGreaterThan(3);
   });
 
   it('at 1024x768 nothing in the playback bar overlaps or is cut off', async () => {

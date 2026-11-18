@@ -336,6 +336,7 @@ export const LeRobotDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
     pendingSelectionRef.current = selection;
   }, []);
   const hasPendingSelection = useCallback(() => pendingSelectionRef.current !== null, []);
+  const getPendingSelection = useCallback(() => pendingSelectionRef.current, []);
   const segmentsRef = useRef(segments);
   segmentsRef.current = segments;
   useEffect(() => {
@@ -816,6 +817,7 @@ export const LeRobotDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
       isLoading,
       setPendingSelection,
       hasPendingSelection,
+      getPendingSelection,
     }),
     [
       info,
@@ -839,6 +841,7 @@ export const LeRobotDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
       isLoading,
       setPendingSelection,
       hasPendingSelection,
+      getPendingSelection,
     ],
   );
 

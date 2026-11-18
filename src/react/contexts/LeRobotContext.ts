@@ -50,6 +50,8 @@ export interface LeRobotDataContextType {
   /** Open this selection once its episode loads (deep link, data-source swap); `null` drops it. */
   setPendingSelection: (selection: PendingSelection | null) => void;
   /** True while a selection waits for its episode (autoplay holds; selection reports wait). */
+  /** The selection still waiting to land, if any. */
+  getPendingSelection: () => PendingSelection | null;
   hasPendingSelection: () => boolean;
 }
 

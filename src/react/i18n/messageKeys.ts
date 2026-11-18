@@ -126,6 +126,7 @@ export const LEROBOT_MESSAGE_KEYS = [
   'markers.severity.warn',
   'markers.severity.fail',
   'markers.issueCount',
+  'markers.issueList',
 ] as const;
 
 /** A built-in message a host may replace. */

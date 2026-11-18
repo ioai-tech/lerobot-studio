@@ -313,6 +313,7 @@ const PlaybackProgressSliderComponent: React.FC<PlaybackProgressSliderProps> = (
           <div className="flex items-baseline gap-1.5" title={t('units.frame')}>
             <span
               ref={frameIndexRef}
+              data-testid="playback-frame"
               className={metricValueClassName}
               style={{ minWidth: '4ch', display: 'inline-block', textAlign: 'right' }}
             >
@@ -374,6 +375,7 @@ const PlaybackProgressSliderComponent: React.FC<PlaybackProgressSliderProps> = (
         ) : null}
         <div
           ref={progressRef}
+          data-testid="playback-fill"
           className="absolute h-full rounded-full bg-primary/70 pointer-events-none"
           style={{
             width: '100%',
@@ -383,6 +385,7 @@ const PlaybackProgressSliderComponent: React.FC<PlaybackProgressSliderProps> = (
         />
         <div
           ref={thumbRef}
+          data-testid="playback-thumb"
           className="absolute left-0 top-1/2 h-4 w-4 rounded-full border border-primary/50 bg-background transition-shadow will-change-transform hover:shadow-md"
           style={{
             left: getThumbLeft(frameStartFraction(initialFrameIndex, totalFrames)),

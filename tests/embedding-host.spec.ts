@@ -260,6 +260,23 @@ describe('host chrome', () => {
     expect(html).toContain(`id="${describedBy}" hidden="">A run is in progress</span>`);
   });
 
+  it('a busy button stays focusable (aria-disabled, never natively disabled)', () => {
+    const html = render(
+      React.createElement(HostChrome, {
+        extensions: [
+          {
+            id: 'host',
+            toolbar: [{ kind: 'button', id: 'run', label: 'Run', busy: true, onSelect: noop }],
+          },
+        ],
+      }),
+    );
+    const button = html.match(/<button[^>]*data-host-item="run"[^>]*>/)?.[0] ?? '';
+    expect(button).toContain('aria-disabled="true"');
+    expect(button).toContain('aria-busy="true"');
+    expect(button).not.toMatch(/\sdisabled=""/);
+  });
+
   it('renders nothing without contributions', () => {
     expect(render(React.createElement(HostChrome, { extensions: [] }))).toBe('');
     expect(render(React.createElement(HostChrome, { extensions: [{ id: 'x' }] }))).toBe('');

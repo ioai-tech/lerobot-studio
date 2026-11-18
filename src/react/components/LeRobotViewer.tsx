@@ -154,7 +154,8 @@ export function LeRobotViewerContent({
   showPlaybackBar: boolean;
 }) {
   const { t } = useTranslation();
-  const { initialize, error, isLoading, clearError, setPendingSelection } = useLeRobotData();
+  const { initialize, error, isLoading, clearError, setPendingSelection, getPendingSelection } =
+    useLeRobotData();
   const hostChrome = useMemo(() => <HostChrome extensions={extensions} />, [extensions]);
   const { configure } = useLeRobotSegments();
 
@@ -280,12 +281,13 @@ export function LeRobotViewerContent({
         const initial = initialSelectionRef.current;
         setPendingSelection(initial ? { ...initial } : null);
       } else {
-        // Another source: keep episode, segment and time when the timeline is the same.
-        setPendingSelection(captureSelectionRef.current());
+        // Another source: keep episode, segment and time when the timeline is the
+        // same. A selection still on its way (a deep link) is carried as is.
+        setPendingSelection(getPendingSelection() ?? captureSelectionRef.current());
       }
       void initialize(resolvedSource);
     }
-  }, [resolvedSource, initialize, setPendingSelection]);
+  }, [resolvedSource, initialize, setPendingSelection, getPendingSelection]);
 
   useEffect(() => {
     if (!fatalError) {

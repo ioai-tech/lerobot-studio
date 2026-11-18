@@ -78,6 +78,8 @@ const fields: AnnotationField[] = [
 - **`fields`** 按顺序声明用户可为分段设置的值：`select`（单选；选项的 `key` 为 `1` 到 `9` 时可用键盘设置）、`tags`（字符串列表，可带 `suggestions`）或 `text`。值存放在 `segment.values[field.id]`。reducer 会拒绝未知字段或类型不符的值。
 - **`messages`** 按键（`LeRobotMessageKey`：所有 `segments.*`、`overlay.*` 和 `markers.*` 键，列在 `LEROBOT_MESSAGE_KEYS` 中）替换当前语言的内置文案。值为 ICU 消息，也接受 `{{name}}` 占位符。
 
+时间轴：共 `N` 帧的 episode 中，第 `k` 帧在每条轨道、标记行和图表上占 `[k / N, (k + 1) / N)`。播放到最后一帧时，进度条的填充止于 `(N − 1) / N`，显示的总时长是最后一帧的结束时刻（`N / fps`），与分段的出点时间一致。
+
 标记（`markers`，会进入 **有问题** 筛选）、只读建议（`overlaySegments`）、宿主工具栏项和通知（`extensions`）、深层链接（`initialSelection`、`onSelectionChange`）以及 `themeTokens` 见[构建完整的宿主](./embedding#build-a-complete-host)。
 
 ### 修改及其逆操作

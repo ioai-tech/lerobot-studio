@@ -38,8 +38,7 @@ function ToolbarButton({ item }: { item: LeRobotToolbarButton }) {
       size="sm"
       variant={item.variant === 'primary' ? 'default' : 'outline'}
       className="h-7 gap-1.5 px-2.5 text-xs aria-disabled:cursor-not-allowed aria-disabled:opacity-50"
-      // Disabled with a reason stays focusable so the reason can be read.
-      disabled={disabled && !item.disabledReason}
+      // Never natively disabled: focus stays put while busy, and a reason can be read.
       aria-disabled={disabled || undefined}
       aria-busy={item.busy || undefined}
       aria-describedby={item.disabled && item.disabledReason ? reasonId : undefined}
