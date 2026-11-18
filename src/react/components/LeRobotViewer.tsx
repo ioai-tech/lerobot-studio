@@ -29,6 +29,7 @@ import { SelectionBridge, type SelectionCarry } from './Host/SelectionBridge';
 import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts';
 import { ViewerLayout } from '../features/viewer/ViewerLayout';
 import { ErrorState } from './Commons/ErrorState';
+import { preloadLeRobotViewer } from '../preload';
 import { AuxiliarySeriesProvider } from '../contexts/AuxiliarySeriesContext';
 import type {
   AuxiliarySeries,
@@ -196,6 +197,10 @@ export function LeRobotViewerContent({
       return raw;
     }
   };
+
+  // The WASM and the layout and loader code start loading while the data
+  // source is still being resolved (a URL's preflight, a host's source read).
+  useEffect(() => preloadLeRobotViewer(), []);
 
   useEffect(() => {
     let cancelled = false;

@@ -22,6 +22,7 @@ import {
 } from '../platform/datasource/RemoteManifestDataSource';
 
 export { LeRobotViewer, LeRobotViewerContent } from './components/LeRobotViewer';
+export { preloadLeRobotViewer } from './preload';
 export type {
   LeRobotViewerError,
   LeRobotViewerErrorCode,

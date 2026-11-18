@@ -2,7 +2,9 @@
  * Worker 管理器 - 使用 Vite 原生外置 module Worker
  *
  * Worker 使用相对模块 URL，WASM 保留为单份按需 data URL chunk，因此不依赖部署根路径。
- * WASM 由主线程预加载为 ArrayBuffer，再通过 postMessage Transfer 传递给 Worker。
+ * The main thread fetches and compiles the WASM once (one module-level
+ * promise, started early by `preloadLeRobotViewer`); every worker receives
+ * the compiled `WebAssembly.Module` by postMessage and only instantiates it.
  *
  * Worker 侧使用 Promise 等待（而非轮询），彻底消除竞态条件：
  * 无论主线程多快/多慢完成 fetch，Worker 都会等到 buffer 到达后再初始化。
@@ -14,40 +16,48 @@ import type { ParquetWorkerAPI, ParquetImageWorkerAPI } from '@/core';
 import parquetWorkerUrl from './parquet.worker?worker&url';
 import parquetImageWorkerUrl from './parquetImage.worker?worker&url';
 
-// WASM 预加载缓存（Promise 形式，多个 worker 共享同一份 fetch）
-let wasmBufferPromise: Promise<ArrayBuffer> | null = null;
+/** The compiled parquet WASM, shared by every worker; reset on failure so a later open retries. */
+let wasmModulePromise: Promise<WebAssembly.Module> | null = null;
 const workerRegistry = new WeakMap<Comlink.Remote<unknown>, Worker>();
 
 /**
- * 预加载 WASM 文件为 ArrayBuffer（带缓存）
+ * Compile a fetched WASM response: streaming (compiling while the bytes
+ * arrive) when the response is served as `application/wasm`, otherwise from
+ * its bytes.
  */
-async function loadWasmBuffer(): Promise<ArrayBuffer> {
-  if (!wasmBufferPromise) {
+export async function compileWasmResponse(response: Response): Promise<WebAssembly.Module> {
+  if (!response.ok) throw new Error(`Failed to fetch WASM: ${response.status}`);
+  const type = response.headers.get('Content-Type')?.split(';')[0]?.trim();
+  if (typeof WebAssembly.compileStreaming === 'function' && type === 'application/wasm') {
+    return WebAssembly.compileStreaming(response);
+  }
+  return WebAssembly.compile(await response.arrayBuffer());
+}
+
+/** Fetch and compile the parquet WASM once; later calls share the same promise. */
+export function loadParquetWasmModule(): Promise<WebAssembly.Module> {
+  if (!wasmModulePromise) {
     // Library mode places this data URL in its own lazy chunk. Keeping one
     // package-local copy is relocatable across Vite, Next, and arbitrary bases.
-    wasmBufferPromise = import('./wasmUrl')
+    const pending = import('./wasmUrl')
       .then(({ wasmUrl }) => fetch(wasmUrl))
-      .then((response) => {
-        if (!response.ok) throw new Error(`Failed to fetch WASM: ${response.status}`);
-        return response.arrayBuffer();
-      })
-      .catch((err) => {
-        wasmBufferPromise = null; // 重置以便重试
+      .then(compileWasmResponse)
+      .catch((err: unknown) => {
+        if (wasmModulePromise === pending) wasmModulePromise = null; // 重置以便重试
         throw err;
       });
+    wasmModulePromise = pending;
   }
-  // 返回副本以便可以 Transfer（Transfer 会转移所有权）
-  const buffer = await wasmBufferPromise;
-  return buffer.slice(0);
+  return wasmModulePromise;
 }
 
 /**
- * 向 Worker 发送 WASM buffer，出错时通知 worker 以便快速失败
+ * 向 Worker 发送编译好的 WASM 模块，出错时通知 worker 以便快速失败
  */
 function sendWasmToWorker(worker: Worker): void {
-  loadWasmBuffer()
-    .then((buffer) => {
-      worker.postMessage({ type: 'init-wasm', wasmBuffer: buffer }, [buffer]);
+  loadParquetWasmModule()
+    .then((wasmModule) => {
+      worker.postMessage({ type: 'init-wasm', wasmModule });
     })
     .catch((err) => {
       worker.postMessage({ type: 'init-wasm-error', message: String(err) });

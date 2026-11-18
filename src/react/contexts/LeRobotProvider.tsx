@@ -15,6 +15,7 @@ import type { ValidationReport } from '@/core';
 import { DirectoryDataSource } from '@/platform';
 import { useTranslation } from '../i18n/reactI18nextCompat';
 import { useLoading } from './LoadingContext';
+import { loadDataLoaderModule } from '../lazyChunks';
 import {
   LeRobotContext,
   LeRobotDataContext,
@@ -617,8 +618,7 @@ export const LeRobotDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
         currentSourceRef.current = dataSource;
 
         // 首屏优化：把重依赖（apache-arrow/worker 等）延迟到用户真正打开数据源时再加载
-        const { LeRobotDataLoader: LeRobotDataLoaderCtor } =
-          await import('../../platform/services/LeRobotDataLoader');
+        const { LeRobotDataLoader: LeRobotDataLoaderCtor } = await loadDataLoaderModule();
         loader = new LeRobotDataLoaderCtor(source);
 
         if (!keepView) {

@@ -27,6 +27,8 @@ import '@ioai/lerobot-studio/style.css';
 
 自定义欢迎页时，使用 `LeRobotStudioProvider`，再搭配 `LeRobotViewerContent`、`DatasetSourceSelector`、`SampleDatasetCard`、`Pagination` 与 `useDragAndDrop`。见 [嵌入](./embedding)。
 
+`preloadLeRobotViewer()` 在数据源就绪之前开始加载 Parquet 读取器与查看器代码（[提前开始加载](./embedding#提前开始加载)）。
+
 `auxiliarySeries` 把单独 parquet 文件中的时间序列加入图表（[额外的时间序列](./embedding#绘制额外的时间序列)）。
 
 数据集支持时，查看器可以在当前会话中修改 Episode。`onExport` 只是宿主 UI 的回调，不会自行导出数据。

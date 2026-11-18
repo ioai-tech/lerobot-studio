@@ -1,7 +1,7 @@
 /**
  * ParquetImage Worker
  *
- * 从主线程接收预加载的 WASM ArrayBuffer 进行初始化。
+ * 从主线程接收编译好的 WASM 模块（WebAssembly.Module）进行实例化。
  *
  * 设计要点（memory-safe 版本）：
  * 1. 加载 Parquet 文件后，仅保留 **图像列 Arrow Vector** 作为原始 JPEG 字节来源，
@@ -19,6 +19,7 @@ import * as Comlink from 'comlink';
 import init, { readParquet } from 'parquet-wasm';
 import { tableFromIPC, Vector } from 'apache-arrow';
 import type { ParquetImageWorkerAPI } from '@/core';
+import { parquetEngineError } from '../../core/workers/engineError';
 import {
   detectImageColumns,
   mimeTypeForImageFormat,
@@ -29,9 +30,9 @@ import {
 let wasmInitialized = false;
 let wasmInitPromise: Promise<void> | null = null;
 
-let wasmBufferResolve: ((buf: ArrayBuffer) => void) | null = null;
+let wasmBufferResolve: ((module: WebAssembly.Module) => void) | null = null;
 let wasmBufferReject: ((err: Error) => void) | null = null;
-const wasmBufferSignal = new Promise<ArrayBuffer>((resolve, reject) => {
+const wasmBufferSignal = new Promise<WebAssembly.Module>((resolve, reject) => {
   wasmBufferResolve = resolve;
   wasmBufferReject = reject;
 });
@@ -107,12 +108,12 @@ self.onmessage = async (event: MessageEvent) => {
   const { type } = event.data as { type: string };
 
   if (type === 'init-wasm') {
-    wasmBufferResolve?.(event.data.wasmBuffer as ArrayBuffer);
+    wasmBufferResolve?.(event.data.wasmModule as WebAssembly.Module);
     return;
   }
 
   if (type === 'init-wasm-error') {
-    wasmBufferReject?.(new Error(`Main thread failed to load WASM: ${String(event.data.message)}`));
+    wasmBufferReject?.(parquetEngineError(event.data.message));
     return;
   }
 
@@ -290,13 +291,13 @@ async function initWasm(): Promise<void> {
 
   wasmInitPromise = (async () => {
     try {
-      const wasmBuffer = await wasmBufferSignal;
-      await init(wasmBuffer);
+      const wasmModule = await wasmBufferSignal;
+      await init({ module_or_path: wasmModule });
       wasmInitialized = true;
     } catch (e) {
       console.error('Worker: Failed to initialize WASM', e);
       wasmInitPromise = null;
-      throw e;
+      throw parquetEngineError(e);
     }
   })();
 

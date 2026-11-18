@@ -85,6 +85,11 @@ export type {
   RangedParquetRead,
   RangedParquetSource,
 } from './workers/types';
+export {
+  PARQUET_ENGINE_UNAVAILABLE,
+  isParquetEngineError,
+  parquetEngineError,
+} from './workers/engineError';
 
 export * from './subtask';
 export * from './export/trim';

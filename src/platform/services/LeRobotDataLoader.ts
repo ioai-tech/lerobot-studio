@@ -17,6 +17,7 @@ import {
   getAdapterForVersion,
   getValidatorForVersion,
   hasBlockingValidationError,
+  isParquetEngineError,
   buildSubtaskTable,
   indicesFromFrameLabels,
   tableFromSubtaskIndices,
@@ -199,9 +200,15 @@ export class LeRobotDataLoader {
       }
 
       this.adapter = getAdapterForVersion(this.info.codebase_version);
+      // A reader that could not load says nothing about the files: it is
+      // reported as itself, never as the validator's "not Parquet".
+      let engineFailure: unknown = null;
       const helpers = {
         readParquetToIPC: (path: string, columns?: string[]) =>
-          this.readParquetByPath(path, columns),
+          this.readParquetByPath(path, columns).catch((error: unknown) => {
+            if (isParquetEngineError(error)) engineFailure ??= error;
+            throw error;
+          }),
       };
 
       // No waterfall: every metadata file is requested now, together; the
@@ -212,6 +219,7 @@ export class LeRobotDataLoader {
       const adapter = this.adapter;
       const validator = getValidatorForVersion(this.info.codebase_version);
       const report = await validator.validate(this._dataSource, this.info, helpers);
+      if (engineFailure) throw engineFailure;
       this.validationReport = report;
       if (hasBlockingValidationError(report)) {
         const messages = report.items

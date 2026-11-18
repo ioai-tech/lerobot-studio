@@ -411,6 +411,25 @@ export function CustomWelcome({ language }: { language: string }) {
 
 If you show an export button, wire `onExport` yourself. This package does not include the standalone app's export dialog.
 
+## Start loading early
+
+Every open first waits for the Parquet reader, a WASM module of about 1.6 MB gzip, and the viewer's layout and loader code. Call `preloadLeRobotViewer()` as soon as you know a viewer will open, so that this download overlaps your own work, such as signing URLs or reading the source:
+
+```ts
+import { preloadLeRobotViewer } from '@ioai/lerobot-studio';
+
+// On the viewer's route, before its data source is ready…
+preloadLeRobotViewer();
+
+// …or when a person points at a link that opens a viewer.
+link.addEventListener('pointerenter', () => preloadLeRobotViewer(), { once: true });
+```
+
+- The WASM is fetched and compiled once. It is compiled while it streams when the server sends `Content-Type: application/wasm`. Every later viewer reuses it, and repeated calls share the same work.
+- It never throws, and it does nothing during server rendering.
+- If loading fails, the viewer reports it when it opens, as `PARQUET_ENGINE_UNAVAILABLE` with the cause. A failed load is not kept, so the next open tries again.
+- The viewer also starts this work itself when it mounts. Calling the function earlier only moves the start forward.
+
 ## Next.js
 
 Load the viewer from a Client Component and disable SSR:

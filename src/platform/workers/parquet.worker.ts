@@ -1,7 +1,7 @@
 /**
  * Parquet Worker - Vite inline 版本
  *
- * 从主线程接收预加载的 WASM ArrayBuffer 进行初始化。
+ * 从主线程接收编译好的 WASM 模块（WebAssembly.Module）进行实例化。
  * 使用 Promise 等待机制替代轮询，彻底消除竞态条件：
  * 无论主线程何时发送 buffer，initWasm() 都会正确等待并初始化。
  */
@@ -21,14 +21,15 @@ import {
   readRangedTable,
   type NumericResult,
 } from './parquetDecode';
+import { parquetEngineError } from '../../core/workers/engineError';
 
 let wasmInitialized = false;
 let wasmInitPromise: Promise<void> | null = null;
 
 // 用 Promise 替代轮询：一旦收到 buffer 立即 resolve，永不超时
-let wasmBufferResolve: ((buf: ArrayBuffer) => void) | null = null;
+let wasmBufferResolve: ((module: WebAssembly.Module) => void) | null = null;
 let wasmBufferReject: ((err: Error) => void) | null = null;
-const wasmBufferSignal = new Promise<ArrayBuffer>((resolve, reject) => {
+const wasmBufferSignal = new Promise<WebAssembly.Module>((resolve, reject) => {
   wasmBufferResolve = resolve;
   wasmBufferReject = reject;
 });
@@ -42,12 +43,12 @@ interface FileCache {
 
 let fileCache: FileCache | null = null;
 
-// 接收主线程传来的 WASM ArrayBuffer（或错误通知）
+// 接收主线程传来的已编译 WASM 模块（或错误通知）
 self.onmessage = (event: MessageEvent) => {
   if (event.data.type === 'init-wasm') {
-    wasmBufferResolve?.(event.data.wasmBuffer);
+    wasmBufferResolve?.(event.data.wasmModule);
   } else if (event.data.type === 'init-wasm-error') {
-    wasmBufferReject?.(new Error(`Main thread failed to load WASM: ${event.data.message}`));
+    wasmBufferReject?.(parquetEngineError(event.data.message));
   }
 };
 
@@ -121,7 +122,7 @@ function getParsedTable(uint8Array: Uint8Array, columns?: string[]): FileCache {
 }
 
 /**
- * 初始化 WASM：等待主线程发送的 ArrayBuffer，无竞态条件
+ * 初始化 WASM：等待主线程发送的已编译模块，无竞态条件
  */
 async function initWasm(): Promise<void> {
   if (wasmInitialized) return;
@@ -129,13 +130,13 @@ async function initWasm(): Promise<void> {
 
   wasmInitPromise = (async () => {
     try {
-      const wasmBuffer = await wasmBufferSignal;
-      await init({ module_or_path: wasmBuffer });
+      const wasmModule = await wasmBufferSignal;
+      await init({ module_or_path: wasmModule });
       wasmInitialized = true;
     } catch (e) {
       console.error('Worker: Failed to initialize WASM', e);
       wasmInitPromise = null;
-      throw e;
+      throw parquetEngineError(e);
     }
   })();
 
