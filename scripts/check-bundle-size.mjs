@@ -19,43 +19,28 @@ if (!Number.isFinite(scale) || scale <= 0 || scale > 1) {
 //
 // 2026-11-18 review (every ceiling reset to ~3% headroom): the web initial JS
 // had counted the entry chunk twice (module script and modulepreload); main
-// at 6ac7f68 measured 2.36 MiB raw / 682.4 KiB gzip counted once (762.6 KiB
+// at 7cfdf5e measured 2.37 MiB raw / 685.9 KiB gzip counted once (768.1 KiB
 // counted twice). This change loads the segment inspector, list and dialogs,
 // the edit dialogs and the zh/ja locales on demand (web initial JS
-// 2,382,578 raw / 674,770 gzip; library entry 417,765 / 129,985, from
-// 445.4 KiB / 134.9 KiB) and adds parquet range reads to the lazy DataLoader
+// 2,392,936 raw / 678,159 gzip; library entry 434,676 / 134,279, from
+// 463.2 KiB / 139.3 KiB) and adds parquet range reads to the lazy DataLoader
 // (web 49,061 / 14,406, from 37.5 KiB / 10.5 KiB).
 const budgets = {
-  // +5 KB raw head for the splitter ARIA values and Space-on-button handling
-  // (measured ~400.1 KB raw, just over the old 400,000-byte ceiling).
-  // Segments and review (reducer, history, inspector, list, keys, ~16 KB of
-  // en/zh/ja copy): main at 9ea1108 measured 385.9 KiB raw / 120.3 KiB gzip,
-  // main plus this change 445.4 KiB / 134.9 KiB (+15.4% / +12.1%). Heads
-  // about 3.0% raw / 2.1% gzip.
-  // Embedding for hosts (markers, overlay band, toolbar and notices, selection,
-  // theme tokens, camera-first layout, en/zh/ja copy): main at 6ac7f68
-  // measured 445.4 KiB raw / 134.9 KiB gzip, main plus this change
-  // 462.2 KiB / 139.1 KiB (+3.8% / +3.1%). Heads about 1.6% raw / 1.8% gzip.
-  libEntry: { raw: 481_000, gzip: 145_000 },
-  libCss: { raw: 360_000, gzip: 110_000 },
-  // +5 KB gzip head for the embed layout hook, resizable stacked sidebar and
-  // phone navbar (measured 722.7 KiB gzip, level with the old 740,000-byte ceiling).
-  // Segments and review: main at 9ea1108 measured 2.52 MiB raw / 725.1 KiB
-  // gzip, main plus this change 2.65 MiB / 762.6 KiB (+5.2% gzip). Heads
-  // about 0.8% raw / 1.2% gzip.
-  webInitialJs: { raw: 2_800_000, gzip: 790_000 },
-  webInitialCss: { raw: 200_000, gzip: 25_000 },
-  libDataLoader: { raw: 280_000, gzip: 60_000 },
-  webDataLoader: { raw: 40_000, gzip: 11_000 },
-  libDockview: { raw: 680_000, gzip: 160_000 },
-  webDockview: { raw: 100_000, gzip: 30_000 },
-  libWorkerWasm: { raw: 9_200_000, gzip: 3_000_000 },
-  libWorkers: { raw: 470_000, gzip: 110_000 },
-  webWorkerWasm: { raw: 6_900_000, gzip: 2_100_000 },
-  webWorkers: { raw: 470_000, gzip: 110_000 },
-  largestLibJs: { raw: 680_000, gzip: 160_000 },
-  largestWebJs: { raw: 1_200_000, gzip: 330_000 },
-  npmTarball: { raw: 12_000_000, gzip: 3_500_000 },
+  libEntry: { raw: 448_000, gzip: 138_500 },
+  libCss: { raw: 360_000, gzip: 107_000 },
+  webInitialJs: { raw: 2_465_000, gzip: 699_000 },
+  webInitialCss: { raw: 199_000, gzip: 24_700 },
+  libDataLoader: { raw: 62_000, gzip: 16_500 },
+  webDataLoader: { raw: 50_500, gzip: 14_900 },
+  libDockview: { raw: 638_000, gzip: 149_500 },
+  webDockview: { raw: 92_800, gzip: 27_600 },
+  libWorkerWasm: { raw: 6_800_000, gzip: 2_360_000 },
+  libWorkers: { raw: 459_000, gzip: 105_600 },
+  webWorkerWasm: { raw: 5_140_000, gzip: 1_745_000 },
+  webWorkers: { raw: 459_000, gzip: 105_600 },
+  largestLibJs: { raw: 638_000, gzip: 149_500 },
+  largestWebJs: { raw: 1_186_000, gzip: 332_000 },
+  npmTarball: { raw: 9_670_000, gzip: 3_115_000 },
 };
 
 const failures = [];

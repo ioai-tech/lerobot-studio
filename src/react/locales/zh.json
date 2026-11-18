@@ -1001,7 +1001,7 @@
       "fail": "失败"
     },
     "issueCount": "{count} 个问题",
-    "issueList": "问题：{{labels}}"
+    "issueList": "问题：{labels}"
   },
   "overlay": {
     "legend": "建议（只读）",

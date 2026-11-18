@@ -9,6 +9,7 @@ import {
   getLerobotRoot,
 } from '../../../lib/chartTheme';
 import { decimateMinMax, visibleSampleRange, type ChartGroup } from './chartGroupsModel';
+import { ChartPlotPlaceholder } from './ChartGroupsPlaceholder';
 
 /** One chart group with its samples (x in seconds from the episode start, ascending). */
 export interface ChartGroupData {
@@ -302,9 +303,7 @@ function FeatureChart({
         </div>
       </header>
       {data.pending ? (
-        <div className="relative min-h-0 flex-1 px-2 pb-1">
-          <div className="h-full w-full animate-pulse rounded bg-muted/40" />
-        </div>
+        <ChartPlotPlaceholder />
       ) : (
         <div ref={plotHostRef} className="relative min-h-0 flex-1" />
       )}

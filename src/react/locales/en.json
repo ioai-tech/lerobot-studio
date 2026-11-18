@@ -1001,7 +1001,7 @@
       "fail": "Failure"
     },
     "issueCount": "{count, plural, one {# issue} other {# issues}}",
-    "issueList": "Issues: {{labels}}"
+    "issueList": "Issues: {labels}"
   },
   "overlay": {
     "legend": "Suggestions (read-only)",

@@ -1,6 +1,6 @@
 import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it } from 'vitest';
 import {
   episodeTimeDomain,
   frameAtFraction,
@@ -24,8 +24,14 @@ import { HostChrome } from '../src/react/components/Host/HostChrome';
 import { OverlayBand } from '../src/react/components/Timeline/OverlayBand';
 import { MarkerLane } from '../src/react/components/Timeline/MarkerLane';
 import { themeTokenProperties } from '../src/react/contexts/themeTokens';
-import { coerceLocale } from '../src/react/i18n/messages';
+import { coerceLocale, loadMessages } from '../src/react/i18n/messages';
 import type { LeRobotExtension } from '../src/react/contexts/hostTypes';
+
+// zh and ja are separate chunks; once loaded, a provider renders them on the
+// first (here: static) render.
+beforeAll(async () => {
+  await Promise.all([loadMessages('zh'), loadMessages('ja')]);
+});
 
 const noop = () => {};
 

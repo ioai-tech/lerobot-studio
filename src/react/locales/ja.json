@@ -1003,7 +1003,7 @@
       "fail": "失敗"
     },
     "issueCount": "問題 {count} 件",
-    "issueList": "問題：{{labels}}"
+    "issueList": "問題：{labels}"
   },
   "overlay": {
     "legend": "提案（読み取り専用）",
