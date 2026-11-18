@@ -8,7 +8,9 @@
  * in the "Dependency vulnerabilities" table of SECURITY.md, with its scope and
  * reason. A vulnerable package is waived only when every advisory it can reach
  * through npm's `via` graph is waived, so a dependency cycle counts as waived
- * only when every advisory in the cycle is waived. Ported from rosview's gate,
+ * only when every advisory in the cycle is waived. Waivers are toolchain-only:
+ * a waived advisory that appears in `npm audit --omit=dev` fails the gate.
+ * Any failed or incomplete npm audit run fails the gate. Ported from rosview's gate,
  * which could not resolve cycles.
  *
  * This replaces `npm audit --audit-level=high`, which cannot express "this
@@ -170,10 +172,29 @@ export function parseAuditReport(stdout) {
   return report;
 }
 
-function runAudit() {
+/**
+ * Waived advisory ids that appear in the production graph (`npm audit
+ * --omit=dev`). A waiver covers toolchain-only findings; one that reaches
+ * what ships must fail the gate.
+ * @param {{ vulnerabilities?: Record<string, any> }} productionReport
+ * @param {Map<string, unknown> | Set<string>} waivers
+ */
+export function waivedInProduction(productionReport, waivers) {
+  const waived = new Set([...waivers.keys()].map(canonical));
+  const ids = new Set(
+    Object.values(productionReport.vulnerabilities ?? {})
+      .flatMap((node) => node.via ?? [])
+      .filter((entry) => typeof entry === 'object')
+      .map(advisoryId)
+      .filter((id) => id !== null && waived.has(id)),
+  );
+  return [...ids];
+}
+
+function runAudit(extraArgs = []) {
   let stdout;
   try {
-    stdout = execFileSync('npm', ['audit', '--json'], {
+    stdout = execFileSync('npm', ['audit', '--json', ...extraArgs], {
       cwd: ROOT,
       encoding: 'utf8',
       maxBuffer: 64 * 1024 * 1024,
@@ -192,6 +213,8 @@ function main() {
   try {
     const waivers = readWaivers(readFileSync(path.join(ROOT, 'SECURITY.md'), 'utf8'));
     result = evaluateAudit(runAudit(), waivers);
+    // Waivers are toolchain-only: none may appear in what ships.
+    result.inProduction = waivedInProduction(runAudit(['--omit=dev']), waivers);
   } catch (error) {
     console.error(`check:audit cannot judge the dependencies: ${error.message}`);
     process.exit(1);
@@ -211,6 +234,13 @@ function main() {
   for (const id of result.staleWaivers) {
     console.warn(`\nwarning: waiver ${id} in SECURITY.md matches no advisory; remove it`);
   }
+  for (const id of result.inProduction) {
+    console.error(
+      `\nBLOCKING  waiver ${id} is reachable from production dependencies (npm audit --omit=dev); ` +
+        'waivers cover the toolchain only. Fix it.',
+    );
+  }
+  if (result.inProduction.length > 0) process.exit(1);
   if (result.failing.length > 0) {
     console.error(
       `\n${result.failing.length} blocking advisories. Fix them (upgrade or a narrow override), ` +

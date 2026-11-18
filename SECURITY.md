@@ -88,8 +88,10 @@ cycle counts as waived only when every advisory in it is waived.
 Fix a finding first: upgrade the package when the parent range allows it, or
 add a narrow override when it does not. Waive an advisory only when no
 non-breaking fix exists and the affected code ships in no published artifact.
-Remove the waiver as soon as a fix ships. The gate warns about waivers that
-match no advisory.
+Remove the waiver as soon as a fix ships. Waivers are toolchain-only: the gate
+also runs `npm audit --omit=dev` and fails if a waived advisory appears in the
+production graph. A failed or incomplete `npm audit` run fails the gate. The
+gate warns about waivers that match no advisory.
 
 | Advisory                                    | Scope                                                                                                                                                                                                            | Reason                                                                                                                                                                                                 | Remove when                                                               |
 | ------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------- |

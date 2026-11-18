@@ -1,8 +1,14 @@
 import { describe, expect, it } from 'vitest';
 // @ts-expect-error: plain ESM script without type declarations
-import { evaluateAudit, parseAuditReport, readWaivers } from '../scripts/check-audit.mjs';
+import {
+  evaluateAudit,
+  parseAuditReport,
+  readWaivers,
+  waivedInProduction,
+} from '../scripts/check-audit.mjs';
 import { spawnSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
+import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 
 const PICO = 'GHSA-fc5q-39xc-vjpf';
@@ -174,4 +180,56 @@ describe('check-audit gate', () => {
     expect(run.stderr).toMatch(/cannot judge the dependencies/);
     expect(run.stdout).not.toMatch(/ok: no blocking advisories/);
   }, 90_000);
+
+  it('a waived advisory in the production graph is reported (waivers are toolchain-only)', () => {
+    const production = {
+      vulnerabilities: {
+        picomatch: node('high', [advisory(PICO)]),
+        other: node('high', [advisory(OTHER)]),
+      },
+    };
+    expect(waivedInProduction(production, new Set([PICO]))).toEqual([PICO]);
+    expect(waivedInProduction({ vulnerabilities: {} }, new Set([PICO]))).toEqual([]);
+  });
+
+  /** Run the gate with a fake `npm` that answers per argument list. */
+  function runWithFakeNpm(full: unknown, production: unknown) {
+    const bin = mkdtempSync(path.join(os.tmpdir(), 'fake-npm-'));
+    try {
+      const fake = path.join(bin, 'npm');
+      writeFileSync(
+        fake,
+        [
+          '#!/bin/sh',
+          'case "$*" in',
+          `  *--omit=dev*) echo '${JSON.stringify(production)}'; exit 1 ;;`,
+          `  *) echo '${JSON.stringify(full)}'; exit 1 ;;`,
+          'esac',
+        ].join('\n'),
+      );
+      chmodSync(fake, 0o755);
+      return spawnSync(process.execPath, [path.resolve(__dirname, '../scripts/check-audit.mjs')], {
+        cwd: path.resolve(__dirname, '..'),
+        encoding: 'utf8',
+        env: { ...process.env, PATH: `${bin}${path.delimiter}${process.env.PATH}` },
+      });
+    } finally {
+      rmSync(bin, { recursive: true, force: true });
+    }
+  }
+
+  it.skipIf(process.platform === 'win32')(
+    'the production audit must succeed and must not contain a waived advisory',
+    () => {
+      const full = { vulnerabilities: { picomatch: node('high', [advisory(PICO)]) } };
+      const passing = runWithFakeNpm(full, { vulnerabilities: {} });
+      expect(passing.status, passing.stderr).toBe(0);
+      const failedRun = runWithFakeNpm(full, { error: { code: 'ENOAUDIT', summary: 'down' } });
+      expect(failedRun.status).toBe(1);
+      expect(failedRun.stderr).toMatch(/ENOAUDIT/);
+      const shipped = runWithFakeNpm(full, full);
+      expect(shipped.status).toBe(1);
+      expect(shipped.stderr).toMatch(/reachable from production dependencies/);
+    },
+  );
 });
