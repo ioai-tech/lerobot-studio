@@ -326,14 +326,25 @@ export class V2FormatValidator extends BaseLeRobotValidator {
       this.pass('episodes', 'task count', `${taskCount} task(s)`, 'Non-negative integer (count)');
     }
 
-    // ── 8. Data file existence (all listed episodes) ─────────────────────────
-    const firstEpisodeIdx = episodes[0]?.episode_index ?? 0;
+    // ── 8. Data file existence (all listed episodes in scope) ───────────────
+    const inScope = this.reportEpisodeScope(
+      dataSource.episodeScope,
+      episodes
+        .map((ep) => ep.episode_index)
+        .filter((index): index is number => typeof index === 'number'),
+    );
+    const checkedEpisodes = inScope
+      ? episodes.filter(
+          (ep) => typeof ep.episode_index === 'number' && inScope.has(ep.episode_index),
+        )
+      : episodes;
+    const firstEpisodeIdx = checkedEpisodes[0]?.episode_index ?? 0;
     const firstDataPath = resolveV2EpisodeDataPath(resolvedInfo, firstEpisodeIdx);
     const chunkIdx = Math.floor(
       firstEpisodeIdx / (typeof chunksSize === 'number' && chunksSize > 0 ? chunksSize : 1000),
     );
     try {
-      const indexedEpisodes = episodes.filter(
+      const indexedEpisodes = checkedEpisodes.filter(
         (ep): ep is typeof ep & { episode_index: number } => typeof ep.episode_index === 'number',
       );
       const presence = await findExistingV2Episodes(dataSource, resolvedInfo, indexedEpisodes);
@@ -344,11 +355,11 @@ export class V2FormatValidator extends BaseLeRobotValidator {
           'EPISODE_DATA_MISSING',
           '{{missing}} of {{total}} episode parquet files are missing',
           `${presence.missing.length} missing`,
-          `${episodes.length} present`,
+          `${indexedEpisodes.length} present`,
           'Download the missing episode parquet files or open a complete dataset',
-          { missing: presence.missing.length, total: episodes.length },
+          { missing: presence.missing.length, total: indexedEpisodes.length },
         );
-      } else if (episodes.length > 0 && presence.present.length === 0) {
+      } else if (indexedEpisodes.length > 0 && presence.present.length === 0) {
         this.reportExists(
           false,
           firstDataPath,
@@ -377,7 +388,7 @@ export class V2FormatValidator extends BaseLeRobotValidator {
     }
 
     // ── 9. Video files existence (if video features exist) ──────────────────
-    if (features && typeof features === 'object') {
+    if (features && typeof features === 'object' && checkedEpisodes.length > 0) {
       const videoFeatures = Object.entries(features as Record<string, { dtype?: string }>)
         .filter(([, f]) => f?.dtype === 'video')
         .map(([k]) => k);

@@ -18,6 +18,7 @@ import {
   type LeRobotUiContextType,
 } from '@/contexts/LeRobotContext';
 import { FetchDataSource } from './fixtures';
+import { pauseOnEpisode } from './playback';
 import { expectNoBlockingA11yViolations } from './a11y';
 import '../../src/react/index.css';
 
@@ -39,8 +40,11 @@ it('batch trims through the real sidebar, previews without applying, and preserv
       />,
     );
     await expect
-      .poll(() => host.querySelector<HTMLButtonElement>('[title="Edit episodes"]')?.disabled)
+      .poll(() => host.querySelector<HTMLButtonElement>('[title="Edit episodes"]')?.disabled, {
+        timeout: 10_000,
+      })
       .toBe(false);
+    await pauseOnEpisode(host, 0);
     await userEvent.click(page.getByRole('button', { name: 'Select', exact: true }));
     for (const index of [0, 1])
       await userEvent.click(

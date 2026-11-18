@@ -25,6 +25,8 @@ function getRowBgClass(level: ValidationItem['level']): string {
       return 'bg-destructive/10';
     case 'warning':
       return 'bg-amber-500/10 dark:bg-amber-500/20';
+    case 'not_evaluated':
+      return 'bg-muted/40 text-muted-foreground';
     case 'info':
     default:
       return 'bg-green-500/10 dark:bg-green-500/20';

@@ -142,6 +142,7 @@
         "title": "数据集质量报告",
         "summaryErrors": "校验发现错误",
         "summaryWarnings": "校验发现警告",
+        "summaryPartial": "检查通过；部分 episode 未检查",
         "summaryOk": "全部检查通过",
         "errorsCount": "{{count}} 个错误",
         "warningsCount": "{{count}} 个警告",
@@ -267,6 +268,10 @@
         "DATA_FILE_MISSING": {
           "message": "数据文件不存在",
           "suggestion": "按 v2 格式在 data/ 目录下生成分片 parquet 文件"
+        },
+        "EPISODES_OUT_OF_SCOPE": {
+          "message": "请求的 episode 范围之外有 {{count}} 个 episode 的文件未检查",
+          "suggestion": "不限定 episode 范围打开数据集，即可检查全部 episode"
         },
         "EPISODE_DATA_MISSING": {
           "message": "{{total}} 个 episode 中有 {{missing}} 个 parquet 文件缺失",
@@ -500,10 +505,14 @@
       "comboboxAll": "全部关节",
       "comboboxNone": "未选择",
       "comboboxPartial": "已选 {{count}} / {{total}} 个关节"
+    },
+    "groups": {
+      "dimensions": "{{feature}} 的维度"
     }
   },
   "panels": {
     "video": {
+      "codecUnsupported": "此浏览器无法播放 {{codec}} 视频（{{camera}}）。",
       "title": "视频面板",
       "placeholder": "等待加载视频文件...",
       "debug": {
@@ -575,7 +584,8 @@
       "resume": "继续自动刷新",
       "refresh": "刷新到当前帧",
       "showLess": "收起",
-      "showMore": "显示更多"
+      "showMore": "显示更多",
+      "auxiliary": "辅助序列"
     },
     "keyboardShortcuts": {
       "title": "键盘快捷键",
@@ -839,5 +849,8 @@
     "undone": "已恢复 {{count}} 个裁剪，后续编辑保持不变。",
     "return": "返回批量裁剪",
     "previewNotice": "正在预览建议，尚未应用。可在下方调整区间，然后返回批量裁剪。"
+  },
+  "viewer": {
+    "regionLabel": "数据集查看器"
   }
 }

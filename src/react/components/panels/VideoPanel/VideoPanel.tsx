@@ -1,9 +1,14 @@
 import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import { AlertTriangle } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
-import { useLeRobotData, useLeRobotSelection } from '../../../contexts/LeRobotContext';
+import {
+  useLeRobotData,
+  useLeRobotPlayback,
+  useLeRobotSelection,
+} from '../../../contexts/LeRobotContext';
 import { buildMediaDebugMetadata } from '@/core';
-import { VideoUrlCache } from '@/platform';
+import { checkVideoCodecSupport } from '../../../../platform/services/videoCodecSupport';
+import { CameraFollower } from '../../../services/CameraFollower';
 import { getFeatureDisplayType, getFirstVisualFeatureName } from '@/core';
 import { ImagePanel } from '../ImagePanel/ImagePanel';
 import { MediaDebugOverlay } from '../Common/MediaDebugOverlay';
@@ -14,25 +19,36 @@ interface VideoPanelProps {
   };
 }
 
+type EpisodeVideo = { path: string; start: number; end: number };
+
 /**
- * 彻底优化的 VideoPanel - 零闪烁视频播放
- *
- * 关键设计：
- * 1. 视频元素始终可见，不使用 opacity 切换
- * 2. 只在真正需要加载新文件时才显示加载状态
- * 3. Episode 切换只是纯 seek，不触发任何 UI 更新
- * 4. 完全利用浏览器视频缓冲机制
+ * One camera. The `<video>` element plays natively and follows the shared
+ * playback clock through a `CameraFollower` (no per-frame seeking). The
+ * loader owns signed URLs: when they are refreshed, or a URL fails once, the
+ * element swaps its source and the follower restores position and play state
+ * from the clock.
  */
 const VideoPanelContent: React.FC<VideoPanelProps> = ({ params }) => {
   const { t } = useTranslation();
-  const { info, dataLoader, subscribeFrameIndex } = useLeRobotData();
+  const { info, dataLoader, isLoading } = useLeRobotData();
+  const { clock } = useLeRobotPlayback();
+  /**
+   * While the episode's numeric data downloads, cameras fetch only what the
+   * first frame needs; read-ahead starts once charts have their data, so on a
+   * shared link the charts arrive with the video instead of seconds later.
+   */
+  const preload: 'metadata' | 'auto' = isLoading ? 'metadata' : 'auto';
+  const preloadRef = useRef(preload);
+  preloadRef.current = preload;
   const { selectedEpisodeIndex } = useLeRobotSelection();
+  const featureKey = params?.featureKey || 'observation.images.up';
+  const fps = info?.fps ?? 30;
 
   const videoRef = useRef<HTMLVideoElement>(null);
-  const [hasVideo, setHasVideo] = useState(false); // 是否有可用的视频
-
-  const [isInitialLoading, setIsInitialLoading] = useState(false); // 仅用于初始加载
+  const [hasVideo, setHasVideo] = useState(false);
+  const [isInitialLoading, setIsInitialLoading] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [unsupportedCodec, setUnsupportedCodec] = useState<string | null>(null);
   const [videoDimensions, setVideoDimensions] = useState<{ width: number; height: number } | null>(
     null,
   );
@@ -41,26 +57,14 @@ const VideoPanelContent: React.FC<VideoPanelProps> = ({ params }) => {
   );
   const [currentVideoPath, setCurrentVideoPath] = useState<string>('');
 
-  // 当前加载的视频文件（文件级别）
-  const currentVideoFileRef = useRef<{
-    path: string;
-    url: string;
-    duration: number;
-  } | null>(null);
-
-  // 当前 episode 时间范围
-  const episodeRangeRef = useRef<{
-    start: number;
-    end: number;
-  } | null>(null);
-
-  /** 容量保持较小；blob 生命周期以 DataSource 为准，避免与 OBJECT_URL_CACHE_SIZE 脱节 */
-  const videoCacheRef = useRef<VideoUrlCache>(new VideoUrlCache(8));
-  const lastSeekTimeRef = useRef<number>(0);
+  /** File on the element, and whether its current URL generation was already retried. */
+  const sourceRef = useRef<{ path: string; retried: boolean } | null>(null);
+  /** Selected episode's span in the current file; read by the follower. */
+  const rangeRef = useRef<{ start: number; end: number } | null>(null);
+  const fpsRef = useRef(fps);
+  fpsRef.current = fps;
+  const followerRef = useRef<CameraFollower | null>(null);
   const requestTokenRef = useRef(0);
-  const mountedRef = useRef(true);
-
-  const featureKey = params?.featureKey || 'observation.images.up';
 
   const debugMetadata = useMemo(
     () =>
@@ -71,251 +75,181 @@ const VideoPanelContent: React.FC<VideoPanelProps> = ({ params }) => {
     [featureKey, info, timelineRange, videoDimensions],
   );
 
-  /**
-   * 获取 episode 的视频文件信息（版本无关，由 dataLoader 委托适配器解析）
-   */
-  const getVideoFileInfo = useCallback(
-    (episodeIndex: number) => {
-      if (!dataLoader) return null;
-      const result = dataLoader.getEpisodeVideoPath(episodeIndex, featureKey);
-      if (!result) return null;
-      return {
+  // One follower per element, alive as long as the panel.
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+    const follower = new CameraFollower(video, clock, {
+      id: `video:${featureKey}`,
+      fps: () => fpsRef.current,
+      range: () => rangeRef.current,
+    });
+    followerRef.current = follower;
+    return () => {
+      follower.dispose();
+      followerRef.current = null;
+    };
+  }, [clock, featureKey]);
+
+  const setSource = useCallback((path: string, url: string, retried: boolean) => {
+    const video = videoRef.current;
+    if (!video) return;
+    sourceRef.current = { path, retried };
+    video.preload = preloadRef.current;
+    video.src = url;
+    video.load();
+  }, []);
+
+  /** Swap in a new URL for the same file (refresh); the follower restores time and play state. */
+  const swapSource = useCallback(
+    async (retry: boolean) => {
+      const current = sourceRef.current;
+      if (!current || !dataLoader) return;
+      const token = requestTokenRef.current;
+      try {
+        if (retry) await dataLoader.invalidateFileUrl(current.path);
+        const url = await dataLoader.getFileUrl(current.path);
+        if (token !== requestTokenRef.current || sourceRef.current?.path !== current.path) return;
+        // A retry marks this URL generation as retried; a refresh-driven swap
+        // starts a new generation that may be retried once again.
+        setSource(current.path, url, retry);
+      } catch (error) {
+        console.error('Failed to refresh video URL:', error);
+        if (token === requestTokenRef.current) {
+          setHasVideo(false);
+          setLoadError(t('sidebar.errorLoading'));
+        }
+      }
+    },
+    [dataLoader, setSource, t],
+  );
+
+  useEffect(() => {
+    if (!dataLoader) return;
+    return dataLoader.subscribeUrlChanges((paths) => {
+      const current = sourceRef.current;
+      if (current && paths.includes(current.path)) void swapSource(false);
+    });
+  }, [dataLoader, swapSource]);
+
+  // Element events: first frame, errors (one URL retry), dimensions.
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+    const onLoadedMetadata = () => {
+      setVideoDimensions({ width: video.videoWidth, height: video.videoHeight });
+    };
+    const onLoadedData = () => {
+      // A URL that loaded is good: a later failure (a later expiry) may retry again.
+      if (sourceRef.current) sourceRef.current.retried = false;
+      setHasVideo(true);
+      setLoadError(null);
+      setIsInitialLoading(false);
+    };
+    const onError = () => {
+      const current = sourceRef.current;
+      if (!current || !video.getAttribute('src')) return;
+      if (!current.retried) {
+        void swapSource(true);
+        return;
+      }
+      console.error('Video load error:', current.path);
+      setHasVideo(false);
+      setIsInitialLoading(false);
+      setLoadError(t('sidebar.errorLoading'));
+    };
+    video.addEventListener('loadedmetadata', onLoadedMetadata);
+    video.addEventListener('loadeddata', onLoadedData);
+    video.addEventListener('error', onError);
+    return () => {
+      video.removeEventListener('loadedmetadata', onLoadedMetadata);
+      video.removeEventListener('loadeddata', onLoadedData);
+      video.removeEventListener('error', onError);
+    };
+  }, [swapSource, t]);
+
+  // Episode or camera change: gate the codec, load the file if it changed,
+  // then let the follower position the element from the clock.
+  useEffect(() => {
+    const token = ++requestTokenRef.current;
+    const run = async () => {
+      const video = videoRef.current;
+      const result =
+        info && dataLoader && selectedEpisodeIndex !== null
+          ? dataLoader.getEpisodeVideoPath(selectedEpisodeIndex, featureKey)
+          : null;
+      if (!video || !result || !dataLoader || !info) {
+        rangeRef.current = null;
+        setCurrentVideoPath('');
+        setTimelineRange(null);
+        return;
+      }
+      const episode: EpisodeVideo = {
         path: result.path,
         start: result.fromSec ?? 0,
         end: result.toSec ?? 0,
       };
-    },
-    [dataLoader, featureKey],
-  );
+      const support = await checkVideoCodecSupport(info.features?.[featureKey]);
+      if (token !== requestTokenRef.current) return;
+      if (!support.supported) {
+        rangeRef.current = null;
+        sourceRef.current = null;
+        video.removeAttribute('src');
+        video.load();
+        setUnsupportedCodec(support.codec);
+        setHasVideo(false);
+        setIsInitialLoading(false);
+        return;
+      }
+      setUnsupportedCodec(null);
+      setCurrentVideoPath(episode.path);
+      setVideoDimensions(null);
 
-  /**
-   * 加载视频文件（静默加载，不显示 loading UI）
-   */
-  const loadVideoFileSilent = useCallback(
-    async (path: string, allowRetry = true): Promise<boolean> => {
-      const requestToken = requestTokenRef.current;
-      if (!dataLoader) return false;
-
-      const resolvePlay = (url: string, suppressErrorUi: boolean): Promise<boolean> => {
-        return new Promise<boolean>((resolve) => {
-          const video = videoRef.current;
-          if (!video) {
-            resolve(false);
-            return;
-          }
-
-          const isFirstLoad = !currentVideoFileRef.current;
-          if (isFirstLoad) {
-            if (mountedRef.current && requestToken === requestTokenRef.current) {
-              setIsInitialLoading(true);
-              setLoadError(null);
-            }
-          }
-
-          const handleLoadedMetadata = () => {
-            if (!mountedRef.current || requestToken !== requestTokenRef.current) {
-              return;
-            }
-            currentVideoFileRef.current = {
-              path,
-              url,
-              duration: video.duration,
-            };
-            setCurrentVideoPath(path);
-            setVideoDimensions({
-              width: video.videoWidth,
-              height: video.videoHeight,
-            });
-          };
-
-          const handleCanPlay = () => {
-            if (mountedRef.current && requestToken === requestTokenRef.current) {
-              setHasVideo(true);
-              setLoadError(null);
-              if (isFirstLoad) {
-                setIsInitialLoading(false);
-              }
-            }
-            resolve(true);
-          };
-
-          const handleError = () => {
-            video.removeEventListener('loadedmetadata', handleLoadedMetadata);
-            video.removeEventListener('canplay', handleCanPlay);
-            video.removeEventListener('error', handleError);
-
-            console.error('Video load error:', path);
-            if (
-              !suppressErrorUi &&
-              mountedRef.current &&
-              requestToken === requestTokenRef.current
-            ) {
-              setHasVideo(false);
-              setLoadError(t('sidebar.errorLoading'));
-              if (isFirstLoad) {
-                setIsInitialLoading(false);
-              }
-            }
-            resolve(false);
-          };
-
-          video.addEventListener('loadedmetadata', handleLoadedMetadata, { once: true });
-          video.addEventListener('canplay', handleCanPlay, { once: true });
-          video.addEventListener('error', handleError, { once: true });
-
-          video.src = url;
-          video.preload = 'auto';
-          video.load();
-        });
-      };
-
-      try {
-        let url = videoCacheRef.current.get(path);
-        if (!url) {
-          url = await dataLoader.getFileUrl(path);
-          videoCacheRef.current.getUrl(path, url);
-        }
-
-        let ok = await resolvePlay(url, allowRetry);
-        if (!ok && allowRetry) {
-          try {
-            videoCacheRef.current.invalidate(path);
-            await dataLoader.invalidateFileUrl(path);
-            const freshUrl = await dataLoader.getFileUrl(path);
-            videoCacheRef.current.getUrl(path, freshUrl);
-            ok = await resolvePlay(freshUrl, false);
-          } catch (retryErr) {
-            console.error('Failed to recover video after invalidate:', retryErr);
-            if (mountedRef.current && requestToken === requestTokenRef.current) {
-              setLoadError(t('sidebar.errorLoading'));
-              setIsInitialLoading(false);
-            }
-            return false;
-          }
-        }
-        return ok;
-      } catch (e) {
-        console.error('Failed to load video:', e);
-        if (mountedRef.current && requestToken === requestTokenRef.current) {
+      if (sourceRef.current?.path !== episode.path) {
+        rangeRef.current = null;
+        if (!sourceRef.current) setIsInitialLoading(true);
+        setLoadError(null);
+        try {
+          const url = await dataLoader.getFileUrl(episode.path);
+          if (token !== requestTokenRef.current) return;
+          setSource(episode.path, url, false);
+        } catch (error) {
+          if (token !== requestTokenRef.current) return;
+          console.error('Failed to load video:', error);
           setLoadError(t('sidebar.errorLoading'));
           setIsInitialLoading(false);
+          return;
         }
-        return false;
       }
+      rangeRef.current = { start: episode.start, end: episode.end };
+      setTimelineRange({
+        startSec: episode.start,
+        endSec:
+          episode.end > 0 ? episode.end : Number.isFinite(video.duration) ? video.duration : 0,
+      });
+      followerRef.current?.sync();
+    };
+    void run();
+  }, [selectedEpisodeIndex, info, dataLoader, featureKey, setSource, t]);
+
+  useEffect(() => {
+    const video = videoRef.current;
+    if (video && video.preload !== preload) video.preload = preload;
+  }, [preload]);
+
+  useEffect(
+    () => () => {
+      requestTokenRef.current += 1;
     },
-    [dataLoader, t],
+    [],
   );
 
-  /**
-   * Episode 切换处理
-   */
-  useEffect(() => {
-    const handleEpisodeChange = async () => {
-      const requestToken = ++requestTokenRef.current;
-      if (!info || selectedEpisodeIndex === null || !dataLoader) {
-        if (mountedRef.current && requestToken === requestTokenRef.current) {
-          setCurrentVideoPath('');
-          setTimelineRange(null);
-        }
-        return;
-      }
-
-      const videoInfo = getVideoFileInfo(selectedEpisodeIndex);
-      if (!videoInfo) {
-        if (mountedRef.current && requestToken === requestTokenRef.current) {
-          setCurrentVideoPath('');
-          setTimelineRange(null);
-        }
-        return;
-      }
-
-      const { path, start, end } = videoInfo;
-      const video = videoRef.current;
-      if (!video) return;
-      if (mountedRef.current && requestToken === requestTokenRef.current) {
-        setVideoDimensions(null);
-      }
-
-      // 检查是否需要加载新文件
-      const isSameFile = currentVideoFileRef.current?.path === path;
-
-      if (!isSameFile) {
-        // 加载新文件（静默，除非是第一次）
-        const loaded = await loadVideoFileSilent(path);
-        if (!loaded || requestToken !== requestTokenRef.current) return;
-      }
-
-      // 更新 episode 时间范围
-      if (currentVideoFileRef.current) {
-        const episodeEnd = end > 0 ? end : currentVideoFileRef.current.duration;
-        episodeRangeRef.current = { start, end: episodeEnd };
-        if (mountedRef.current && requestToken === requestTokenRef.current) {
-          setTimelineRange({ startSec: start, endSec: episodeEnd });
-        }
-
-        // 纯 seek 操作，无任何 UI 更新
-        if (video.readyState >= 2) {
-          video.currentTime = start;
-        } else {
-          const handleReady = () => {
-            if (requestToken !== requestTokenRef.current) {
-              video.removeEventListener('canplay', handleReady);
-              return;
-            }
-            video.currentTime = start;
-            video.removeEventListener('canplay', handleReady);
-          };
-          video.addEventListener('canplay', handleReady, { once: true });
-        }
-      }
-    };
-
-    handleEpisodeChange();
-  }, [selectedEpisodeIndex, info, dataLoader, featureKey, getVideoFileInfo, loadVideoFileSilent]);
-
-  useEffect(() => {
-    mountedRef.current = true;
-    return () => {
-      mountedRef.current = false;
-      requestTokenRef.current += 1;
-    };
-  }, []);
-
-  /**
-   * 帧同步 - 纯 seek，零开销
-   */
-  useEffect(() => {
-    if (!hasVideo || !episodeRangeRef.current) return;
-
-    const unsubscribe = subscribeFrameIndex((frameIndex) => {
-      const video = videoRef.current;
-      const range = episodeRangeRef.current;
-
-      if (!video || !range || video.readyState < 2) return;
-
-      const fps = info?.fps ?? 30;
-      const targetTime = Math.max(range.start, Math.min(range.start + frameIndex / fps, range.end));
-
-      // 节流
-      const now = Date.now();
-      if (now - lastSeekTimeRef.current < 16) return;
-
-      // Seek
-      const timeDiff = Math.abs(video.currentTime - targetTime);
-      if (timeDiff > 0.033) {
-        video.currentTime = targetTime;
-        lastSeekTimeRef.current = now;
-      }
-    });
-
-    return unsubscribe;
-  }, [hasVideo, info, subscribeFrameIndex]);
+  const cameraName = featureKey.split('.').pop() || featureKey;
 
   return (
     <div className="group relative flex h-full w-full items-center justify-center overflow-hidden bg-black">
       <MediaDebugOverlay metadata={debugMetadata} translationPrefix="panels.video.debug" />
 
-      {/* Video - 始终可见，无过渡效果 */}
       <video
         ref={videoRef}
         className="h-full w-full object-contain"
@@ -327,16 +261,31 @@ const VideoPanelContent: React.FC<VideoPanelProps> = ({ params }) => {
         crossOrigin="anonymous"
         muted
         playsInline
-        preload="auto"
+        preload={preload}
         disablePictureInPicture
         disableRemotePlayback
       />
 
-      {/* 占位符 - 只在没有视频时显示 */}
       {!hasVideo && (
         <div className="absolute inset-0 flex items-center justify-center text-center text-muted-foreground">
           <div>
-            {isInitialLoading ? (
+            {unsupportedCodec ? (
+              <div
+                role="status"
+                className="max-w-xs mx-auto px-4 text-sm"
+                data-testid="video-codec-unsupported"
+              >
+                <div className="flex justify-center mb-2">
+                  <AlertTriangle className="h-6 w-6" aria-hidden />
+                </div>
+                <p>
+                  {t('panels.video.codecUnsupported', {
+                    codec: unsupportedCodec.toUpperCase(),
+                    camera: cameraName,
+                  })}
+                </p>
+              </div>
+            ) : isInitialLoading ? (
               <div role="status" aria-live="polite">
                 <div
                   className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin motion-reduce:animate-none mx-auto mb-4"

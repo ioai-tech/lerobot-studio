@@ -1,4 +1,5 @@
 import type { EpisodeMetadata, PlaybackMode, EpisodeTrimRange } from '@/core';
+import { frameAtTime, PlaybackClock, timeOfFrame } from './PlaybackClock';
 
 export type PlaybackEngineCallbacks = {
   getPreviewRange?: () => EpisodeTrimRange | undefined;
@@ -23,43 +24,69 @@ export type PlaybackEngineCallbacks = {
 };
 
 /**
- * Imperative playback loop (rAF + setTimeout) independent of React render.
- * Provider owns lifecycle; this class only schedules ticks and episode advances.
+ * Imperative playback loop independent of React render. The frame index is
+ * derived from the shared `PlaybackClock` on every animation frame (never
+ * incremented per tick), so presented time follows wall time exactly and a
+ * buffering camera that holds the clock holds the frame index too. The
+ * provider owns lifecycle; this class only maps clock time to frames and
+ * handles the episode end.
  */
 export class PlaybackEngine {
   private animationFrameId: number | null = null;
-  private timerId: number | null = null;
-  private lastTickTime = 0;
   private running = false;
   private readonly callbacks: PlaybackEngineCallbacks;
+  readonly clock: PlaybackClock;
 
-  constructor(callbacks: PlaybackEngineCallbacks) {
+  constructor(callbacks: PlaybackEngineCallbacks, clock: PlaybackClock = new PlaybackClock()) {
     this.callbacks = callbacks;
+    this.clock = clock;
   }
 
   start(): void {
     if (this.running) return;
     this.running = true;
+    const fps = this.fps();
     const range = this.callbacks.getPreviewRange?.();
-    if (
-      range &&
-      (this.callbacks.getFrameIndex() < range.startFrame ||
-        this.callbacks.getFrameIndex() >= range.endFrame)
-    ) {
-      this.callbacks.setFrameIndexSilent(range.startFrame);
-      this.callbacks.notifyFrame(range.startFrame);
+    let frame = this.callbacks.getFrameIndex();
+    if (range && (frame < range.startFrame || frame >= range.endFrame)) {
+      frame = range.startFrame;
+      this.callbacks.setFrameIndexSilent(frame);
+      this.callbacks.notifyFrame(frame);
     }
-    this.lastTickTime = 0;
+    if (frameAtTime(this.clock.now(), fps) !== frame) {
+      this.clock.seek(timeOfFrame(frame, fps));
+    }
+    this.clock.setRate(this.speed());
+    this.clock.play();
     this.animationFrameId = requestAnimationFrame(this.tick);
   }
 
+  /**
+   * Pause exactly on the frame the UI shows: the clock (which cameras follow)
+   * snaps back to the frame index the last animation frame published, so the
+   * slider, charts, raw panel and every camera land on the same frame.
+   */
   stop(): void {
+    const wasRunning = this.running;
     this.running = false;
+    this.clock.pause();
     this.cancelScheduled();
+    if (!wasRunning) return;
+    const fps = this.fps();
+    const frame = this.callbacks.getFrameIndex();
+    if (frameAtTime(this.clock.now(), fps) !== frame) this.clock.seek(timeOfFrame(frame, fps));
   }
 
   dispose(): void {
     this.stop();
+  }
+
+  private fps(): number {
+    return this.callbacks.getFps() || 30;
+  }
+
+  private speed(): number {
+    return Math.max(0.1, this.callbacks.getPlaybackSpeed());
   }
 
   private cancelScheduled(): void {
@@ -67,24 +94,17 @@ export class PlaybackEngine {
       cancelAnimationFrame(this.animationFrameId);
       this.animationFrameId = null;
     }
-    if (this.timerId != null) {
-      clearTimeout(this.timerId);
-      this.timerId = null;
-    }
   }
 
-  private scheduleNextTick = (timestamp: number, effectiveInterval: number): void => {
-    const sinceLast = timestamp - this.lastTickTime;
-    const delay = Math.max(0, effectiveInterval - sinceLast);
-    if (delay <= 4) {
-      this.animationFrameId = requestAnimationFrame(this.tick);
-      return;
+  /** Park the clock and the frame index on `frame` (used at range and episode ends). */
+  private settleAt(frame: number): void {
+    this.clock.pause();
+    this.clock.seek(timeOfFrame(frame, this.fps()));
+    if (this.callbacks.getFrameIndex() !== frame) {
+      this.callbacks.setFrameIndexSilent(frame);
+      this.callbacks.notifyFrame(frame);
     }
-    this.timerId = window.setTimeout(() => {
-      this.timerId = null;
-      this.animationFrameId = requestAnimationFrame(this.tick);
-    }, delay);
-  };
+  }
 
   private resolveNextEpisode(): number {
     const { getPlaybackMode, getEpisodes, getSelectedEpisodeIndex, getDeletedEpisodes } =
@@ -128,63 +148,62 @@ export class PlaybackEngine {
     return nextNonDeleted;
   }
 
-  private tick = (timestamp: number): void => {
+  private tick = (): void => {
+    this.animationFrameId = null;
     if (!this.running) return;
-    if (!this.lastTickTime) {
-      this.lastTickTime = timestamp;
-    }
 
     const frameCount = this.callbacks.getFrameCount();
     if (frameCount <= 0) {
+      this.callbacks.onStop();
       this.stop();
       return;
     }
 
-    const fps = this.callbacks.getFps() || 30;
-    const frameInterval = 1000 / fps;
-    const effectiveInterval = frameInterval / Math.max(0.1, this.callbacks.getPlaybackSpeed());
-    const elapsed = timestamp - this.lastTickTime;
+    this.clock.setRate(this.speed());
+    const fps = this.fps();
+    let frame = frameAtTime(this.clock.now(), fps);
 
-    if (elapsed >= effectiveInterval) {
-      let newIndex = this.callbacks.getFrameIndex() + 1;
+    const range = this.callbacks.getPreviewRange?.();
+    if (range && frame > range.endFrame) {
+      this.settleAt(range.endFrame);
+      this.callbacks.onStop();
+      this.stop();
+      return;
+    }
+    if (range && frame < range.startFrame) {
+      frame = range.startFrame;
+      this.clock.seek(timeOfFrame(frame, fps));
+    }
 
-      const range = this.callbacks.getPreviewRange?.();
-      if (range && newIndex > range.endFrame) {
+    if (frame >= frameCount) {
+      if (this.callbacks.shouldHoldAtEpisodeEnd?.()) {
+        this.settleAt(frameCount - 1);
         this.callbacks.onStop();
+        this.callbacks.onNaturalEnd?.();
         this.stop();
         return;
       }
-      if (range && newIndex < range.startFrame) newIndex = range.startFrame;
-      if (newIndex >= frameCount) {
-        if (this.callbacks.shouldHoldAtEpisodeEnd?.()) {
-          this.callbacks.onStop();
-          this.callbacks.onNaturalEnd?.();
-          this.stop();
-          return;
-        }
-        if (this.callbacks.getPlaybackMode() === 'loop') {
-          newIndex = 0;
-          this.callbacks.setFrameIndexSilent(newIndex);
-          this.callbacks.notifyFrame(newIndex);
-        } else {
-          this.callbacks.onStop();
-          const next = this.resolveNextEpisode();
-          if (next !== -1) {
-            void this.callbacks.onAdvanceEpisode(next).then((loaded) => {
-              if (loaded) this.callbacks.onResumeAfterEpisode();
-            });
-          }
-          this.stop();
-          return;
-        }
+      if (this.callbacks.getPlaybackMode() === 'loop') {
+        frame = 0;
+        this.clock.seek(0);
       } else {
-        this.callbacks.setFrameIndexSilent(newIndex);
-        this.callbacks.notifyFrame(newIndex);
+        this.settleAt(frameCount - 1);
+        this.callbacks.onStop();
+        const next = this.resolveNextEpisode();
+        if (next !== -1) {
+          void this.callbacks.onAdvanceEpisode(next).then((loaded) => {
+            if (loaded) this.callbacks.onResumeAfterEpisode();
+          });
+        }
+        this.stop();
+        return;
       }
-
-      this.lastTickTime = timestamp;
     }
 
-    this.scheduleNextTick(timestamp, effectiveInterval);
+    if (frame !== this.callbacks.getFrameIndex()) {
+      this.callbacks.setFrameIndexSilent(frame);
+      this.callbacks.notifyFrame(frame);
+    }
+    this.animationFrameId = requestAnimationFrame(this.tick);
   };
 }

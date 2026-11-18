@@ -142,6 +142,7 @@
         "title": "Dataset quality report",
         "summaryErrors": "Validation reported errors",
         "summaryWarnings": "Validation reported warnings",
+        "summaryPartial": "Checks passed; some episodes were not checked",
         "summaryOk": "All checks passed",
         "errorsCount": "{{count}} error(s)",
         "warningsCount": "{{count}} warning(s)",
@@ -267,6 +268,10 @@
         "DATA_FILE_MISSING": {
           "message": "Data file does not exist",
           "suggestion": "Generate Parquet data files under data/ per v2 format"
+        },
+        "EPISODES_OUT_OF_SCOPE": {
+          "message": "Files of {{count}} episode(s) outside the requested episode scope were not checked",
+          "suggestion": "Open the dataset without an episode scope to check every episode"
         },
         "EPISODE_DATA_MISSING": {
           "message": "{{missing}} of {{total}} episode parquet files are missing",
@@ -500,10 +505,14 @@
       "comboboxAll": "All joints",
       "comboboxNone": "None selected",
       "comboboxPartial": "{{count}} / {{total}} joints"
+    },
+    "groups": {
+      "dimensions": "Dimensions of {{feature}}"
     }
   },
   "panels": {
     "video": {
+      "codecUnsupported": "This browser cannot play {{codec}} video ({{camera}}).",
       "title": "Video Panel",
       "placeholder": "Waiting for video file...",
       "debug": {
@@ -575,7 +584,8 @@
       "resume": "Resume auto-refresh",
       "refresh": "Refresh to current frame",
       "showLess": "Show less",
-      "showMore": "Show more"
+      "showMore": "Show more",
+      "auxiliary": "Auxiliary series"
     },
     "keyboardShortcuts": {
       "title": "Keyboard Shortcuts",
@@ -839,5 +849,8 @@
     "undone": "Restored {{count}} trims. Later edits were preserved.",
     "return": "Return to batch trim",
     "previewNotice": "Suggestion preview — not applied. Adjust the range below, then return to batch trim."
+  },
+  "viewer": {
+    "regionLabel": "Dataset viewer"
   }
 }

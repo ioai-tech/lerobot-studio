@@ -1,4 +1,4 @@
-import React, { Suspense, useRef, type ReactNode } from 'react';
+import React, { Suspense, useEffect, useRef, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/ui';
 import { ResizableSidebar } from '../../components/Sidebar/ResizableSidebar';
@@ -9,8 +9,9 @@ import { useLoading } from '../../contexts/LoadingContext';
 import { ErrorState } from '../../components/Commons/ErrorState';
 import { useStackedLayout } from '../../hooks/useStackedLayout';
 
+const loadDockviewLayout = () => import('../../components/DockviewLayout');
 const LazyDockviewLayout = React.lazy(async () => {
-  const mod = await import('../../components/DockviewLayout');
+  const mod = await loadDockviewLayout();
   return { default: mod.DockviewLayout };
 });
 
@@ -56,6 +57,13 @@ export function ViewerLayout({
     (task) => task.phase !== 'ready' && task.phase !== 'idle' && task.phase !== 'error',
   );
   const errorTask = tasks.find((task) => task.phase === 'error');
+
+  // Fetch the panel layout (cameras, charts) while the dataset metadata loads,
+  // not after it: it is on the critical path to the first frame.
+  const loadingSomething = Boolean(activeTask) || info !== null;
+  useEffect(() => {
+    if (loadingSomething) void loadDockviewLayout().catch(() => undefined);
+  }, [loadingSomething]);
 
   const handleRetry =
     onRetry ??

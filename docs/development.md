@@ -81,6 +81,23 @@ BUNDLE_SIZE_BUDGET_SCALE=0.01 npm run check:bundle-size
 The scale override can only tighten budgets (`0 < scale <= 1`); it cannot relax
 the CI gate.
 
+## Playback bench
+
+`scripts/bench/` measures playback of a long multi-camera dataset over a throttled link. It needs `ffmpeg` and Playwright Chromium.
+
+```bash
+# 1. A frame-coded dataset: each frame shows its index as a barcode (22 min, 4 cameras, 30 fps H.264).
+node scripts/bench/generate-frame-coded-dataset.mjs --out /data/bench/f22 --minutes 22 --cameras 4
+# 2. The bench page (the viewer fed by a remote manifest).
+npx vite build --config scripts/bench/vite.bench.config.ts --outDir scripts/bench/dist
+# 3. A Range server with a shared 20 Mbit/s, 20 ms link; expired URLs get 403.
+node scripts/bench/range-server.mjs --page scripts/bench/dist --dataset f22=/data/bench/f22
+# 4. Measure: first frame, charts, seeks, camera agreement paused and playing, presented fps, CPU.
+node scripts/bench/measure-playback.mjs --url 'http://127.0.0.1:4877/?manifest=/manifest/f22.json' --label run1
+```
+
+`native-spread.mjs` measures plain `<video>` elements on the same server, as a reference for what the browser itself presents. Results depend on the machine and its load, so compare runs from the same machine.
+
 ## Package validation
 
 ```bash

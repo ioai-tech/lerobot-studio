@@ -8,6 +8,32 @@ import { default as React_2 } from 'react';
 import * as React_3 from 'react';
 
 // @public
+export interface AuxiliarySeries {
+    columns?: string[];
+    episodeIndex?: number;
+    files: RemoteFileEntry[];
+    id: string;
+    label: string;
+    timeColumn: string;
+    timeOffsetNs?: string;
+    timeUnit: 's' | 'ns' | 'frame';
+}
+
+// @public (undocumented)
+export interface AuxiliarySeriesWarning {
+    // (undocumented)
+    code: AuxiliarySeriesWarningCode;
+    column?: string;
+    // (undocumented)
+    message: string;
+    // (undocumented)
+    seriesId: string;
+}
+
+// @public
+export type AuxiliarySeriesWarningCode = 'COLUMN_MISSING' | 'TIME_COLUMN_MISSING' | 'TIME_UNIT_MISMATCH' | 'READ_FAILED' | 'EPISODE_SET_UNSUPPORTED';
+
+// @public
 export function createArchiveDataSourceFromFile(file: File): DataSource;
 
 // @public
@@ -17,7 +43,10 @@ export function createArchiveDataSourceFromUrl(url: string): DataSource;
 export function createDirectoryDataSource(handle: FileSystemDirectoryHandle): DataSource;
 
 // @public
-export function createRemoteManifestDataSource(files: RemoteFileEntry[]): DataSource;
+export function createEpisodeSetDataSource(manifest: EpisodeSetManifest, options?: EpisodeSetOptions): DataSource;
+
+// @public
+export function createRemoteManifestDataSource(files: RemoteFileEntry[], options?: RemoteManifestOptions): DataSource;
 
 // @public
 export const DatasetSourceSelector: React_2.FC<DatasetSourceSelectorProps>;
@@ -43,12 +72,15 @@ export interface DatasetSourceSelectorProps {
 // @public
 export interface DataSource {
     clear(): void | Promise<void>;
+    readonly episodeScope?: readonly number[];
     exists(path: string): Promise<boolean>;
+    focusEpisode?(episodeIndex: number): void;
     getObjectUrl(path: string, mimeType?: string, onProgress?: ProgressHandler): Promise<string>;
     invalidateObjectUrl?(path: string): void | Promise<void>;
     listPaths?(): Promise<string[]>;
     readBytes(path: string, onProgress?: ProgressHandler): Promise<Uint8Array>;
     readText(path: string, onProgress?: ProgressHandler): Promise<string>;
+    subscribeUrlChanges?(listener: (paths: readonly string[]) => void): () => void;
 }
 
 // @public
@@ -69,6 +101,67 @@ export interface DragAndDropCallbacks {
     onFile: (file: File) => void;
     // (undocumented)
     onUnresolvedDirectory?: (name: string) => void;
+}
+
+// @public
+export interface EpisodeSetEpisode {
+    fromRow: number;
+    fromS: number;
+    meta?: Record<string, string | number | null>;
+    recordingId: string;
+    task: string;
+    toRow: number;
+    toS: number;
+}
+
+// @public
+export class EpisodeSetError extends Error {
+    constructor(code: EpisodeSetErrorCode, message: string, options?: {
+        recordingId?: string;
+        cause?: unknown;
+    });
+    // (undocumented)
+    readonly code: EpisodeSetErrorCode;
+    // (undocumented)
+    readonly name = "EpisodeSetError";
+    // (undocumented)
+    readonly recordingId?: string;
+}
+
+// @public
+export type EpisodeSetErrorCode = 'MANIFEST_INVALID' | 'RECORDING_LAYOUT_REFUSED' | 'RECORDING_RESOLVE_FAILED';
+
+// @public
+export interface EpisodeSetManifest {
+    // (undocumented)
+    episodes: EpisodeSetEpisode[];
+    features: Record<string, unknown>;
+    fps: number;
+    // (undocumented)
+    recordings: EpisodeSetRecording[];
+    robotType?: string | null;
+}
+
+// @public
+export interface EpisodeSetOptions {
+    previewVideoPath?: string;
+    refresh?: (ids: string[]) => Promise<EpisodeSetResolvedRecording[]>;
+    resolve?: (ids: string[]) => Promise<EpisodeSetResolvedRecording[]>;
+}
+
+// @public
+export interface EpisodeSetRecording {
+    files?: RemoteFileEntry[];
+    id: string;
+    previewVideoPath?: string | null;
+}
+
+// @public
+export interface EpisodeSetResolvedRecording {
+    // (undocumented)
+    files: RemoteFileEntry[];
+    // (undocumented)
+    id: string;
 }
 
 // @public @deprecated (undocumented)
@@ -113,10 +206,12 @@ export type LeRobotViewerErrorCode = 'INVALID_DATA_SOURCE' | 'REMOTE_SOURCE_UNAV
 
 // @public
 export interface LeRobotViewerProps {
+    auxiliarySeries?: AuxiliarySeries[];
     className?: string;
     dataSource: string | DataSource;
     enableKeyboardShortcuts?: boolean;
     language?: string;
+    onAuxiliarySeriesWarning?: (warning: AuxiliarySeriesWarning) => void;
     onBack?: () => void;
     onExport?: () => void;
     onFatalError?: (error: LeRobotViewerError) => void;
@@ -173,10 +268,42 @@ export interface ProgressInfo {
 // @public
 export interface RemoteFileEntry {
     contentType?: string | null;
+    expiresAt?: string | null;
     logicalPath: string;
     presignedUrl: string;
     sizeBytes?: number | null;
 }
+
+// @public
+export interface RemoteManifestOptions {
+    episodeScope?: readonly number[];
+    expiresAt?: string | null;
+    refresh?: () => Promise<RemoteFileEntry[] | RemoteManifestRefreshResult>;
+}
+
+// @public
+export interface RemoteManifestRefreshResult {
+    expiresAt?: string | null;
+    // (undocumented)
+    files: RemoteFileEntry[];
+}
+
+// @public
+export class RemoteSourceError extends Error {
+    constructor(code: RemoteSourceErrorCode, path: string, message: string, options?: {
+        status?: number;
+        cause?: unknown;
+    });
+    // (undocumented)
+    readonly code: RemoteSourceErrorCode;
+    // (undocumented)
+    readonly name = "RemoteSourceError";
+    readonly path: string;
+    readonly status?: number;
+}
+
+// @public
+export type RemoteSourceErrorCode = 'HTTP_STATUS' | 'NETWORK' | 'REFRESH_FAILED';
 
 // @public
 export interface SampleDataset {

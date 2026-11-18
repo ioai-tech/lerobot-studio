@@ -34,6 +34,30 @@ export interface DataSource {
    * contiguous chunk/file sequence.
    */
   listPaths?(): Promise<string[]>;
-  /** Invalidate object/blob URL for a logical path when the implementation supports it. */
+  /**
+   * Invalidate the object/blob URL for a logical path when the implementation
+   * supports it. Remote sources treat this as "this URL failed" and refresh
+   * their signed URLs (one refresh shared by concurrent callers).
+   */
   invalidateObjectUrl?(path: string): void | Promise<void>;
+  /**
+   * Dataset `episode_index` values the host wants shown. When set, the viewer
+   * lists only these episodes, reads only their data and media files, and the
+   * health report marks the other episodes' files as not evaluated.
+   */
+  readonly episodeScope?: readonly number[];
+  /**
+   * Subscribe to URL replacements (for example after signed URLs were
+   * refreshed). The listener receives the logical paths whose URL changed;
+   * media consumers call `getObjectUrl` again and swap their source while
+   * keeping position and play state. Returns an unsubscribe function.
+   */
+  subscribeUrlChanges?(listener: (paths: readonly string[]) => void): () => void;
+
+  /**
+   * Hint that the viewer is about to read this dataset `episode_index`
+   * (selection or playback reached it). Sources that sign or fetch lazily can
+   * prefetch what follows it.
+   */
+  focusEpisode?(episodeIndex: number): void;
 }

@@ -129,8 +129,13 @@ export class V2Adapter extends LeRobotVersionAdapter {
         // v2.1 permits datasets without legacy per-episode stats. Training
         // export will reject missing visual stats explicitly when required.
       }
-      if (!info) return episodes;
-      return clampV2EpisodesToExisting(await findExistingV2Episodes(dataSource, info, episodes));
+      // A scoped source only carries (and is only asked for) its episodes' files.
+      const scope = dataSource.episodeScope ? new Set(dataSource.episodeScope) : null;
+      const listed = scope
+        ? episodes.filter((episode) => scope.has(Number(episode.episode_index)))
+        : episodes;
+      if (!info) return listed;
+      return clampV2EpisodesToExisting(await findExistingV2Episodes(dataSource, info, listed));
     } catch (e) {
       console.warn('Failed to load episodes.jsonl', e);
       return [];

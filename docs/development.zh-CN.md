@@ -70,6 +70,23 @@ BUNDLE_SIZE_BUDGET_SCALE=0.01 npm run check:bundle-size
 
 scale 覆盖只能收紧预算（`0 < scale <= 1`）；不能放松 CI 门禁。
 
+## 播放基准
+
+`scripts/bench/` 测量长时间多相机数据集在限速链路上的播放表现，需要 `ffmpeg` 和 Playwright Chromium。
+
+```bash
+# 1. 帧编码数据集：每帧用条码显示自己的帧号（22 分钟、4 个相机、30 fps H.264）。
+node scripts/bench/generate-frame-coded-dataset.mjs --out /data/bench/f22 --minutes 22 --cameras 4
+# 2. 基准页面（用远程清单驱动的查看器）。
+npx vite build --config scripts/bench/vite.bench.config.ts --outDir scripts/bench/dist
+# 3. 支持 Range 的服务器，共享 20 Mbit/s、20 ms 链路；过期 URL 返回 403。
+node scripts/bench/range-server.mjs --page scripts/bench/dist --dataset f22=/data/bench/f22
+# 4. 测量：首帧、图表、跳转、暂停和播放时相机的一致性、实际呈现帧率、CPU。
+node scripts/bench/measure-playback.mjs --url 'http://127.0.0.1:4877/?manifest=/manifest/f22.json' --label run1
+```
+
+`native-spread.mjs` 在同一服务器上测量普通 `<video>` 元素，作为浏览器自身呈现能力的参考。结果取决于机器及其负载，只比较同一台机器上的结果。
+
 ## 包验证
 
 ```bash

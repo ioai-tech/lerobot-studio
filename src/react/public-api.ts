@@ -10,8 +10,15 @@ import {
 } from '../platform/datasource/ArchiveDataSourceFactory';
 import { DirectoryDataSource } from '../platform/datasource/dataSources';
 import {
+  EpisodeSetDataSource,
+  type EpisodeSetManifest,
+  type EpisodeSetOptions,
+} from '../platform/datasource/EpisodeSetDataSource';
+import {
   RemoteManifestDataSource,
   type RemoteFileEntry,
+  type RemoteManifestOptions,
+  type RemoteManifestRefreshResult,
 } from '../platform/datasource/RemoteManifestDataSource';
 
 export { LeRobotViewer, LeRobotViewerContent } from './components/LeRobotViewer';
@@ -38,7 +45,23 @@ export type {
   ProgressHandler,
   ProgressInfo,
 } from '../core/datasource/types';
-export type { RemoteFileEntry };
+export type { RemoteFileEntry, RemoteManifestOptions, RemoteManifestRefreshResult };
+export { RemoteSourceError } from '../platform/datasource/signedUrls';
+export { EpisodeSetError } from '../platform/datasource/EpisodeSetDataSource';
+export type {
+  EpisodeSetEpisode,
+  EpisodeSetErrorCode,
+  EpisodeSetManifest,
+  EpisodeSetOptions,
+  EpisodeSetRecording,
+  EpisodeSetResolvedRecording,
+} from '../platform/datasource/EpisodeSetDataSource';
+export type { RemoteSourceErrorCode } from '../platform/datasource/signedUrls';
+export type {
+  AuxiliarySeries,
+  AuxiliarySeriesWarning,
+  AuxiliarySeriesWarningCode,
+} from '../platform/services/auxiliarySeries';
 
 /** Create a viewer data source for a local ZIP, TAR, or TAR.GZ archive. */
 export function createArchiveDataSourceFromFile(file: File): DataSource {
@@ -59,10 +82,27 @@ export function createArchiveDataSourceFromUrl(url: string): DataSource {
  *
  * Use this when the host already signed individual dataset files and must not
  * download a full archive. `getObjectUrl` returns the remote URL so the
- * browser can stream media with Range requests.
+ * browser can stream media with Range requests. Pass `refresh` to renew
+ * signed URLs (401/403 or within 60 s of `expiresAt`) without reloading the
+ * dataset, and `episodeScope` to show only some episodes.
  */
-export function createRemoteManifestDataSource(files: RemoteFileEntry[]): DataSource {
-  return new RemoteManifestDataSource(files);
+export function createRemoteManifestDataSource(
+  files: RemoteFileEntry[],
+  options?: RemoteManifestOptions,
+): DataSource {
+  return new RemoteManifestDataSource(files, undefined, options);
+}
+
+/**
+ * Create a read-only dataset view over episodes (row ranges) of several
+ * one-episode LeRobot v3 trees. Opening signs nothing; selecting an episode
+ * resolves its recording (batched with the next two episodes' recordings).
+ */
+export function createEpisodeSetDataSource(
+  manifest: EpisodeSetManifest,
+  options?: EpisodeSetOptions,
+): DataSource {
+  return new EpisodeSetDataSource(manifest, options);
 }
 
 /** Create a viewer data source from a File System Access directory handle. */

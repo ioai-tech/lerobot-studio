@@ -31,6 +31,13 @@ jobs:
         run: npm run check:audit
       - name: Generate test fixtures
         run: npm run fixtures:generate
+      - name: Generated fixtures leave committed fixtures intact
+        # The generator owns tests/fixtures/datasets/{lerobotv2,lerobotv3,lerobotv2-image}
+        # and rewrites them (bytes depend on the local ffmpeg); it must not
+        # delete any tracked fixture or change one outside its directories.
+        run: |
+          git diff --exit-code --diff-filter=D -- tests/fixtures
+          git diff --exit-code -- tests/fixtures ':(exclude)tests/fixtures/datasets/lerobotv2' ':(exclude)tests/fixtures/datasets/lerobotv3' ':(exclude)tests/fixtures/datasets/lerobotv2-image'
       - name: Format check
         run: npm run format:check
       - name: Check documentation i18n pairs
@@ -72,6 +79,13 @@ jobs:
         run: npx playwright install --with-deps chromium firefox webkit
       - name: Generate test fixtures
         run: npm run fixtures:generate
+      - name: Generated fixtures leave committed fixtures intact
+        # The generator owns tests/fixtures/datasets/{lerobotv2,lerobotv3,lerobotv2-image}
+        # and rewrites them (bytes depend on the local ffmpeg); it must not
+        # delete any tracked fixture or change one outside its directories.
+        run: |
+          git diff --exit-code --diff-filter=D -- tests/fixtures
+          git diff --exit-code -- tests/fixtures ':(exclude)tests/fixtures/datasets/lerobotv2' ':(exclude)tests/fixtures/datasets/lerobotv3' ':(exclude)tests/fixtures/datasets/lerobotv2-image'
       - name: Chromium full browser suite
         run: npm run test:browser
       - name: Cross-browser compatibility smoke
@@ -110,6 +124,13 @@ jobs:
       - run: npm ci
       - name: Generate test fixtures
         run: npm run fixtures:generate
+      - name: Generated fixtures leave committed fixtures intact
+        # The generator owns tests/fixtures/datasets/{lerobotv2,lerobotv3,lerobotv2-image}
+        # and rewrites them (bytes depend on the local ffmpeg); it must not
+        # delete any tracked fixture or change one outside its directories.
+        run: |
+          git diff --exit-code --diff-filter=D -- tests/fixtures
+          git diff --exit-code -- tests/fixtures ':(exclude)tests/fixtures/datasets/lerobotv2' ':(exclude)tests/fixtures/datasets/lerobotv3' ':(exclude)tests/fixtures/datasets/lerobotv2-image'
       - name: Install official LeRobot dataset reader
         working-directory: official-lerobot
         run: uv sync --extra dataset

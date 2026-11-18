@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { MutableRefObject } from 'react';
 import type { EpisodeMetadata, PlaybackMode, EpisodeTrimRange } from '@/core';
 import { PlaybackEngine } from '../services/PlaybackEngine';
+import { PlaybackClock, timeOfFrame } from '../services/PlaybackClock';
 
 export class PendingPlaybackIntent {
   private target: boolean | null = null;
@@ -61,11 +62,34 @@ export function usePlaybackBridge({
   shouldHoldAtEpisodeEndRef,
   onNaturalEndRef,
 }: UsePlaybackBridgeOptions) {
-  const previewRangeRef = useRef(previewRange);
-  previewRangeRef.current = previewRange;
   const [currentFrameIndex, setCurrentFrameIndex] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
   const pendingIntentRef = useRef(new PendingPlaybackIntent());
+  /** The one time owner for this viewer; cameras follow it, charts derive frames from it. */
+  const [clock] = useState(() => new PlaybackClock());
+
+  // The engine lives as long as the provider and reads the latest values
+  // through this ref, so changing speed or episode never restarts playback.
+  const latest = useRef({
+    previewRange,
+    frameCount,
+    fps,
+    playbackSpeed,
+    playbackMode,
+    episodes,
+    selectedEpisodeIndex,
+    deletedEpisodes,
+  });
+  latest.current = {
+    previewRange,
+    frameCount,
+    fps,
+    playbackSpeed,
+    playbackMode,
+    episodes,
+    selectedEpisodeIndex,
+    deletedEpisodes,
+  };
 
   useEffect(() => {
     const handleVisibilityChange = () => {
@@ -79,10 +103,11 @@ export function usePlaybackBridge({
     (index: number) => {
       if (index < 0 || index >= frameCount) return;
       frameIndexRef.current = index;
+      clock.seek(timeOfFrame(index, fps || 30));
       if (!isPlaying) setCurrentFrameIndex(index);
       notifyFrameSubscribers(index);
     },
-    [frameCount, frameIndexRef, isPlaying, notifyFrameSubscribers],
+    [clock, fps, frameCount, frameIndexRef, isPlaying, notifyFrameSubscribers],
   );
 
   const togglePlay = useCallback(() => {
@@ -116,51 +141,47 @@ export function usePlaybackBridge({
     [frameIndexRef, isBusy, setFrameIndex],
   );
 
-  const playbackEngineRef = useRef<PlaybackEngine | null>(null);
+  const [engine] = useState(
+    () =>
+      new PlaybackEngine(
+        {
+          getFrameIndex: () => frameIndexRef.current,
+          setFrameIndexSilent: (index) => {
+            frameIndexRef.current = index;
+          },
+          notifyFrame: (index) => notifyRef.current(index),
+          getFrameCount: () => latest.current.frameCount,
+          getPreviewRange: () => latest.current.previewRange,
+          getFps: () => latest.current.fps || 30,
+          getPlaybackSpeed: () => latest.current.playbackSpeed,
+          getPlaybackMode: () => latest.current.playbackMode,
+          getEpisodes: () => latest.current.episodes,
+          getSelectedEpisodeIndex: () => latest.current.selectedEpisodeIndex,
+          getDeletedEpisodes: () => latest.current.deletedEpisodes,
+          onStop: () => setIsPlaying(false),
+          shouldHoldAtEpisodeEnd: () => shouldHoldRef.current?.current() ?? false,
+          onNaturalEnd: () => onNaturalEndHolder.current?.current(),
+          onAdvanceEpisode: (episodeIndex) => selectEpisodeRef.current(episodeIndex),
+          onResumeAfterEpisode: () => setIsPlaying(true),
+        },
+        clock,
+      ),
+  );
+  const notifyRef = useRef(notifyFrameSubscribers);
+  notifyRef.current = notifyFrameSubscribers;
+  const shouldHoldRef = useRef(shouldHoldAtEpisodeEndRef);
+  shouldHoldRef.current = shouldHoldAtEpisodeEndRef;
+  const onNaturalEndHolder = useRef(onNaturalEndRef);
+  onNaturalEndHolder.current = onNaturalEndRef;
+
+  useEffect(() => () => engine.dispose(), [engine]);
+
+  // A new episode starts at frame 0 of the clock.
   useEffect(() => {
-    const engine = new PlaybackEngine({
-      getFrameIndex: () => frameIndexRef.current,
-      setFrameIndexSilent: (index) => {
-        frameIndexRef.current = index;
-      },
-      notifyFrame: notifyFrameSubscribers,
-      getFrameCount: () => frameCount,
-      getPreviewRange: () => previewRangeRef.current,
-      getFps: () => fps || 30,
-      getPlaybackSpeed: () => playbackSpeed,
-      getPlaybackMode: () => playbackMode,
-      getEpisodes: () => episodes,
-      getSelectedEpisodeIndex: () => selectedEpisodeIndex,
-      getDeletedEpisodes: () => deletedEpisodes,
-      onStop: () => setIsPlaying(false),
-      shouldHoldAtEpisodeEnd: () => shouldHoldAtEpisodeEndRef?.current() ?? false,
-      onNaturalEnd: () => onNaturalEndRef?.current(),
-      onAdvanceEpisode: (episodeIndex) => selectEpisodeRef.current(episodeIndex),
-      onResumeAfterEpisode: () => setIsPlaying(true),
-    });
-    playbackEngineRef.current = engine;
-    return () => {
-      engine.dispose();
-      playbackEngineRef.current = null;
-    };
-  }, [
-    frameCount,
-    frameIndexRef,
-    fps,
-    playbackSpeed,
-    playbackMode,
-    episodes,
-    selectedEpisodeIndex,
-    deletedEpisodes,
-    selectEpisodeRef,
-    notifyFrameSubscribers,
-    shouldHoldAtEpisodeEndRef,
-    onNaturalEndRef,
-  ]);
+    clock.seek(timeOfFrame(frameIndexRef.current, latest.current.fps || 30));
+  }, [clock, frameIndexRef, selectedEpisodeIndex]);
 
   useEffect(() => {
-    const engine = playbackEngineRef.current;
-    if (!engine) return;
     if (isPlaying && frameCount > 0 && !isBusy) {
       engine.start();
     } else {
@@ -169,10 +190,10 @@ export function usePlaybackBridge({
         setCurrentFrameIndex(frameIndexRef.current);
       }
     }
-    return () => engine.stop();
-  }, [isPlaying, frameCount, isBusy, currentFrameIndex, frameIndexRef]);
+  }, [engine, isPlaying, frameCount, isBusy, currentFrameIndex, frameIndexRef]);
 
   return {
+    clock,
     currentFrameIndex,
     setCurrentFrameIndex,
     isPlaying,
