@@ -17,6 +17,11 @@ import { useLeRobotData } from '../contexts/LeRobotContext';
 import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts';
 import { ViewerLayout } from '../features/viewer/ViewerLayout';
 import { ErrorState } from './Commons/ErrorState';
+import { AuxiliarySeriesProvider } from '../contexts/AuxiliarySeriesContext';
+import type {
+  AuxiliarySeries,
+  AuxiliarySeriesWarning,
+} from '../../platform/services/auxiliarySeries';
 
 /** Stable error categories reported to an embedding host. */
 export type LeRobotViewerErrorCode =
@@ -65,6 +70,14 @@ export interface LeRobotViewerProps {
    * @defaultValue true
    */
   enableKeyboardShortcuts?: boolean;
+  /**
+   * Extra time series from separate parquet files, aligned by their own time
+   * column and plotted with the dataset's charts on the same playhead (native
+   * rate; drawn with min/max-per-pixel decimation). Single-dataset views only.
+   */
+  auxiliarySeries?: AuxiliarySeries[];
+  /** Receives typed auxiliary-series warnings (missing column, read failure …). */
+  onAuxiliarySeriesWarning?: (warning: AuxiliarySeriesWarning) => void;
 }
 
 /** Viewer without the provider wrapper; render inside `LeRobotStudioProvider`. */
@@ -76,6 +89,8 @@ export function LeRobotViewerContent({
   enableKeyboardShortcuts = true,
   onBack,
   onExport,
+  auxiliarySeries,
+  onAuxiliarySeriesWarning,
 }: Omit<LeRobotViewerProps, 'theme' | 'language' | 'className'> & {
   showSidebar: boolean;
   showPlaybackBar: boolean;
@@ -291,15 +306,17 @@ export function LeRobotViewerContent({
   );
 
   return (
-    <ViewerLayout
-      showSidebar={showSidebar}
-      showPlaybackBar={showPlaybackBar}
-      showToaster={false}
-      sidebar={<EpisodeSidebar />}
-      sidebarHeader={sidebarHeader}
-      emptyState={emptyState}
-      onRetry={handleRetry}
-    />
+    <AuxiliarySeriesProvider series={auxiliarySeries} onWarning={onAuxiliarySeriesWarning}>
+      <ViewerLayout
+        showSidebar={showSidebar}
+        showPlaybackBar={showPlaybackBar}
+        showToaster={false}
+        sidebar={<EpisodeSidebar />}
+        sidebarHeader={sidebarHeader}
+        emptyState={emptyState}
+        onRetry={handleRetry}
+      />
+    </AuxiliarySeriesProvider>
   );
 }
 
@@ -314,6 +331,8 @@ export const LeRobotViewer: React.FC<LeRobotViewerProps> = ({
   enableKeyboardShortcuts = true,
   onBack,
   onExport,
+  auxiliarySeries,
+  onAuxiliarySeriesWarning,
 }) => {
   return (
     <LeRobotStudioProvider theme={theme} language={language} className={className} showToaster>
@@ -325,6 +344,8 @@ export const LeRobotViewer: React.FC<LeRobotViewerProps> = ({
         enableKeyboardShortcuts={enableKeyboardShortcuts}
         onBack={onBack}
         onExport={onExport}
+        auxiliarySeries={auxiliarySeries}
+        onAuxiliarySeriesWarning={onAuxiliarySeriesWarning}
       />
     </LeRobotStudioProvider>
   );

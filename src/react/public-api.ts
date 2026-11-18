@@ -56,6 +56,11 @@ export type {
   EpisodeSetResolvedRecording,
 } from '../platform/datasource/EpisodeSetDataSource';
 export type { RemoteSourceErrorCode } from '../platform/datasource/signedUrls';
+export type {
+  AuxiliarySeries,
+  AuxiliarySeriesWarning,
+  AuxiliarySeriesWarningCode,
+} from '../platform/services/auxiliarySeries';
 
 /** Create a viewer data source for a local ZIP, TAR, or TAR.GZ archive. */
 export function createArchiveDataSourceFromFile(file: File): DataSource {

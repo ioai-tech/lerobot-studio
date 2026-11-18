@@ -505,10 +505,14 @@
       "comboboxAll": "全関節",
       "comboboxNone": "未選択",
       "comboboxPartial": "{{count}} / {{total}} 関節"
+    },
+    "groups": {
+      "dimensions": "{{feature}} の次元"
     }
   },
   "panels": {
     "video": {
+      "codecUnsupported": "このブラウザーでは {{codec}} 動画を再生できません（{{camera}}）。",
       "title": "動画パネル",
       "placeholder": "動画ファイルを待機中...",
       "debug": {
@@ -582,7 +586,8 @@
       "resume": "自動更新を再開",
       "refresh": "現在フレームに更新",
       "showLess": "折りたたむ",
-      "showMore": "さらに表示"
+      "showMore": "さらに表示",
+      "auxiliary": "補助系列"
     },
     "keyboardShortcuts": {
       "title": "キーボードショートカット",
@@ -846,5 +851,8 @@
     "undone": "{{count}} 件を復元しました。後の編集は保持されます。",
     "return": "一括トリミングに戻る",
     "previewNotice": "提案のプレビュー（未適用）。下で範囲を調整し、一括トリミングに戻ってください。"
+  },
+  "viewer": {
+    "regionLabel": "データセットビューアー"
   }
 }

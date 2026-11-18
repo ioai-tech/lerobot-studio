@@ -6,6 +6,29 @@ import { ToastProvider } from '../contexts/ToastContext';
 import { LeRobotDataProvider } from '../contexts/LeRobotProvider';
 import { I18nProvider } from '../i18n/core';
 import { Toaster } from './ui/toaster';
+import { useTranslation } from '../i18n/reactI18nextCompat';
+
+/**
+ * The scoped root: a labelled `region` landmark, never `main` (the host page
+ * owns its `main`; nesting it inside an embedded viewer breaks landmarks).
+ */
+const ScopedRoot = React.forwardRef<
+  HTMLDivElement,
+  { className: string; children: React.ReactNode }
+>(function ScopedRoot({ className, children }, ref) {
+  const { t } = useTranslation();
+  return (
+    <div
+      ref={ref}
+      tabIndex={-1}
+      role="region"
+      aria-label={t('viewer.regionLabel')}
+      className={className}
+    >
+      {children}
+    </div>
+  );
+});
 
 export interface LeRobotStudioProviderProps {
   theme?: 'light' | 'dark' | 'system';
@@ -65,33 +88,18 @@ export const LeRobotStudioProvider: React.FC<LeRobotStudioProviderProps> = ({
 
   return (
     <I18nProvider forcedLanguage={language}>
-      {wrapRoot ? (
-        <div
-          ref={setRootEl}
-          tabIndex={-1}
-          className={cn(
-            'lerobot-root h-full w-full relative bg-background text-foreground outline-none',
-            className,
-          )}
-        >
-          <StudioTree theme={theme} showToaster={showToaster} portalContainer={rootEl}>
-            {children}
-          </StudioTree>
-        </div>
-      ) : (
-        <div
-          ref={setRootEl}
-          tabIndex={-1}
-          className={cn(
-            'lerobot-root h-full w-full bg-background text-foreground outline-none',
-            className,
-          )}
-        >
-          <StudioTree theme={theme} showToaster={showToaster} portalContainer={rootEl}>
-            {children}
-          </StudioTree>
-        </div>
-      )}
+      <ScopedRoot
+        ref={setRootEl}
+        className={cn(
+          'lerobot-root h-full w-full bg-background text-foreground outline-none',
+          wrapRoot && 'relative',
+          className,
+        )}
+      >
+        <StudioTree theme={theme} showToaster={showToaster} portalContainer={rootEl}>
+          {children}
+        </StudioTree>
+      </ScopedRoot>
     </I18nProvider>
   );
 };

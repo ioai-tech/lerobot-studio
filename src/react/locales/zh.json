@@ -505,10 +505,14 @@
       "comboboxAll": "全部关节",
       "comboboxNone": "未选择",
       "comboboxPartial": "已选 {{count}} / {{total}} 个关节"
+    },
+    "groups": {
+      "dimensions": "{{feature}} 的维度"
     }
   },
   "panels": {
     "video": {
+      "codecUnsupported": "此浏览器无法播放 {{codec}} 视频（{{camera}}）。",
       "title": "视频面板",
       "placeholder": "等待加载视频文件...",
       "debug": {
@@ -580,7 +584,8 @@
       "resume": "继续自动刷新",
       "refresh": "刷新到当前帧",
       "showLess": "收起",
-      "showMore": "显示更多"
+      "showMore": "显示更多",
+      "auxiliary": "辅助序列"
     },
     "keyboardShortcuts": {
       "title": "键盘快捷键",
@@ -844,5 +849,8 @@
     "undone": "已恢复 {{count}} 个裁剪，后续编辑保持不变。",
     "return": "返回批量裁剪",
     "previewNotice": "正在预览建议，尚未应用。可在下方调整区间，然后返回批量裁剪。"
+  },
+  "viewer": {
+    "regionLabel": "数据集查看器"
   }
 }

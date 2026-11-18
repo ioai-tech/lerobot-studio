@@ -10,6 +10,7 @@ import {
 } from '../ChartJointFilterDropdown';
 import { Sheet, SheetContent } from '@/ui';
 import { SplitJointMiniPlot } from './SplitJointMiniPlot';
+import { ChartLineStyleKey } from '../ChartLineStyleKey';
 import { splitChartHeightForVisibleCount, splitListRowHeightForVisibleCount } from '@/core';
 
 export type SplitChartsSheetProps = {
@@ -24,6 +25,9 @@ export type SplitChartsSheetProps = {
   showState: boolean;
   hasAction: boolean;
   hasState: boolean;
+  /** Per-joint plots overlay action (dashed) and state (solid); these toggle each. */
+  onShowActionChange: (visible: boolean) => void;
+  onShowStateChange: (visible: boolean) => void;
 };
 
 type SplitRowExtra = {
@@ -98,6 +102,8 @@ export function SplitChartsSheet({
   showState,
   hasAction,
   hasState,
+  onShowActionChange,
+  onShowStateChange,
 }: SplitChartsSheetProps) {
   const { t } = useTranslation();
 
@@ -149,6 +155,20 @@ export function SplitChartsSheet({
               jointFilterDropdownProps.contentClassName,
             )}
           />
+          {hasAction && (
+            <ChartLineStyleKey
+              kind="action"
+              visible={showAction}
+              onVisibleChange={onShowActionChange}
+            />
+          )}
+          {hasState && (
+            <ChartLineStyleKey
+              kind="state"
+              visible={showState}
+              onVisibleChange={onShowStateChange}
+            />
+          )}
         </div>
         <div className="min-h-0 flex-1 overflow-hidden px-1 pb-4">
           {visibleCount === 0 ? (

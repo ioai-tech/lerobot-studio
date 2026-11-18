@@ -36,6 +36,7 @@ import { PanelEmptyState, PanelLoadingState } from '../Common/PanelState';
 import { copyImageBytesAsPng, copyVideoFrameAsPng, type MediaCopyResult } from '@/platform';
 import { getFeatureDisplayType } from '@/core';
 import type { EpisodeMetadata, LeRobotInfo } from '@/core';
+import { AuxiliarySamples } from './AuxiliarySamples';
 
 // ============================================================================
 // 常量配置
@@ -1127,6 +1128,7 @@ const RawPanelContent: React.FC<RawPanelProps> = ({ params }) => {
         hasSelectedEpisode={selectedEpisodeIndex !== null}
         isStale={isTreeStale}
       />
+      <AuxiliarySamples frameIndex={displayFrameIndex} />
     </div>
   );
 };

@@ -314,6 +314,19 @@ export class LeRobotDataLoader {
     return table;
   }
 
+  /**
+   * Parse parquet bytes that are not part of the dataset (for example an
+   * auxiliary series) with this loader's parquet worker; returns Arrow IPC.
+   */
+  async parseParquet(bytes: Uint8Array, columns?: string[]): Promise<Uint8Array> {
+    if (isArrowIpc(bytes)) return bytes;
+    const buffer = (bytes.buffer as ArrayBuffer).slice(
+      bytes.byteOffset,
+      bytes.byteOffset + bytes.byteLength,
+    );
+    return this.worker.readParquet(buffer, columns);
+  }
+
   private async readParquetByPath(path: string, columns?: string[]): Promise<Uint8Array> {
     const bytes = await this.readFileBytesCached(path);
     // Metadata tables may also be Arrow IPC (sources that synthesize metadata,

@@ -2,7 +2,6 @@
  * Shared chart derivation for the aggregate uPlot and per-joint split view.
  */
 
-import uPlot from 'uplot';
 import type { LeRobotFeature, LeRobotInfo } from '@/core';
 import type { NumericalColumnData } from '@/platform';
 import { getChartSeriesKind } from '@/core';
@@ -252,69 +251,5 @@ export function computeChartDataCore(input: {
     },
     seriesData,
     seriesIdsByJoint,
-  };
-}
-
-export function buildAggregatePreparedData(
-  core: ChartDataCore,
-  input: {
-    selectedSeriesIds: Set<string>;
-    showAction: boolean;
-    showState: boolean;
-    getStrokeColor: (seriesId: string, baseColor: string) => string;
-    stateLabel: string;
-    actionLabel: string;
-  },
-): {
-  data: uPlot.AlignedData;
-  configs: uPlot.Series[];
-  seriesMeta: Array<ChartSeriesMeta | null>;
-  originalTimestamps: number[];
-  meta: ChartSamplingMeta;
-} {
-  const { selectedSeriesIds, showAction, showState, getStrokeColor, stateLabel, actionLabel } =
-    input;
-
-  const seriesDataArrays: Float64Array[] = [];
-  const seriesMeta: Array<ChartSeriesMeta | null> = [null];
-  const seriesConfigs: uPlot.Series[] = [{}];
-
-  core.dimensions.forEach((dim) => {
-    if (!selectedSeriesIds.has(dim.id)) return;
-    if (dim.kind === 'state' && !showState) return;
-    if (dim.kind === 'action' && !showAction) return;
-
-    const arr = core.seriesData[dim.id];
-    if (!arr) return;
-
-    const baseColor = core.jointColorMap[dim.jointName] ?? '#94a3b8';
-    const isState = dim.kind === 'state';
-    const seriesLabel = `${isState ? stateLabel : actionLabel}: ${dim.featureKey} / ${dim.jointName}`;
-
-    seriesDataArrays.push(arr);
-    seriesConfigs.push({
-      label: seriesLabel,
-      stroke: () => getStrokeColor(dim.id, baseColor),
-      width: isState ? 1.25 : 1.5,
-      dash: isState ? [] : ACTION_DASH,
-      points: { show: false },
-      spanGaps: true,
-    });
-    seriesMeta.push({
-      id: dim.id,
-      featureKey: dim.featureKey,
-      dimIndex: dim.dimIndex,
-      jointName: dim.jointName,
-      kind: dim.kind,
-      color: baseColor,
-    });
-  });
-
-  return {
-    data: [core.simplifiedTimestamps, ...seriesDataArrays],
-    configs: seriesConfigs,
-    seriesMeta,
-    originalTimestamps: core.originalTimestamps,
-    meta: core.samplingMeta,
   };
 }

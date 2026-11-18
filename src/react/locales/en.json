@@ -505,10 +505,14 @@
       "comboboxAll": "All joints",
       "comboboxNone": "None selected",
       "comboboxPartial": "{{count}} / {{total}} joints"
+    },
+    "groups": {
+      "dimensions": "Dimensions of {{feature}}"
     }
   },
   "panels": {
     "video": {
+      "codecUnsupported": "This browser cannot play {{codec}} video ({{camera}}).",
       "title": "Video Panel",
       "placeholder": "Waiting for video file...",
       "debug": {
@@ -580,7 +584,8 @@
       "resume": "Resume auto-refresh",
       "refresh": "Refresh to current frame",
       "showLess": "Show less",
-      "showMore": "Show more"
+      "showMore": "Show more",
+      "auxiliary": "Auxiliary series"
     },
     "keyboardShortcuts": {
       "title": "Keyboard Shortcuts",
@@ -844,5 +849,8 @@
     "undone": "Restored {{count}} trims. Later edits were preserved.",
     "return": "Return to batch trim",
     "previewNotice": "Suggestion preview — not applied. Adjust the range below, then return to batch trim."
+  },
+  "viewer": {
+    "regionLabel": "Dataset viewer"
   }
 }
