@@ -11,6 +11,8 @@ interface EpisodeHeaderProps {
   isReadOnly: boolean;
   onToggleEditMode: () => void;
   onToggleMultiSelectMode: () => void;
+  /** @defaultValue true */
+  showMultiSelect?: boolean;
 }
 
 export const EpisodeHeader: React.FC<EpisodeHeaderProps> = ({
@@ -20,6 +22,7 @@ export const EpisodeHeader: React.FC<EpisodeHeaderProps> = ({
   isReadOnly,
   onToggleEditMode,
   onToggleMultiSelectMode,
+  showMultiSelect = true,
 }) => {
   const { t } = useTranslation();
 
@@ -35,30 +38,32 @@ export const EpisodeHeader: React.FC<EpisodeHeaderProps> = ({
 
       {!isReadOnly && (
         <div className="flex min-w-0 flex-wrap items-center gap-1 overflow-hidden">
-          <Button
-            variant={multiSelectMode ? 'secondary' : 'ghost'}
-            size="sm"
-            className={cn(
-              'h-7 shrink-0 px-1 text-xs font-medium',
-              multiSelectMode
-                ? 'text-pink-400 hover:text-pink-700'
-                : 'text-muted-foreground hover:text-foreground',
-            )}
-            onClick={onToggleMultiSelectMode}
-            title={t('sidebar.multiSelect', 'Select')}
-          >
-            {multiSelectMode ? (
-              <>
-                <Check className="h-3 w-3 shrink-0" />
-                {t('sidebar.multiSelect', 'Select')}
-              </>
-            ) : (
-              <>
-                <CheckSquare className="h-3 w-3 shrink-0" />
-                {t('sidebar.multiSelect', 'Select')}
-              </>
-            )}
-          </Button>
+          {showMultiSelect ? (
+            <Button
+              variant={multiSelectMode ? 'secondary' : 'ghost'}
+              size="sm"
+              className={cn(
+                'h-7 shrink-0 px-1 text-xs font-medium',
+                multiSelectMode
+                  ? 'text-pink-400 hover:text-pink-700'
+                  : 'text-muted-foreground hover:text-foreground',
+              )}
+              onClick={onToggleMultiSelectMode}
+              title={t('sidebar.multiSelect', 'Select')}
+            >
+              {multiSelectMode ? (
+                <>
+                  <Check className="h-3 w-3 shrink-0" />
+                  {t('sidebar.multiSelect', 'Select')}
+                </>
+              ) : (
+                <>
+                  <CheckSquare className="h-3 w-3 shrink-0" />
+                  {t('sidebar.multiSelect', 'Select')}
+                </>
+              )}
+            </Button>
+          ) : null}
 
           <Button
             variant={editMode ? 'secondary' : 'ghost'}

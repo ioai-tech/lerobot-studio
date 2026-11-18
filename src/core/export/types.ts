@@ -1,7 +1,6 @@
 import type { LeRobotInfo, EpisodeMetadata } from '../types/lerobot';
 import type { SplitConfig } from '../analysis/SplitService';
 import type { SubtaskSegment, SubtaskTable } from '../subtask';
-import type { EpisodeTrimRange } from './trim';
 
 export type ExportFormat = 'zip' | 'directory';
 
@@ -31,8 +30,11 @@ export interface ExportOptions {
   includeVideos: boolean;
   /** v3→v3: copy shared MP4s once by default. True physically trims unused footage (slower). */
   compactVideos?: boolean;
-  /** Inclusive ranges keyed by original episode_index. Missing entries keep the whole episode. */
-  trimRanges?: ReadonlyMap<number, EpisodeTrimRange>;
+  /**
+   * Segments keyed by source episode_index: each becomes one exported episode.
+   * Missing or empty entries keep the whole episode.
+   */
+  segments?: ReadonlyMap<number, readonly ExportSegment[]>;
   includeData: boolean;
   /**
    * UI passes true only when "Include subtasks" is checked.
@@ -44,10 +46,27 @@ export interface ExportOptions {
   signal?: AbortSignal;
   /** Optional split config for reproducible train/val/test; written to v3 info.splits or meta/splits.json (v2). */
   splitsConfig?: SplitConfig;
-  /** In-memory subtask segments keyed by source episode_index. Missing keys fall back to source parquet. */
-  subtaskOverlay?: ReadonlyMap<number, SubtaskSegment[]>;
+  /**
+   * With `includeSubtasks`, label frames no subtask covers as `unlabeled`
+   * instead of refusing the export.
+   */
+  fillSubtaskGaps?: boolean;
   /** Source dataset subtask table from meta/subtasks.parquet. */
   sourceSubtasks?: SubtaskTable;
+}
+
+/** One kept range of a source episode, exported as its own episode. */
+export interface ExportSegment {
+  id: string;
+  /** Inclusive source-episode frames. */
+  startFrame: number;
+  endFrame: number;
+  /** Task text; `null` keeps the source episode's task. */
+  task: string | null;
+  /** Subtasks in source-episode frames, inside the range. */
+  subtasks: SubtaskSegment[];
+  /** Extra `meta/episodes` columns (host field values). */
+  columns: Record<string, string | string[] | null>;
 }
 
 export interface V3DataEpisodeLocation {

@@ -278,12 +278,16 @@ Common props include:
 | `onExport`                 | Respond when a user clicks your export button                                    |
 | `auxiliarySeries`          | Extra time series to plot; see [Plot extra time series](#plot-extra-time-series) |
 | `onAuxiliarySeriesWarning` | Receive auxiliary-series warnings                                                |
+| `annotation`               | Host-controlled segments: `value`, `onChange`, `saveState`                       |
+| `readOnly`                 | Show segments and review without any edit control                                |
+| `fields`                   | Values a person sets on each segment (`select`, `tags`, `text`)                  |
+| `messages`                 | Replace built-in segment copy by key                                             |
 
 `onExport` is a callback only. It does not include the standalone app's export engine.
 
 When you provide `onFatalError`, the viewer does not render its built-in fatal-error state. Keep the error in your application state and display an appropriate message yourself.
 
-For custom `DataSource` implementations and the full type list, see [API reference](./api.md).
+For segments, review and change ops, see [API — Segments and review](./api.md#segments-and-review). For custom `DataSource` implementations and the full type list, see [API reference](./api.md).
 
 ## Integration notes
 

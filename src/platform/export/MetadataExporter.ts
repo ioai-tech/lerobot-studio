@@ -8,8 +8,15 @@ import { isV3Info } from '../../core/types/lerobot';
 import { buildExportTaskPlan, type ExportTaskPlan } from './TaskPlan';
 import { splitsIndicesToInfoSplits } from '../../core/analysis/SplitService';
 
-/** Map source split membership to the new contiguous episode indices. */
-function remapSourceSplits(info: LeRobotInfo, episodes: EpisodeMetadata[]): Record<string, string> {
+/**
+ * Map source split membership to the new contiguous episode indices.
+ * `sourceIndexOf` maps an export episode to its source episode (segments).
+ */
+export function remapSourceSplits(
+  info: LeRobotInfo,
+  episodes: EpisodeMetadata[],
+  sourceIndexOf: (episodeIndex: number) => number = (episodeIndex) => episodeIndex,
+): Record<string, string> {
   const source = info.splits as Record<string, string> | undefined;
   if (!source) return {};
   validateV3Splits(source, info.total_episodes);
@@ -19,9 +26,10 @@ function remapSourceSplits(info: LeRobotInfo, episodes: EpisodeMetadata[]): Reco
         const [start, end] = range.split(':').map(Number);
         return [
           name,
-          episodes.flatMap((episode, index) =>
-            episode.episode_index >= start && episode.episode_index < end ? [index] : [],
-          ),
+          episodes.flatMap((episode, index) => {
+            const source = sourceIndexOf(episode.episode_index);
+            return source >= start && source < end ? [index] : [];
+          }),
         ];
       }),
     ),

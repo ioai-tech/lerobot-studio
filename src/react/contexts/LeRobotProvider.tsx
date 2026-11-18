@@ -22,15 +22,18 @@ import {
   LeRobotSelectionContext,
   LeRobotUiContext,
   LeRobotSubtaskContext,
+  LeRobotSegmentContext,
   type FrameIndexSubscriber,
   type TrimPreviewHandlers,
 } from './LeRobotContext';
 import { useSubtaskAnnotation } from './useSubtaskAnnotation';
+import { useSegmentAnnotation } from './useSegmentAnnotation';
 import {
   buildPlaybackFrames,
   getEagerEpisodeColumns,
   getFirstAvailableEpisodeIndex,
   lastUnlabeledGap,
+  segmentsFromFrameIndices,
 } from '@/core';
 import { createParquetImageService, type ParquetImageServiceImpl } from '@/platform';
 import { getImageFeatureNames } from '@/core';
@@ -92,7 +95,6 @@ export const LeRobotDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
   const [sourceSubtasks, setSourceSubtasks] = useState<SubtaskTable>({});
   const [sourceSubtaskIndices, setSourceSubtaskIndices] = useState<Array<number | null>>([]);
   const [subtaskDialogOpen, setSubtaskDialogOpen] = useState(false);
-  const [trimEditMode, setTrimEditMode] = useState(false);
   const [trimSuggestion, setTrimSuggestion] = useState<{
     episodeIndex: number;
     range: EpisodeTrimRange;
@@ -113,7 +115,6 @@ export const LeRobotDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
   const cancelTrimPreview = useCallback(() => {
     trimPreviewHandlersRef.current.cancelPreview();
   }, []);
-  const [previewTrim, setPreviewTrim] = useState(false);
   const [episodeEditMode, setEpisodeEditMode] = useState(false);
   const [selectedEpisodeIndex, setSelectedEpisodeIndex] = useState<number | null>(null);
   const [currentFrames, setCurrentFrames] = useState<FrameData[]>([]);
@@ -145,10 +146,6 @@ export const LeRobotDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
   const versionCapability = dataLoader?.getVersionCapability() ?? null;
   const isReadOnly = versionCapability?.status === 'read-only';
   const {
-    trimRanges,
-    setTrimRanges,
-    trimEpisode,
-    trimEpisodes,
     modifiedEpisodes,
     setModifiedEpisodes,
     deletedEpisodes,
@@ -166,14 +163,12 @@ export const LeRobotDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
     clearEpisodeSelection,
   } = useEpisodeView({ episodes, versionCapability });
 
-  const subtask = useSubtaskAnnotation({
-    versionCapability,
-    selectedEpisodeIndex,
-    episodeLength: currentFrames.length,
-    sourceTable: sourceSubtasks,
-    sourceIndices: sourceSubtaskIndices,
-  });
-  const resetSubtasks = subtask.resetSubtasks;
+  const sourceSubtaskSegments = useMemo(() => {
+    if (sourceSubtaskIndices.length === 0 || sourceSubtaskIndices.length !== currentFrames.length) {
+      return [];
+    }
+    return segmentsFromFrameIndices(sourceSubtaskIndices, sourceSubtasks);
+  }, [currentFrames.length, sourceSubtaskIndices, sourceSubtasks]);
 
   // 使用 ref 跟踪当前数据源和加载器，用于清理和防止重复加载
   const dataLoaderRef = useRef<LeRobotDataLoader | null>(null);
@@ -189,9 +184,43 @@ export const LeRobotDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
   const selectEpisodeRef = useRef<(episodeIndex: number) => Promise<boolean>>(async () => false);
   const shouldHoldAtEpisodeEndRef = useRef<() => boolean>(() => false);
   const onNaturalEndRef = useRef<() => void>(() => undefined);
-  shouldHoldAtEpisodeEndRef.current = () => subtask.canAnnotate && episodeEditMode;
+  const setFrameIndexRef = useRef<(index: number) => void>(() => undefined);
+  const stableSetFrameIndex = useCallback((index: number) => setFrameIndexRef.current(index), []);
+  const stableSelectEpisode = useCallback((index: number) => selectEpisodeRef.current(index), []);
+  const getFrameIndexStable = useCallback(() => frameIndexRef.current, []);
+
+  const segments = useSegmentAnnotation({
+    episodes,
+    selectedEpisodeIndex,
+    versionCapability,
+    episodeEditMode,
+    sourceSubtasks: sourceSubtaskSegments,
+    getFrameIndex: getFrameIndexStable,
+    setFrameIndex: stableSetFrameIndex,
+    selectEpisode: stableSelectEpisode,
+  });
+  const resetSegments = segments.reset;
+
+  const subtask = useSubtaskAnnotation({
+    canAnnotate: segments.canEditSubtasks,
+    controlled: segments.controlled,
+    selectedEpisodeIndex,
+    episodeLength: currentFrames.length,
+    sourceTable: sourceSubtasks,
+    sourceSegments: sourceSubtaskSegments,
+    segments: segments.episodeSegments,
+    doc: segments.doc,
+    dispatch: segments.dispatch,
+    createId: segments.createId,
+    newSegmentReview: segments.config.annotation?.newSegmentReview ?? 'confirmed',
+    showNotice: segments.showNotice,
+  });
+
+  // Pause-to-label belongs to the standalone flow; a host-controlled viewer labels with keys.
+  const pauseToLabel = subtask.canAnnotate && !segments.controlled;
+  shouldHoldAtEpisodeEndRef.current = () => pauseToLabel;
   onNaturalEndRef.current = () => {
-    if (!(subtask.canAnnotate && episodeEditMode) || trimEditMode || trimSuggestion) return;
+    if (!pauseToLabel || trimSuggestion) return;
     const gap = lastUnlabeledGap(subtask.currentSegments, currentFrames.length);
     if (!gap) return;
     if (subtask.beginPendingRange(gap.startFrame, gap.endFrame)) {
@@ -282,12 +311,16 @@ export const LeRobotDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
     shouldHoldAtEpisodeEndRef,
     onNaturalEndRef,
     previewRange:
-      trimSuggestion?.episodeIndex === selectedEpisodeIndex
-        ? trimSuggestion.range
-        : previewTrim && selectedEpisodeIndex != null
-          ? trimRanges.get(selectedEpisodeIndex)
-          : undefined,
+      trimSuggestion?.episodeIndex === selectedEpisodeIndex ? trimSuggestion.range : undefined,
+    loopRange: segments.loopRange,
   });
+  setFrameIndexRef.current = setFrameIndex;
+
+  // A segment selected on another episode seeks once that episode's frames are in.
+  const flushPendingSeek = segments.flushPendingSeek;
+  useEffect(() => {
+    flushPendingSeek(selectedEpisodeIndex, currentFrames.length);
+  }, [currentFrames.length, flushPendingSeek, selectedEpisodeIndex]);
 
   const reset = useCallback(async () => {
     // 清理旧资源，回到欢迎页；bump generation 使在途 initialize 失效
@@ -319,11 +352,8 @@ export const LeRobotDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
     setSourceSubtaskIndices([]);
     setSubtaskDialogOpen(false);
     setEpisodeEditMode(false);
-    setTrimEditMode(false);
-    setPreviewTrim(false);
-    setTrimRanges(new Map());
     setTrimSuggestion(null);
-    resetSubtasks();
+    resetSegments();
     setModifiedEpisodes(new Map());
     setDeletedEpisodes(new Set());
     setSelectedEpisodeIndex(null);
@@ -349,8 +379,7 @@ export const LeRobotDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
     setSelectedEpisodeIndices,
     setCurrentFrameIndex,
     setIsPlaying,
-    resetSubtasks,
-    setTrimRanges,
+    resetSegments,
   ]);
 
   const initialize = useCallback(
@@ -397,11 +426,8 @@ export const LeRobotDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
         setSourceSubtaskIndices([]);
         setSubtaskDialogOpen(false);
         setEpisodeEditMode(false);
-        setTrimEditMode(false);
-        setPreviewTrim(false);
-        setTrimRanges(new Map());
         setTrimSuggestion(null);
-        resetSubtasks();
+        resetSegments();
         setModifiedEpisodes(new Map());
         setDeletedEpisodes(new Set());
         setSelectedEpisodeIndex(null);
@@ -484,8 +510,7 @@ export const LeRobotDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
       setDeletedEpisodes,
       setCurrentFrameIndex,
       setIsPlaying,
-      resetSubtasks,
-      setTrimRanges,
+      resetSegments,
     ],
   );
 
@@ -733,9 +758,6 @@ export const LeRobotDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
 
   const selectionValue = useMemo(
     () => ({
-      trimRanges,
-      trimEpisode,
-      trimEpisodes,
       selectedEpisodeIndex,
       selectedEpisodeIndices,
       toggleEpisodeSelection,
@@ -753,9 +775,6 @@ export const LeRobotDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
       selectEpisode,
     }),
     [
-      trimRanges,
-      trimEpisode,
-      trimEpisodes,
       selectedEpisodeIndex,
       selectedEpisodeIndices,
       toggleEpisodeSelection,
@@ -812,10 +831,6 @@ export const LeRobotDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
       returnFromTrimPreview,
       cancelTrimPreview,
       setTrimPreviewHandlers,
-      trimEditMode,
-      setTrimEditMode,
-      previewTrim,
-      setPreviewTrim,
       healthDialogOpen,
       setHealthDialogOpen,
       subtaskDialogOpen,
@@ -827,8 +842,6 @@ export const LeRobotDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
       healthDialogOpen,
       subtaskDialogOpen,
       episodeEditMode,
-      trimEditMode,
-      previewTrim,
       trimSuggestion,
       returnFromTrimPreview,
       cancelTrimPreview,
@@ -839,7 +852,6 @@ export const LeRobotDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
   const subtaskValue = useMemo(
     () => ({
       canAnnotate: subtask.canAnnotate,
-      overlay: subtask.overlay,
       currentSegments: subtask.currentSegments,
       knownLabels: subtask.knownLabels,
       coverage: subtask.coverage,
@@ -874,7 +886,9 @@ export const LeRobotDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
         <LeRobotSelectionContext.Provider value={selectionValue}>
           <LeRobotPlaybackContext.Provider value={playbackValue}>
             <LeRobotSubtaskContext.Provider value={subtaskValue}>
-              <LeRobotUiContext.Provider value={uiValue}>{children}</LeRobotUiContext.Provider>
+              <LeRobotSegmentContext.Provider value={segments}>
+                <LeRobotUiContext.Provider value={uiValue}>{children}</LeRobotUiContext.Provider>
+              </LeRobotSegmentContext.Provider>
             </LeRobotSubtaskContext.Provider>
           </LeRobotPlaybackContext.Provider>
         </LeRobotSelectionContext.Provider>

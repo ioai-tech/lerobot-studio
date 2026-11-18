@@ -1,4 +1,4 @@
-import type { LeRobotDataLoader } from '../services/LeRobotDataLoader';
+import type { ExportDataLoader } from './SegmentExportPlan';
 import type { LeRobotInfo, EpisodeMetadata } from '@/core';
 import { isV2Info, isV3Info } from '@/core';
 import type { ExportAdapter } from '@/core';
@@ -16,7 +16,7 @@ export type VideoExportOptions = {
 };
 
 function episodeVideoRange(
-  loader: LeRobotDataLoader,
+  loader: ExportDataLoader,
   episodeIndex: number,
   key: string,
   ranges?: ReadonlyMap<number, ExportTrim>,
@@ -35,7 +35,7 @@ function episodeVideoRange(
 
 /** Keep v3 shared files and timestamps; unreferenced files are omitted entirely. */
 async function exportSharedV3Videos(
-  dataLoader: LeRobotDataLoader,
+  dataLoader: ExportDataLoader,
   info: LeRobotInfo,
   episodes: EpisodeMetadata[],
   adapter: ExportAdapter,
@@ -216,7 +216,7 @@ async function convertSegmentWithMediabunny(
  * Copy path: v2 source → v2.1 target only. Read each episode file as bytes and write (avoids blob URL cache eviction).
  */
 async function exportVideosCopy(
-  dataLoader: LeRobotDataLoader,
+  dataLoader: ExportDataLoader,
   info: LeRobotInfo,
   episodes: EpisodeMetadata[],
   adapter: ExportAdapter,
@@ -282,7 +282,7 @@ async function exportVideosCopy(
  * Conversion failures abort export; cancellation propagates to Conversion.cancel.
  */
 async function exportVideosTranscodeToV3(
-  dataLoader: LeRobotDataLoader,
+  dataLoader: ExportDataLoader,
   info: LeRobotInfo,
   episodes: EpisodeMetadata[],
   adapter: ExportAdapter,
@@ -410,7 +410,7 @@ async function exportVideosTranscodeToV3(
  * Conversion failures abort export rather than writing an invalid MP4.
  */
 async function exportVideosTranscodeToV2FromV3(
-  dataLoader: LeRobotDataLoader,
+  dataLoader: ExportDataLoader,
   info: LeRobotInfo,
   episodes: EpisodeMetadata[],
   adapter: ExportAdapter,
@@ -501,7 +501,7 @@ async function ensureParentDir(adapter: ExportAdapter, filePath: string): Promis
  * Copy same-version videos; convert cross-version or explicitly compacted videos.
  */
 export async function exportVideosByTarget(
-  dataLoader: LeRobotDataLoader,
+  dataLoader: ExportDataLoader,
   info: LeRobotInfo,
   episodes: EpisodeMetadata[],
   targetVersion: TargetVersion,

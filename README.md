@@ -46,7 +46,8 @@ Full docs site: [ioai-tech.github.io/lerobot-studio](https://ioai-tech.github.io
 - **Review dataset quality** — inspect dataset statistics and export health-check reports
 - **Edit and export in the standalone app** — update episode tasks, remove or restore episodes, and export `v2.1` or `v3.0` datasets
 - **View and annotate subtasks (`v3.0`)** — official `subtask_index` ranges, Q/R labels, and export with full coverage (never writes `-1`)
-- **Embed in React** — use the read-only viewer in a React 19 application
+- **Split and review episodes** — segments with keyboard-first review, undo/redo, and one exported episode per segment
+- **Embed in React** — use the viewer in a React 19 application, read-only or with host-controlled segment review (`annotation`, `readOnly`, `fields`)
 - **Keep local data local** — local files are processed in the browser; the npm package does not collect usage data
 
 ---

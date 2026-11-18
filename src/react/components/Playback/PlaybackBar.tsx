@@ -3,11 +3,14 @@ import { useTranslation } from 'react-i18next';
 import {
   useLeRobotData,
   useLeRobotPlayback,
+  useLeRobotSegments,
   useLeRobotSelection,
   useLeRobotSubtask,
   useLeRobotUi,
 } from '../../contexts/LeRobotContext';
 import { EpisodeTrimControls } from './EpisodeTrimControls';
+import { SegmentTrack } from '../Segments/SegmentTrack';
+import { SegmentInspector } from '../Segments/SegmentInspector';
 import { EditSubtaskDialog } from '../dialogs/EditSubtaskDialog';
 import { useLoading } from '../../contexts/LoadingContext';
 import { shouldStartAutoplay } from '@/core';
@@ -36,9 +39,9 @@ export const PlaybackBar: React.FC = () => {
     playbackSpeed,
     setPlaybackSpeed,
   } = useLeRobotPlayback();
-  const { info, versionCapability, subscribeFrameIndex, getFrameIndex, isLoading } =
-    useLeRobotData();
-  const { selectedEpisodeIndex, trimRanges, trimEpisode } = useLeRobotSelection();
+  const { info, subscribeFrameIndex, getFrameIndex, isLoading } = useLeRobotData();
+  const { selectedEpisodeIndex } = useLeRobotSelection();
+  const segments = useLeRobotSegments();
   const {
     canAnnotate,
     currentSegments,
@@ -55,23 +58,18 @@ export const PlaybackBar: React.FC = () => {
   const {
     subtaskDialogOpen,
     setSubtaskDialogOpen,
-    episodeEditMode,
-    trimEditMode,
-    setTrimEditMode,
     trimSuggestion,
     setTrimSuggestion,
     returnFromTrimPreview,
     cancelTrimPreview,
-    previewTrim,
-    setPreviewTrim,
   } = useLeRobotUi();
   const suggestion = trimSuggestion?.episodeIndex === selectedEpisodeIndex ? trimSuggestion : null;
-  const trimming =
-    !!suggestion || (episodeEditMode && trimEditMode && versionCapability?.status === 'supported');
-  const annotationEnabled = canAnnotate && episodeEditMode && !trimming;
-  const trimRange =
-    suggestion?.range ??
-    (selectedEpisodeIndex != null ? trimRanges?.get(selectedEpisodeIndex) : undefined);
+  const trimming = !!suggestion;
+  const annotationEnabled = canAnnotate && !trimming;
+  // Pause-to-label is the standalone flow; a host-controlled viewer labels with Shift+[ / Shift+].
+  const pauseToLabel = annotationEnabled && !segments.controlled;
+  const trimRange = suggestion?.range;
+  const showSegments = !trimming && segments.active;
   const [renameIndex, setRenameIndex] = useState<number | null>(null);
 
   const { tasks } = useLoading();
@@ -178,7 +176,7 @@ export const PlaybackBar: React.FC = () => {
       userPausedRef.current = true;
       setRenameIndex(null);
       setPlaying(false);
-      if (annotationEnabled && endAtPlayhead(getFrameIndex())) {
+      if (pauseToLabel && endAtPlayhead(getFrameIndex())) {
         setSubtaskDialogOpen(true);
       }
       return;
@@ -186,7 +184,7 @@ export const PlaybackBar: React.FC = () => {
     userPausedRef.current = false;
     setPlaying(true);
   }, [
-    annotationEnabled,
+    pauseToLabel,
     endAtPlayhead,
     getFrameIndex,
     isPlaying,
@@ -334,7 +332,7 @@ export const PlaybackBar: React.FC = () => {
               )}
             </TooltipTrigger>
             <TooltipContent>
-              {annotationEnabled && isPlaying
+              {pauseToLabel && isPlaying
                 ? t('subtask.pauseToLabel', 'Pause to label')
                 : t('panels.keyboardShortcuts.playPause.action')}
             </TooltipContent>
@@ -376,22 +374,9 @@ export const PlaybackBar: React.FC = () => {
               </Button>
             </div>
           ) : null}
-          {!suggestion && episodeEditMode && versionCapability?.status === 'supported' ? (
-            <Button
-              size="sm"
-              variant={trimming ? 'secondary' : 'ghost'}
-              aria-pressed={trimming}
-              onClick={() => {
-                setPlaying(false);
-                setTrimEditMode(!trimming);
-              }}
-            >
-              {t('trim.title')}
-            </Button>
-          ) : null}
-          {trimming && selectedEpisodeIndex != null ? (
+          {trimming && selectedEpisodeIndex != null && suggestion ? (
             <EpisodeTrimControls
-              range={trimRange ?? { startFrame: 0, endFrame: totalFrames - 1 }}
+              range={suggestion.range}
               totalFrames={totalFrames}
               fps={fps}
               disabled={isLoading || !!activeTask || subtaskDialogOpen}
@@ -400,27 +385,14 @@ export const PlaybackBar: React.FC = () => {
                 userPausedRef.current = true;
                 setPlaying(false);
               }}
-              onChange={(range) => {
-                if (suggestion)
-                  setTrimSuggestion({
-                    ...suggestion,
-                    range: range ?? { startFrame: 0, endFrame: totalFrames - 1 },
-                  });
-                else trimEpisode(selectedEpisodeIndex, range);
-              }}
-              preview={!!suggestion || previewTrim}
-              onPreviewChange={suggestion ? undefined : setPreviewTrim}
+              onChange={(range) =>
+                setTrimSuggestion({
+                  ...suggestion,
+                  range: range ?? { startFrame: 0, endFrame: totalFrames - 1 },
+                })
+              }
+              preview
             />
-          ) : null}
-          {!trimming && trimRange ? (
-            <p className="px-2 text-xs text-muted-foreground">
-              {t('trim.summary', {
-                original: totalFrames,
-                kept: trimRange.endFrame - trimRange.startFrame + 1,
-                start: (trimRange.startFrame / fps).toFixed(2),
-                end: ((trimRange.endFrame + 1) / fps).toFixed(2),
-              })}
-            </p>
           ) : null}
           <PlaybackProgressSlider
             trimRange={trimRange}
@@ -433,16 +405,24 @@ export const PlaybackBar: React.FC = () => {
             setFrameIndex={setFrameIndex}
             getFrameIndex={getFrameIndex}
             subscribeFrameIndex={subscribeFrameIndex}
+            aboveTrack={
+              showSegments ? (
+                <SegmentTrack
+                  segments={segments.episodeSegments}
+                  totalFrames={totalFrames}
+                  selectedId={segments.selectedSegmentId}
+                  editable={segments.canEdit}
+                  onSelect={segments.selectSegment}
+                  onCommitRange={segments.setRange}
+                />
+              ) : null
+            }
             segments={currentSegments}
             pendingRange={annotationEnabled ? pendingRange : null}
             editRanges={annotationEnabled && !subtaskDialogOpen}
             knownLabels={knownLabels}
             onReplaceSegments={(next) => {
-              try {
-                replaceEpisodeSegments(next);
-              } catch (error) {
-                console.warn('Could not save subtask ranges', error);
-              }
+              replaceEpisodeSegments(next);
             }}
             onDeleteSegment={removeSegment}
             onFillGap={
@@ -532,6 +512,11 @@ export const PlaybackBar: React.FC = () => {
           }}
         />
       </div>
+      {showSegments ? (
+        <div className="px-4 pb-2 @max-[640px]/viewer:px-2">
+          <SegmentInspector />
+        </div>
+      ) : null}
     </div>
   );
 };

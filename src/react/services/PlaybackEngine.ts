@@ -2,7 +2,10 @@ import type { EpisodeMetadata, PlaybackMode, EpisodeTrimRange } from '@/core';
 import { frameAtTime, PlaybackClock, timeOfFrame } from './PlaybackClock';
 
 export type PlaybackEngineCallbacks = {
+  /** Play only this range and stop at its end. */
   getPreviewRange?: () => EpisodeTrimRange | undefined;
+  /** Repeat this range: past its end, playback continues at its start. */
+  getLoopRange?: () => EpisodeTrimRange | undefined;
   getFrameIndex: () => number;
   setFrameIndexSilent: (index: number) => void;
   notifyFrame: (index: number) => void;
@@ -47,9 +50,14 @@ export class PlaybackEngine {
     this.running = true;
     const fps = this.fps();
     const range = this.callbacks.getPreviewRange?.();
+    const loop = this.callbacks.getLoopRange?.();
     let frame = this.callbacks.getFrameIndex();
     if (range && (frame < range.startFrame || frame >= range.endFrame)) {
       frame = range.startFrame;
+      this.callbacks.setFrameIndexSilent(frame);
+      this.callbacks.notifyFrame(frame);
+    } else if (loop && (frame < loop.startFrame || frame > loop.endFrame)) {
+      frame = loop.startFrame;
       this.callbacks.setFrameIndexSilent(frame);
       this.callbacks.notifyFrame(frame);
     }
@@ -172,6 +180,12 @@ export class PlaybackEngine {
     }
     if (range && frame < range.startFrame) {
       frame = range.startFrame;
+      this.clock.seek(timeOfFrame(frame, fps));
+    }
+
+    const loop = this.callbacks.getLoopRange?.();
+    if (loop && (frame > loop.endFrame || frame < loop.startFrame)) {
+      frame = loop.startFrame;
       this.clock.seek(timeOfFrame(frame, fps));
     }
 

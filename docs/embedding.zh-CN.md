@@ -278,12 +278,16 @@ const LeRobotViewer = dynamic(
 | `onExport`                 | 用户点击宿主导出按钮时的回调                                      |
 | `auxiliarySeries`          | 要绘制的额外时间序列，见[绘制额外的时间序列](#绘制额外的时间序列) |
 | `onAuxiliarySeriesWarning` | 接收额外序列的警告                                                |
+| `annotation`               | 由宿主控制的分段：`value`、`onChange`、`saveState`                |
+| `readOnly`                 | 只显示分段和审核，不显示任何编辑控件                              |
+| `fields`                   | 每个分段上可设置的值（`select`、`tags`、`text`）                  |
+| `messages`                 | 按键替换内置的分段文案                                            |
 
 `onExport` 只是回调，不包含独立应用中的导出引擎。
 
 提供 `onFatalError` 后，查看器不会渲染内置的致命错误状态。请在应用中保存错误信息，并自行显示合适的提示。
 
-自定义 `DataSource` 和完整类型列表见 [API 参考](./api)。
+分段、审核与修改操作见 [API — 分段与审核](./api#segments-and-review)。自定义 `DataSource` 和完整类型列表见 [API 参考](./api)。
 
 ## 集成注意事项
 

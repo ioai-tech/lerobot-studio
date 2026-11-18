@@ -85,26 +85,57 @@ Verified Hub examples and download commands: [Data formats — Official Hub exam
 
 Newer minor versions in the `v2` and `v3` families may open in read-only mode. `v2.0`, other major versions, and datasets without a version are not opened.
 
-### Trim an episode
+### Split and review episodes
 
-In **Edit episodes**, choose **Trim episode** in the playback bar. Each episode can retain one continuous range. Drag either boundary, enter frame numbers, or use **Set start here** / **Set end here** at the playhead. Frame numbers start at zero and both endpoints are included. **Play retained range only** stops at the selected end; **Reset trim** restores the full episode.
+A long recording often holds several attempts. In **Edit episodes**, mark each useful range as a _segment_; export writes every segment as its own episode. An episode with no segments is exported whole.
 
-Trims stay in the current browser session, including when switching episodes. Export writes only retained data rows, resets episode frame indices and timestamps, and clips subtask labels to the same range. Subtask coverage is checked only on retained frames. Numeric statistics are recomputed; RGB/grayscale visual statistics are sampled from at most 100 evenly spaced retained frames per camera, including both endpoints. The original files remain unchanged.
+Segments appear as numbered bands above the timeline and in the episode list. Each segment has an inclusive frame range, an optional task (empty means the episode's task), subtasks, and a review state: **To review** (striped) or **Confirmed**. Segments in one episode never overlap.
 
-For `v3.0` → `v3.0`, leave **Remove unused video segments (slower)** unchecked for a fast export: shared MP4s are copied and their references point to the retained range. Check it to physically trim the video too. Other version combinations physically trim edited episodes. Re-encoding needs browser codec support and can change image quality or file size. The first version supports constant-frame-rate RGB/grayscale datasets; incompatible timestamps, raw depth/TIFF statistics, missing frames, or failed codecs produce an export error instead of an incomplete dataset.
+The details panel under the playback bar shows the selected segment. **In** and **Out** are times (`m:ss.cc`); Out is the end of the last frame, so neighbouring segments share a time. Type a time and press `Enter`, or `Escape` to revert. A value that is refused stays in the field, marked, with the reason. Drag a band edge on the timeline to move it; the edge stops at its neighbours.
 
-### Batch trimming and motion suggestions
+Editing a segment never confirms it. Confirm is a separate step (`A`) and cannot be undone. Every other change can be undone (`Ctrl/⌘+Z`) and redone (`Shift+Ctrl/⌘+Z`); the last 100 steps are kept.
 
-Use **Select** in the episode sidebar, select episodes, and choose **Batch trim**. Only selected episodes in the current filtered list are included. Choose either:
+Keys work while the viewer has focus and you are not typing in a field or a dialog. Press `?` for this list in the app.
 
-- **Remove fixed durations**: remove a specified number of seconds from each end of the original episode. Repeating the calculation does not accumulate removals. Episodes too short for the requested removal are skipped.
-- **Suggest retained ranges**: detect movement in a position or gripper state feature, then retain a buffer before and after it. Both buffers default to **3 seconds** and are independently adjustable. Select the feature, sensitivity, and participating dimensions; existing trims are skipped unless you enable overwriting.
+| Key                           | Action                                                                |
+| ----------------------------- | --------------------------------------------------------------------- |
+| `N`                           | New segment from the playhead to the next segment or the episode end  |
+| `[` / `]`                     | Set In / Out of the selected segment at the playhead                  |
+| `,` / `.`                     | Move the edge nearer the playhead by one frame                        |
+| `Alt+,` / `Alt+.`             | Move the edge nearer the playhead by one second                       |
+| `S`                           | Split the selected segment at the playhead                            |
+| `M`                           | Merge with the next segment                                           |
+| `R` / `Delete`                | Delete the selected segment (Undo restores it)                        |
+| `A`                           | Confirm the selected segment                                          |
+| `Shift+A`                     | Confirm every segment to review in the current filter (asks first)    |
+| `J` / `K`                     | Next / previous segment, across episodes                              |
+| `G`                           | Jump to the next frame that is in no segment                          |
+| `L`                           | Loop playback inside the selected segment                             |
+| `Shift+[` / `Shift+]`         | Start / end a subtask at the playhead                                 |
+| `Ctrl/⌘+Z` / `Shift+Ctrl/⌘+Z` | Undo / redo                                                           |
+| `1`–`9`                       | Choose an option of a field that declares that key (embedded viewers) |
+| `?`                           | Show the keys                                                         |
 
-Calculate the ranges and review each episode's proposed interval, removed duration, and status. Click a range to preview it in the player and adjust its frame boundaries. **Return to batch trim** keeps those adjustments in the proposal; only **Apply selected ranges** changes the export selection. **Undo this batch** restores the previous trims while this dialog remains open, without overwriting subsequent edits. Changing calculation settings or starting another calculation clears that undo history. Closing without applying discards the proposals.
+Splitting keeps the task, review state and field values on both halves and cuts a subtask that crosses the split point. Merging keeps the first segment's task and values, joins tag lists, and is confirmed only if both segments were.
 
-The detector uses short windows of numeric state data, with a noise threshold and conservative boundary padding. It keeps pauses between movements and does not analyze video or identify task semantics. Low-frequency sensor drift, very slow movements, and robot return-to-home movements may be indistinguishable from useful actions; sensitivity and dimension selection need checking on your recordings. All-static, missing, invalid, or insufficient signals produce no reliable suggestion. Continuous movement retains the entire episode. Cancellation discards pending proposals; an in-flight data read may finish in the background.
+The list filter shows **All**, **To review**, or **Issues** (segments a host flagged). Segments stay in the current browser session until you export.
 
-Batch ranges use the same export path as manual trimming, including subtask clipping, recomputed statistics, and **Remove unused video segments (slower)**.
+### Suggest segments from motion
+
+Use **Select** in the episode sidebar, select episodes, and choose **Suggest segments**. Only selected episodes in the current filtered list are included. Choose either:
+
+- **Remove fixed durations**: suggest a range that drops a number of seconds from each end of the original episode. Episodes too short for the request are skipped.
+- **Suggest retained ranges**: detect movement in a position or gripper state feature, then keep a buffer before and after it. Both buffers default to **3 seconds**. Select the feature, sensitivity, and participating dimensions. Episodes that already have segments are skipped unless you enable replacing them.
+
+Review each proposed range, removed duration, and status. Click a range to preview it in the player and adjust it, then return to the suggestions. **Add as segments to review** adds one striped segment per episode; nothing changes before that. The whole batch is one undo step. Closing without adding discards the proposals.
+
+The detector uses short windows of numeric state data, with a noise threshold and conservative boundary padding. It keeps pauses between movements and does not analyze video or identify task semantics. Low-frequency sensor drift, very slow movements, and return-to-home movements may look like useful actions; check sensitivity and dimensions on your recordings. All-static, missing, invalid, or insufficient signals produce no suggestion. Continuous movement keeps the entire episode.
+
+### How segments are exported
+
+Each segment becomes one episode with its rows only: frame indices and timestamps restart at zero, subtask labels are clipped to the segment, and the episode's task is the segment's task. Episode indices are renumbered in order. Numeric statistics are recomputed; RGB/grayscale visual statistics are sampled from at most 100 evenly spaced frames per camera, including both ends. The original files remain unchanged.
+
+For `v3.0` → `v3.0`, leave **Remove unused video segments (slower)** unchecked for a fast export: shared MP4s are copied and each segment's references point into them. Check it to cut the video too. Other version combinations cut the video. Re-encoding needs browser codec support and can change image quality or file size. Constant-frame-rate RGB/grayscale datasets are supported; incompatible timestamps, raw depth/TIFF statistics, missing frames, or failed codecs produce an export error instead of an incomplete dataset.
 
 ## Export a dataset
 

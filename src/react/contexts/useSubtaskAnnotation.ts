@@ -1,14 +1,21 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import type { LeRobotVersionCapability, SubtaskSegment, SubtaskTable } from '@/core';
+import type {
+  AnnotationChange,
+  AnnotationDocument,
+  ReviewState,
+  Segment,
+  SubtaskSegment,
+  SubtaskTable,
+} from '@/core';
 import {
   buildSubtaskTable,
-  canMutateSubtasks,
   collectSubtaskLabels,
   computeSubtaskCoverage,
+  createManualSegment,
   findOverlappingSegment,
   insertSubtaskSegment,
   replaceSubtaskSegment,
-  segmentsFromFrameIndices,
+  segmentAtFrame,
   segmentsInsideEpisode,
   sortSubtaskSegments,
   subtaskRangeToPlayhead,
@@ -21,82 +28,175 @@ export interface PendingSubtaskRange {
 }
 
 type UseSubtaskAnnotationOptions = {
-  versionCapability: LeRobotVersionCapability | null;
+  /** Subtask edits are allowed (segment editing on, and storable). */
+  canAnnotate: boolean;
+  /** Host-controlled: subtasks need an existing segment. */
+  controlled: boolean;
   selectedEpisodeIndex: number | null;
   episodeLength: number;
   sourceTable: SubtaskTable;
-  sourceIndices: Array<number | null>;
+  /** The dataset's own subtasks of the selected episode. */
+  sourceSegments: SubtaskSegment[];
+  /** Segments of the selected episode, sorted. */
+  segments: Segment[];
+  doc: AnnotationDocument;
+  dispatch: (changes: AnnotationChange[]) => boolean;
+  createId: () => string;
+  newSegmentReview: ReviewState;
+  showNotice: (
+    key: string,
+    values?: Record<string, string | number>,
+    tone?: 'info' | 'error',
+  ) => void;
 };
 
-function cloneOverlay(
-  overlay: ReadonlyMap<number, SubtaskSegment[]>,
-): Map<number, SubtaskSegment[]> {
-  return new Map(Array.from(overlay.entries()).map(([key, value]) => [key, [...value]]));
-}
-
+/**
+ * Subtasks live inside segments. The lane shows the subtasks of the selected
+ * episode's segments (or the dataset's own labels when it has none); every
+ * edit becomes `update { subtasks }` of the segment that contains it. In the
+ * standalone app, labelling an episode without segments first makes one
+ * segment spanning the whole episode (it exports exactly like the whole episode).
+ */
 export function useSubtaskAnnotation({
-  versionCapability,
+  canAnnotate,
+  controlled,
   selectedEpisodeIndex,
   episodeLength,
   sourceTable,
-  sourceIndices,
+  sourceSegments,
+  segments,
+  doc,
+  dispatch,
+  createId,
+  newSegmentReview,
+  showNotice,
 }: UseSubtaskAnnotationOptions) {
-  const [overlay, setOverlay] = useState<Map<number, SubtaskSegment[]>>(() => new Map());
   const [pendingRange, setPendingRange] = useState<PendingSubtaskRange | null>(null);
-  const canAnnotate = canMutateSubtasks(versionCapability);
-
-  const resetSubtasks = useCallback(() => {
-    setOverlay(new Map());
-    setPendingRange(null);
-  }, []);
-
-  const sourceSegments = useMemo(() => {
-    if (sourceIndices.length !== episodeLength) return [];
-    return segmentsFromFrameIndices(sourceIndices, sourceTable);
-  }, [episodeLength, sourceIndices, sourceTable]);
 
   const currentSegments = useMemo(() => {
     if (selectedEpisodeIndex == null || episodeLength <= 0) return [];
-    const raw = overlay.has(selectedEpisodeIndex)
-      ? (overlay.get(selectedEpisodeIndex) ?? [])
-      : sourceSegments;
-    return segmentsInsideEpisode(raw, episodeLength);
-  }, [episodeLength, overlay, selectedEpisodeIndex, sourceSegments]);
+    const raw =
+      segments.length > 0 ? segments.flatMap((segment) => segment.subtasks) : sourceSegments;
+    return sortSubtaskSegments(segmentsInsideEpisode(raw, episodeLength));
+  }, [episodeLength, segments, selectedEpisodeIndex, sourceSegments]);
 
   useEffect(() => {
     setPendingRange(null);
   }, [selectedEpisodeIndex]);
 
   const knownLabels = useMemo(() => {
-    const table = buildSubtaskTable(collectSubtaskLabels(overlay.values(), sourceTable));
+    const all = Object.values(doc.episodes).flatMap((entry) =>
+      (entry?.segments ?? []).map((segment) => segment.subtasks),
+    );
+    const table = buildSubtaskTable(collectSubtaskLabels([...all, sourceSegments], sourceTable));
     return Object.values(table);
-  }, [overlay, sourceTable]);
+  }, [doc, sourceSegments, sourceTable]);
 
   const coverage = useMemo(
     () => computeSubtaskCoverage(episodeLength, currentSegments),
     [currentSegments, episodeLength],
   );
 
-  const ensureOverlayEpisode = useCallback(
-    (episodeIndex: number, length: number): SubtaskSegment[] => {
-      const existing = overlay.get(episodeIndex);
-      if (existing) return existing;
-      return episodeIndex === selectedEpisodeIndex
-        ? sourceSegments.filter((segment) => segment.endFrame < length)
-        : [];
+  /** Store a new subtask list for the episode as segment updates (one undo step). */
+  const replaceEpisodeSegments = useCallback(
+    (nextSubtasks: SubtaskSegment[]): boolean => {
+      if (!canAnnotate || selectedEpisodeIndex == null) return false;
+      let next: SubtaskSegment[];
+      try {
+        next = sortSubtaskSegments(
+          nextSubtasks.map((subtask) => validateSubtaskSegment(subtask, episodeLength)),
+        );
+        next.forEach((subtask, index) => {
+          if (findOverlappingSegment(next, subtask, index)) throw new Error('overlap');
+        });
+      } catch {
+        showNotice('segments.notice.subtaskInvalid', undefined, 'error');
+        return false;
+      }
+      if (segments.length === 0) {
+        if (controlled) {
+          showNotice('segments.notice.subtaskNeedsSegment', undefined, 'error');
+          return false;
+        }
+        const segment = createManualSegment({
+          id: createId(),
+          startFrame: 0,
+          endFrame: episodeLength - 1,
+          review: newSegmentReview,
+          subtasks: next,
+        });
+        return dispatch([{ op: 'create', episodeIndex: selectedEpisodeIndex, segment }]);
+      }
+      const bySegment = new Map<string, SubtaskSegment[]>(segments.map((item) => [item.id, []]));
+      for (const subtask of next) {
+        const owner = segments.find(
+          (item) => subtask.startFrame >= item.startFrame && subtask.endFrame <= item.endFrame,
+        );
+        if (!owner) {
+          showNotice('segments.notice.subtaskOutside', undefined, 'error');
+          return false;
+        }
+        bySegment.get(owner.id)!.push({ ...subtask });
+      }
+      const changes: AnnotationChange[] = [];
+      for (const segment of segments) {
+        const list = bySegment.get(segment.id)!;
+        const current = sortSubtaskSegments(segment.subtasks);
+        const same =
+          list.length === current.length &&
+          list.every(
+            (item, index) =>
+              item.label === current[index].label &&
+              item.startFrame === current[index].startFrame &&
+              item.endFrame === current[index].endFrame,
+          );
+        if (!same) {
+          changes.push({
+            op: 'update',
+            episodeIndex: selectedEpisodeIndex,
+            id: segment.id,
+            patch: { subtasks: list },
+          });
+        }
+      }
+      return dispatch(changes);
     },
-    [overlay, selectedEpisodeIndex, sourceSegments],
+    [
+      canAnnotate,
+      controlled,
+      createId,
+      dispatch,
+      episodeLength,
+      newSegmentReview,
+      segments,
+      selectedEpisodeIndex,
+      showNotice,
+    ],
+  );
+
+  /** Bound a lane range to the segment that contains `frame` (when segments exist). */
+  const boundToSegment = useCallback(
+    (range: PendingSubtaskRange, frame: number): PendingSubtaskRange | null => {
+      if (segments.length === 0) return controlled ? null : range;
+      const owner = segmentAtFrame(segments, frame);
+      if (!owner) return null;
+      const startFrame = Math.max(range.startFrame, owner.startFrame);
+      const endFrame = Math.min(range.endFrame, owner.endFrame);
+      return startFrame <= endFrame ? { startFrame, endFrame } : null;
+    },
+    [controlled, segments],
   );
 
   const endAtPlayhead = useCallback(
     (frameIndex: number): boolean => {
       if (!canAnnotate || selectedEpisodeIndex == null) return false;
       const range = subtaskRangeToPlayhead(currentSegments, frameIndex, episodeLength);
-      if (!range) return false;
-      setPendingRange(range);
+      const bounded = range ? boundToSegment(range, frameIndex) : null;
+      if (!bounded) return false;
+      setPendingRange(bounded);
       return true;
     },
-    [canAnnotate, currentSegments, episodeLength, selectedEpisodeIndex],
+    [boundToSegment, canAnnotate, currentSegments, episodeLength, selectedEpisodeIndex],
   );
 
   const beginPendingRange = useCallback(
@@ -125,80 +225,51 @@ export function useSubtaskAnnotation({
       if (!canAnnotate || selectedEpisodeIndex == null || !range) {
         throw new Error('No pending subtask range');
       }
-      const nextSegments = insertSubtaskSegment(
-        ensureOverlayEpisode(selectedEpisodeIndex, episodeLength),
-        { ...range, label },
-        episodeLength,
-      );
-      setOverlay((previous) => {
-        const next = cloneOverlay(previous);
-        next.set(selectedEpisodeIndex, nextSegments);
-        return next;
-      });
-      setPendingRange(null);
+      const next = insertSubtaskSegment(currentSegments, { ...range, label }, episodeLength);
+      if (replaceEpisodeSegments(next)) setPendingRange(null);
     },
-    [canAnnotate, ensureOverlayEpisode, episodeLength, pendingRange, selectedEpisodeIndex],
-  );
-
-  const replaceEpisodeSegments = useCallback(
-    (nextSegments: SubtaskSegment[]) => {
-      if (!canAnnotate || selectedEpisodeIndex == null) return;
-      const sorted = sortSubtaskSegments(
-        nextSegments.map((segment) => validateSubtaskSegment(segment, episodeLength)),
-      );
-      for (let index = 0; index < sorted.length; index++) {
-        const overlap = findOverlappingSegment(sorted, sorted[index], index);
-        if (overlap) {
-          throw new Error(
-            `Subtask "${sorted[index].label}" overlaps "${overlap.label}" (${overlap.startFrame}-${overlap.endFrame})`,
-          );
-        }
-      }
-      setOverlay((previous) => {
-        const next = cloneOverlay(previous);
-        next.set(selectedEpisodeIndex, sorted);
-        return next;
-      });
-    },
-    [canAnnotate, episodeLength, selectedEpisodeIndex],
+    [
+      canAnnotate,
+      currentSegments,
+      episodeLength,
+      pendingRange,
+      replaceEpisodeSegments,
+      selectedEpisodeIndex,
+    ],
   );
 
   const updateSegment = useCallback(
     (index: number, segment: SubtaskSegment) => {
       if (!canAnnotate || selectedEpisodeIndex == null) return;
-      const nextSegments = replaceSubtaskSegment(
-        ensureOverlayEpisode(selectedEpisodeIndex, episodeLength),
-        index,
-        segment,
-        episodeLength,
-      );
-      setOverlay((previous) => {
-        const next = cloneOverlay(previous);
-        next.set(selectedEpisodeIndex, nextSegments);
-        return next;
-      });
+      try {
+        replaceEpisodeSegments(
+          replaceSubtaskSegment(currentSegments, index, segment, episodeLength),
+        );
+      } catch {
+        showNotice('segments.notice.subtaskInvalid', undefined, 'error');
+      }
     },
-    [canAnnotate, ensureOverlayEpisode, episodeLength, selectedEpisodeIndex],
+    [
+      canAnnotate,
+      currentSegments,
+      episodeLength,
+      replaceEpisodeSegments,
+      selectedEpisodeIndex,
+      showNotice,
+    ],
   );
 
   const removeSegment = useCallback(
     (index: number) => {
       if (!canAnnotate || selectedEpisodeIndex == null) return;
-      const current = ensureOverlayEpisode(selectedEpisodeIndex, episodeLength);
-      if (index < 0 || index >= current.length) return;
-      const nextSegments = current.filter((_, itemIndex) => itemIndex !== index);
-      setOverlay((previous) => {
-        const next = cloneOverlay(previous);
-        next.set(selectedEpisodeIndex, nextSegments);
-        return next;
-      });
+      if (index < 0 || index >= currentSegments.length) return;
+      replaceEpisodeSegments(currentSegments.filter((_, itemIndex) => itemIndex !== index));
     },
-    [canAnnotate, ensureOverlayEpisode, episodeLength, selectedEpisodeIndex],
+    [canAnnotate, currentSegments, replaceEpisodeSegments, selectedEpisodeIndex],
   );
 
   return useMemo(
     () => ({
-      overlay,
       canAnnotate,
       currentSegments,
       knownLabels,
@@ -212,10 +283,8 @@ export function useSubtaskAnnotation({
       updateSegment,
       replaceEpisodeSegments,
       removeSegment,
-      resetSubtasks,
     }),
     [
-      overlay,
       canAnnotate,
       currentSegments,
       knownLabels,
@@ -229,7 +298,6 @@ export function useSubtaskAnnotation({
       updateSegment,
       replaceEpisodeSegments,
       removeSegment,
-      resetSubtasks,
     ],
   );
 }

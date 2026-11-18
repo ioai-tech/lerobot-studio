@@ -31,6 +31,7 @@ export class PendingPlaybackIntent {
 
 type UsePlaybackBridgeOptions = {
   previewRange?: EpisodeTrimRange;
+  loopRange?: EpisodeTrimRange;
   isBusy: boolean;
   frameCount: number;
   frameIndexRef: MutableRefObject<number>;
@@ -48,6 +49,7 @@ type UsePlaybackBridgeOptions = {
 
 export function usePlaybackBridge({
   previewRange,
+  loopRange,
   isBusy,
   frameCount,
   frameIndexRef,
@@ -72,6 +74,7 @@ export function usePlaybackBridge({
   // through this ref, so changing speed or episode never restarts playback.
   const latest = useRef({
     previewRange,
+    loopRange,
     frameCount,
     fps,
     playbackSpeed,
@@ -82,6 +85,7 @@ export function usePlaybackBridge({
   });
   latest.current = {
     previewRange,
+    loopRange,
     frameCount,
     fps,
     playbackSpeed,
@@ -152,6 +156,7 @@ export function usePlaybackBridge({
           notifyFrame: (index) => notifyRef.current(index),
           getFrameCount: () => latest.current.frameCount,
           getPreviewRange: () => latest.current.previewRange,
+          getLoopRange: () => latest.current.loopRange,
           getFps: () => latest.current.fps || 30,
           getPlaybackSpeed: () => latest.current.playbackSpeed,
           getPlaybackMode: () => latest.current.playbackMode,

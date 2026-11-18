@@ -1,18 +1,10 @@
-import React from 'react';
-import { createRoot } from 'react-dom/client';
 import { describe, expect, it, vi } from 'vitest';
-import { page, userEvent } from 'vitest/browser';
 import { tableFromIPC } from 'apache-arrow';
 import { Input, BlobSource, ALL_FORMATS, CanvasSink } from 'mediabunny';
-import { LeRobotViewer } from '@/components/LeRobotViewer';
 import { ExportService, LeRobotDataLoader } from '@/platform';
 import { getParquetWasm } from '../../src/platform/export/parquetWasmLoader';
 import { InMemoryExportAdapter } from '../helpers/inMemoryExportAdapter';
 import { FetchDataSource } from './fixtures';
-import { pauseOnEpisode } from './playback';
-import '../../src/react/index.css';
-
-globalThis.IS_REACT_ACT_ENVIRONMENT = false;
 
 async function pixel(bytes: Uint8Array, time: number) {
   const input = new Input({
@@ -31,7 +23,7 @@ async function pixel(bytes: Uint8Array, time: number) {
   }
 }
 
-describe('browser: episode trim export', () => {
+describe('browser: segment export (one segment per episode)', () => {
   it.each([
     ['lerobotv2', 'v2.1', false, 1, 2],
     ['lerobotv2', 'v3.0', false, 1, 2],
@@ -76,9 +68,21 @@ describe('browser: episode trim export', () => {
             includeData: true,
             includeVideos: true,
             compactVideos,
-            trimRanges: new Map([[sourceEpisode.episode_index, range]]),
             includeSubtasks: true,
-            subtaskOverlay: new Map([[sourceEpisode.episode_index, [{ ...range, label: 'move' }]]]),
+            segments: new Map([
+              [
+                sourceEpisode.episode_index,
+                [
+                  {
+                    id: 'kept',
+                    ...range,
+                    task: null,
+                    subtasks: [{ ...range, label: 'move' }],
+                    columns: {},
+                  },
+                ],
+              ],
+            ]),
           },
         );
         const wasm = await getParquetWasm();
@@ -208,7 +212,12 @@ describe('browser: episode trim export', () => {
         targetVersion: 'v3.0',
         includeData: true,
         includeVideos: true,
-        trimRanges: new Map([[episode.episode_index, { startFrame: 1, endFrame: 1 }]]),
+        segments: new Map([
+          [
+            episode.episode_index,
+            [{ id: 'kept', startFrame: 1, endFrame: 1, task: null, subtasks: [], columns: {} }],
+          ],
+        ]),
       });
       const result = JSON.parse(new TextDecoder().decode(await adapter.readFile('meta/info.json')));
       expect(result.total_frames).toBe(1);
@@ -226,56 +235,6 @@ describe('browser: episode trim export', () => {
       }
     } finally {
       await loader.dispose();
-    }
-  });
-});
-
-describe('browser: episode trim controls', () => {
-  it('edits, previews, preserves across episodes and resets a trim', async () => {
-    await page.viewport(1280, 900);
-    const host = document.createElement('div');
-    host.style.cssText = 'width:1280px;height:900px';
-    document.body.append(host);
-    const root = createRoot(host);
-    try {
-      root.render(
-        <LeRobotViewer
-          dataSource={new FetchDataSource('/tests/fixtures/datasets/lerobotv3')}
-          language="en"
-          showSidebar
-          showPlaybackBar
-        />,
-      );
-      await expect
-        .poll(() => host.querySelector('[title="Edit episodes"]'), { timeout: 10_000 })
-        .not.toBeNull();
-      await expect
-        .poll(() => host.querySelector<HTMLButtonElement>('[title="Edit episodes"]')?.disabled, {
-          timeout: 10_000,
-        })
-        .toBe(false);
-      await pauseOnEpisode(host, 0);
-      host.querySelector<HTMLButtonElement>('[title="Edit episodes"]')!.click();
-      await userEvent.click(page.getByRole('button', { name: 'Trim episode', exact: true }));
-      const start = page.getByRole('spinbutton', { name: 'Start frame', exact: true });
-      await start.fill('1');
-      await expect
-        .element(page.getByText('3 → 2 frames · keep 0.10–0.30 s', { exact: true }))
-        .toBeVisible();
-      await page.screenshot({ path: '../../temp/trim-controls.png' });
-      await userEvent.click(page.getByRole('checkbox', { name: 'Play retained range only' }));
-      await userEvent.click(page.getByRole('button', { name: 'Play/Pause' }));
-      await new Promise((resolve) => setTimeout(resolve, 500));
-      expect(host.querySelector('[data-slot="dialog-content"]')).toBeNull();
-      await userEvent.click(page.getByRole('button', { name: 'Select Episode 1', exact: true }));
-      await expect.element(start).toHaveValue(0);
-      await userEvent.click(page.getByRole('button', { name: 'Select Episode 0', exact: true }));
-      await expect.element(start).toHaveValue(1);
-      await userEvent.click(page.getByRole('button', { name: 'Reset trim', exact: true }));
-      await expect.element(start).toHaveValue(0);
-    } finally {
-      root.unmount();
-      host.remove();
     }
   });
 });

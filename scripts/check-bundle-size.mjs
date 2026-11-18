@@ -29,11 +29,18 @@ if (!Number.isFinite(scale) || scale <= 0 || scale > 1) {
 const budgets = {
   // +5 KB raw head for the splitter ARIA values and Space-on-button handling
   // (measured ~400.1 KB raw, just over the old 400,000-byte ceiling).
-  libEntry: { raw: 405_000, gzip: 125_000 },
+  // Segments and review (reducer, history, inspector, list, keys, ~16 KB of
+  // en/zh/ja copy): main at 9ea1108 measured 385.9 KiB raw / 120.3 KiB gzip,
+  // main plus this change 445.4 KiB / 134.9 KiB (+15.4% / +12.1%). Heads
+  // about 3.0% raw / 2.1% gzip.
+  libEntry: { raw: 470_000, gzip: 141_000 },
   libCss: { raw: 360_000, gzip: 110_000 },
   // +5 KB gzip head for the embed layout hook, resizable stacked sidebar and
   // phone navbar (measured 722.7 KiB gzip, level with the old 740,000-byte ceiling).
-  webInitialJs: { raw: 2_700_000, gzip: 745_000 },
+  // Segments and review: main at 9ea1108 measured 2.52 MiB raw / 725.1 KiB
+  // gzip, main plus this change 2.65 MiB / 762.6 KiB (+5.2% gzip). Heads
+  // about 0.8% raw / 1.2% gzip.
+  webInitialJs: { raw: 2_800_000, gzip: 790_000 },
   webInitialCss: { raw: 200_000, gzip: 25_000 },
   libDataLoader: { raw: 280_000, gzip: 60_000 },
   webDataLoader: { raw: 40_000, gzip: 11_000 },

@@ -6,9 +6,11 @@ import { classifyLeRobotVersion, type EpisodeMetadata, type LeRobotInfo } from '
 import { ExportDialog } from '../../src/react/components/dialogs/ExportDialog';
 import {
   LeRobotDataContext,
+  LeRobotSegmentContext,
   LeRobotSelectionContext,
   LeRobotSubtaskContext,
   type LeRobotDataContextType,
+  type LeRobotSegmentContextType,
   type LeRobotSelectionContextType,
   type LeRobotSubtaskContextType,
 } from '../../src/react/contexts/LeRobotContext';
@@ -52,16 +54,20 @@ function renderExportDialog(language: 'en' | 'zh') {
     modifiedEpisodes: new Map(),
     deletedEpisodes: new Set<number>(),
   } as unknown as LeRobotSelectionContextType;
-  const subtaskValue = {
-    overlay: new Map(),
-  } as unknown as LeRobotSubtaskContextType;
+  const subtaskValue = {} as unknown as LeRobotSubtaskContextType;
+  const segmentValue = {
+    doc: { episodes: {} },
+    fields: undefined,
+  } as unknown as LeRobotSegmentContextType;
 
   return (
     <I18nProvider forcedLanguage={language}>
       <LeRobotDataContext.Provider value={dataValue}>
         <LeRobotSelectionContext.Provider value={selectionValue}>
           <LeRobotSubtaskContext.Provider value={subtaskValue}>
-            <ExportDialog open onOpenChange={vi.fn()} />
+            <LeRobotSegmentContext.Provider value={segmentValue}>
+              <ExportDialog open onOpenChange={vi.fn()} />
+            </LeRobotSegmentContext.Provider>
           </LeRobotSubtaskContext.Provider>
         </LeRobotSelectionContext.Provider>
       </LeRobotDataContext.Provider>

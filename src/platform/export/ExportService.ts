@@ -8,7 +8,8 @@ import type {
   EpisodeVideoOffsets,
   V3DataLayout,
 } from '@/core';
-import { validateMetadataForExport, writeMetadata } from './MetadataExporter';
+import { remapSourceSplits, validateMetadataForExport, writeMetadata } from './MetadataExporter';
+import { buildSegmentExportPlan } from './SegmentExportPlan';
 import { buildTrimExportPlan } from './TrimExportPlan';
 import { computeTrimVisualStats } from './TrimVisualStats';
 import { exportDataFiles } from './DataProcessor';
@@ -23,6 +24,7 @@ import {
   computeDatasetStats,
   isSupportedLeRobotVersion,
   SUBTASK_INDEX_FEATURE_KEY,
+  SubtaskCoverageError,
   type DatasetStats,
 } from '@/core';
 import { computeSplits, splitsIndicesToInfoSplits } from '@/core';
@@ -114,11 +116,11 @@ export class ExportService {
       | 'includeData'
       | 'includeVideos'
       | 'compactVideos'
-      | 'trimRanges'
+      | 'segments'
       | 'includeSubtasks'
+      | 'fillSubtaskGaps'
       | 'signal'
       | 'splitsConfig'
-      | 'subtaskOverlay'
       | 'sourceSubtasks'
     >,
   ): Promise<void> {
@@ -143,10 +145,15 @@ export class ExportService {
     throwIfAborted();
     this.assertExportAllowed(info, options.targetVersion);
     const targetVersion = (options.targetVersion ?? 'v2.1') as TargetVersion;
+    // Each kept segment becomes its own episode; the exporters below see one
+    // unit per output episode and read it from its source episode.
+    const segmentPlan = buildSegmentExportPlan(this.dataLoader, episodes, options.segments);
+    const loader = segmentPlan.loader;
+    const sourceEpisodes = segmentPlan.episodes;
     const trimPlan = await buildTrimExportPlan(
-      this.dataLoader,
-      episodes,
-      options.trimRanges,
+      loader,
+      sourceEpisodes,
+      segmentPlan.trimRanges,
       info.fps,
       signal,
     );
@@ -169,18 +176,31 @@ export class ExportService {
       imageFeatureKeys.length > 0 ? rewriteFeaturesForImageToVideo(info, imageFeatureKeys) : info;
     const columnsToExclude = new Set<string>(imageFeatureKeys);
 
-    const subtaskPlan =
-      options.includeData && options.includeSubtasks !== false
-        ? await buildExportSubtaskPlan({
-            dataLoader: this.dataLoader,
-            info: infoForExport,
-            episodes: episodesForMeta,
-            overlay: options.subtaskOverlay ?? new Map(),
-            sourceTable: options.sourceSubtasks ?? this.dataLoader.getSubtasks?.() ?? {},
-            targetVersion,
-            ...trimOptions,
-          })
-        : null;
+    let subtaskPlan: Awaited<ReturnType<typeof buildExportSubtaskPlan>> = null;
+    if (options.includeData && options.includeSubtasks !== false) {
+      try {
+        subtaskPlan = await buildExportSubtaskPlan({
+          dataLoader: loader,
+          info: infoForExport,
+          episodes: episodesForMeta,
+          overlay: segmentPlan.subtasks,
+          sourceTable: options.sourceSubtasks ?? this.dataLoader.getSubtasks?.() ?? {},
+          targetVersion,
+          fillGaps: options.fillSubtaskGaps,
+          ...trimOptions,
+        });
+      } catch (error) {
+        // Name the source episode (and segment), not the export's working key.
+        if (error instanceof SubtaskCoverageError) {
+          throw new SubtaskCoverageError(
+            segmentPlan.sourceIndexOf(error.episodeIndex),
+            error.coverage,
+            segmentPlan.segmentIdOf(error.episodeIndex),
+          );
+        }
+        throw error;
+      }
+    }
     const subtaskFeatures = applySubtaskFeaturesForExport(
       infoForExport,
       targetVersion,
@@ -196,7 +216,9 @@ export class ExportService {
     const splits =
       options.splitsConfig && episodesForMeta.length > 0
         ? splitsIndicesToInfoSplits(computeSplits(episodesForMeta, options.splitsConfig))
-        : undefined;
+        : segmentPlan.expanded && targetVersion === 'v3.0'
+          ? remapSourceSplits(info, episodesForMeta, segmentPlan.sourceIndexOf)
+          : undefined;
     let stats: DatasetStats | undefined;
     if (options.includeData && episodesForMeta.length > 0) {
       reportPhaseStart(1, 'Validating training statistics...', 'metadata');
@@ -207,13 +229,7 @@ export class ExportService {
               getEpisodeStats: async (episode: EpisodeMetadata) => {
                 const range = trimPlan.ranges.get(episode.episode_index);
                 return range
-                  ? computeTrimVisualStats(
-                      this.dataLoader,
-                      info,
-                      episode.episode_index,
-                      range,
-                      signal,
-                    )
+                  ? computeTrimVisualStats(loader, info, episode.episode_index, range, signal)
                   : undefined;
               },
               onEpisodeStats: (episode: EpisodeMetadata, episodeStats: DatasetStats) => {
@@ -292,9 +308,9 @@ export class ExportService {
       reportPhaseStart(3, 'Encoding image features as MP4...', 'videos');
       throwIfAborted();
       const { videoOffsets: offsets } = await exportImageFeaturesAsVideo(
-        this.dataLoader,
+        loader,
         info,
-        episodes,
+        sourceEpisodes,
         targetVersion,
         this.adapter,
         onProg ? wrap(3, 30) : undefined,
@@ -307,9 +323,9 @@ export class ExportService {
       reportPhaseStart(30, 'Preparing video export (v3)...', 'videos');
       throwIfAborted();
       videoOffsets = await exportVideosByTarget(
-        this.dataLoader,
+        loader,
         info,
-        episodes,
+        sourceEpisodes,
         'v3.0',
         this.adapter,
         onProg ? wrap(30, 50) : undefined,
@@ -326,9 +342,9 @@ export class ExportService {
       reportPhaseStart(30, 'Preparing video export (v2.1)...', 'videos');
       throwIfAborted();
       await exportVideosByTarget(
-        this.dataLoader,
+        loader,
         info,
-        episodes,
+        sourceEpisodes,
         'v2.1',
         this.adapter,
         onProg ? wrap(30, 50) : undefined,

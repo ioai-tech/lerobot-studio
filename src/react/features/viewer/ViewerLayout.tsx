@@ -8,6 +8,7 @@ import { useLeRobotData } from '../../contexts/LeRobotContext';
 import { useLoading } from '../../contexts/LoadingContext';
 import { ErrorState } from '../../components/Commons/ErrorState';
 import { useStackedLayout } from '../../hooks/useStackedLayout';
+import { SegmentDialogs } from '../../components/Segments/SegmentDialogs';
 
 const loadDockviewLayout = () => import('../../components/DockviewLayout');
 const LazyDockviewLayout = React.lazy(async () => {
@@ -185,6 +186,7 @@ export function ViewerLayout({
         {stacked ? [mainElement, sidebarElement] : [sidebarElement, mainElement]}
       </div>
 
+      {hasData ? <SegmentDialogs /> : null}
       {showToaster ? <Toaster /> : null}
     </div>
   );

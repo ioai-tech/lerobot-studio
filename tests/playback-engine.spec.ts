@@ -151,6 +151,37 @@ describe('PlaybackEngine (clock-driven)', () => {
     t.engine.dispose();
   });
 
+  it('repeats a loop range on the clock, so cameras jump back with the frame index', () => {
+    const t = setup({
+      getFrameCount: () => 100,
+      getLoopRange: () => ({ startFrame: 2, endFrame: 4 }),
+    });
+    t.engine.start(); // frame 0 is outside the range: start at its first frame
+    expect(t.frame()).toBe(2);
+    expect(t.clock.now()).toBeCloseTo(0.2);
+    t.at(250); // 0.45 s → frame 4, the last frame of the range
+    expect(t.frame()).toBe(4);
+    t.at(350); // 0.55 s → frame 5, past the range: back to frame 2
+    expect(t.frame()).toBe(2);
+    expect(t.clock.now()).toBeCloseTo(0.2);
+    expect(t.state.onStop).not.toHaveBeenCalled();
+    expect(t.state.onAdvanceEpisode).not.toHaveBeenCalled();
+    t.engine.dispose();
+  });
+
+  it('repeats a loop range that ends on the last frame instead of leaving the episode', () => {
+    const t = setup({
+      getFrameCount: () => 5,
+      getLoopRange: () => ({ startFrame: 3, endFrame: 4 }),
+    });
+    t.engine.start();
+    t.at(300); // 0.6 s → frame 6, past the episode end
+    expect(t.frame()).toBe(3);
+    expect(t.state.onStop).not.toHaveBeenCalled();
+    expect(t.state.onAdvanceEpisode).not.toHaveBeenCalled();
+    t.engine.dispose();
+  });
+
   it('stops immediately when no frames are available', () => {
     const t = setup({ getFrameCount: () => 0 });
     t.engine.start();

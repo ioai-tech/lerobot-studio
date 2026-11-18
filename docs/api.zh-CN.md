@@ -33,6 +33,72 @@ import '@ioai/lerobot-studio/style.css';
 
 ---
 
+## 分段与审核 {#segments-and-review}
+
+`LeRobotViewer` 可以显示、编辑和审核*分段*：Episode 内的闭区间帧范围，导出时各自成为一个 Episode。宿主通过四个属性控制。
+
+```tsx
+import {
+  LeRobotViewer,
+  applyChange,
+  type AnnotationChange,
+  type AnnotationDocument,
+  type AnnotationField,
+} from '@ioai/lerobot-studio';
+
+const fields: AnnotationField[] = [
+  {
+    id: 'outcome',
+    label: '结果',
+    kind: 'select',
+    options: [
+      { value: 'success', label: '成功', key: '1' },
+      { value: 'failure', label: '失败', key: '2' },
+    ],
+  },
+  { id: 'tags', label: '标签', kind: 'tags', suggestions: ['遮挡'] },
+];
+
+<LeRobotViewer
+  dataSource={source}
+  annotation={{
+    value, // AnnotationDocument
+    onChange: (change: AnnotationChange, { changeId }) => save(change, changeId), // 持久化后把新的 value 传回
+    saveState, // { kind: 'saving' | 'saved' | 'offline' | 'reloaded' | 'refused' | 'idle', message?, changeIds?, actions? }
+    createSegmentId: () => uuidv7(),
+  }}
+  fields={fields}
+  messages={{ 'segments.title': '片段' }}
+/>;
+```
+
+- **`annotation`** 让分段由宿主控制。`value` 是 `AnnotationDocument`：按 `episode_index` 存放分段；没有条目或没有分段的 Episode 整段使用。查看器立即显示每次修改，并以每步一个带类型的 `AnnotationChange` 调用 `onChange`。宿主应用修改（导出的 `applyChange(doc, change, ctx)` 是参考 reducer）、持久化，然后把新的 `value` 传回以替换预览。修改按顺序传给 `onChange`，每个都带一个稳定的 `changeId`。拒绝修改时保持 `value` 不变，并把 `saveState` 设为 `{ kind: 'refused', message, changeIds }` 指明被拒绝的修改：查看器只丢弃这些修改（及其所属的撤销步骤）并显示原因。每个 id 只处理一次，因此重复渲染同一个拒绝不会有副作用。不传 `changeIds` 时，每个新的 `kind: 'refused'` 的 `saveState` 对象会拒绝最早一个尚未确认的修改；请传 id。当 `value` 覆盖了尚未确认的修改（其他人已保存、宿主重新加载）时，请同时把 `saveState.kind` 设为 `'reloaded'`：查看器按原样显示该 `value`，对该 `saveState` 对象丢弃一次所有尚未确认的修改（同一对象下之后的 value 视为普通应答），只保留仍然适用的撤销历史。没有 `onChange` 时文档只读。`canDelete(segment)` 可逐个分段隐藏删除，`newSegmentReview` 设置用户新建分段的审核状态（默认 `'confirmed'`）。不传 `annotation` 时，分段保存在查看器会话中，且需在可写数据集上进入 **编辑 Episode** 才能编辑。
+- `value` 和 `saveState` 按引用比较。内容不变时请保持同一个对象：每次渲染都重建 `value` 的宿主会让查看器每次都重放未确认的修改并重新检查撤销历史。不带 `changeIds` 的拒绝必须每个被拒绝的修改只创建一次，否则每次重新渲染都会再拒绝一个修改；带 `changeIds` 的拒绝可以安全地重复渲染。比宿主应答更快的修改会保留，并叠加显示在每个新的 `value` 之上，直到宿主的 `value` 包含它们。
+- **`readOnly`** 始终优先：无论 `annotation` 内容如何，都不渲染编辑控件，编辑快捷键也不生效。分段、审核状态、字段值和宿主标记（`segment.status`）仍会显示，导航快捷键仍可用。`readOnly: true` 的单个分段也会拒绝编辑。
+- **`fields`** 按顺序声明用户可为分段设置的值：`select`（单选；选项的 `key` 为 `1` 到 `9` 时可用键盘设置）、`tags`（字符串列表，可带 `suggestions`）或 `text`。值存放在 `segment.values[field.id]`。reducer 会拒绝未知字段或类型不符的值。
+- **`messages`** 按键（`LeRobotMessageKey`，即所有 `segments.*` 键）替换当前语言的内置文案。值为 ICU 消息，也接受 `{{name}}` 占位符。
+
+### 修改及其逆操作
+
+每次修改都是以下八种操作之一。撤销会通过 `onChange` 发送逆操作；查看器保留最近 100 步，从不发送历史快照。
+
+| 操作      | 效果                                                                                                                                    | 撤销时发送的逆操作       |
+| --------- | --------------------------------------------------------------------------------------------------------------------------------------- | ------------------------ |
+| `create`  | 新增分段                                                                                                                                | `delete`                 |
+| `update`  | 修改 `startFrame`、`endFrame`、`task`、`subtasks` 或 `values`（`values` 按键合并，`null` 清除该键）                                     | 带旧值的 `update`        |
+| `delete`  | 删除分段                                                                                                                                | 携带完整分段的 `restore` |
+| `restore` | 恢复已删除的分段                                                                                                                        | `delete`                 |
+| `split`   | 左半保留 `id`（`startFrame..atFrame-1`），右半使用 `newId`；复制任务、字段值、审核状态和来源；跨越拆分点的子任务被切开                  | `merge`                  |
+| `merge`   | `withId` 必须是下一个分段；保留第一个分段的任务、字段值和来源，合并标签列表，两者都已确认时结果才是已确认；被拆分切开的子任务会重新连接 | `unmerge`                |
+| `unmerge` | 精确恢复两个分段                                                                                                                        | `merge`                  |
+| `confirm` | 设为 `review: 'confirmed'`                                                                                                              | 无：确认无法撤销         |
+
+重做会重新发送正向修改；重做 `split` 时会调用 `createSegmentId` 生成新的 `newId`，重做 `create` 以 `restore` 发送。编辑永远不会改变 `review`。违反规则的修改会以带类型的 `AnnotationRefusalCode` 被拒绝（例如 `SEGMENT_OVERLAP`、`RANGE_OUTSIDE_EPISODE`、`MERGE_NOT_ADJACENT`），不会自动修正数值。
+
+完整快捷键表见 [使用指南](./user-manual#split-and-review-episodes)。
+
+---
+
 ## 自定义数据源
 
 如果应用需要按路径读取字节或文本，请实现 `DataSource`。路径和内容都应视为不可信输入，并在 `clear()` 中释放 object URL。

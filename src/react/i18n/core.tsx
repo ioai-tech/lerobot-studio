@@ -7,6 +7,10 @@ import {
   persistLocale,
   type SupportedLocale,
 } from './messages';
+import { LEROBOT_MESSAGE_KEYS } from './messageKeys';
+
+/** Only the documented keys can be replaced; internal copy is not API. */
+const HOST_MESSAGE_KEYS: ReadonlySet<string> = new Set(LEROBOT_MESSAGE_KEYS);
 
 type TranslationValues = Record<string, unknown>;
 type TFunction = (
@@ -75,9 +79,12 @@ const TranslationContext = createContext<TranslationContextValue | null>(null);
 export function I18nProvider({
   children,
   forcedLanguage,
+  messages,
 }: {
   children: React.ReactNode;
   forcedLanguage?: string;
+  /** Host copy that replaces built-in messages (already in the current language). */
+  messages?: Partial<Record<string, string>>;
 }) {
   const [locale, setLocaleState] = useState<SupportedLocale>(() =>
     coerceLocale(forcedLanguage ?? detectInitialLocale()),
@@ -98,10 +105,23 @@ export function I18nProvider({
   }, [forcedLanguage, locale, setLocale]);
 
   const value = useMemo<I18nContextValue>(() => ({ locale, setLocale }), [locale, setLocale]);
+  const localeMessages = useMemo(() => {
+    const base = messagesByLocale[locale];
+    if (!messages) return base;
+    const overrides = Object.fromEntries(
+      Object.entries(messages)
+        .filter(
+          (entry): entry is [string, string] =>
+            typeof entry[1] === 'string' && HOST_MESSAGE_KEYS.has(entry[0]),
+        )
+        .map(([key, text]) => [key, text.replace(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g, '{$1}')]),
+    );
+    return { ...base, ...overrides };
+  }, [locale, messages]);
 
   return (
     <I18nContext.Provider value={value}>
-      <IntlProvider locale={locale} messages={messagesByLocale[locale]} onError={reportIntlError}>
+      <IntlProvider locale={locale} messages={localeMessages} onError={reportIntlError}>
         <TranslateBridge>{children}</TranslateBridge>
       </IntlProvider>
     </I18nContext.Provider>
