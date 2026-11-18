@@ -242,11 +242,14 @@ export function useSegmentAnnotation({
 
   // `reloaded`: the host's value replaced the document (another writer, a
   // reload). It is authoritative: changes still in flight are dropped once per
-  // value, and only the history that applies to it is kept.
-  const reloadedValueRef = useRef<AnnotationDocument | undefined>(undefined);
+  // reloaded saveState object, and only the history that applies is kept.
+  // Later values under the same object are ordinary answers.
+  const lastReloadRef = useRef<typeof saveState>(undefined);
   useEffect(() => {
-    if (!controlled || saveState?.kind !== 'reloaded' || reloadedValueRef.current === value) return;
-    reloadedValueRef.current = value;
+    if (!controlled || saveState?.kind !== 'reloaded' || lastReloadRef.current === saveState) {
+      return;
+    }
+    lastReloadRef.current = saveState;
     if (pendingRef.current.length > 0) setPending([]);
     reconcileWith(value ?? EMPTY_ANNOTATION_DOCUMENT);
   }, [controlled, reconcileWith, saveState, setPending, value]);

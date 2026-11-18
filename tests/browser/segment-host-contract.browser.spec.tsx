@@ -140,9 +140,18 @@ describe('browser: host contract for changes in flight', () => {
     expect(shown(control).map((item) => item.id)).toEqual(['a']);
     // The create's undo step (delete c) no longer applies: history was re-checked.
     expect(control.segments.canUndo).toBe(false);
-    // Later edits are shown again (the reload applies once per value).
+    // Later edits are shown again: the reload applies once per saveState object,
+    // so a later value under the same object is an ordinary answer.
     expect(control.segments.dispatch([update('a', 'C')])).toBe(true);
     await expect.poll(() => task(control, 'a')).toBe('C');
+    expect(
+      control.segments.dispatch([{ op: 'create', episodeIndex: 0, segment: seg('d', 40, 49) }]),
+    ).toBe(true);
+    await expect.poll(() => shown(control).map((item) => item.id)).toEqual(['a', 'd']);
+    control.accept(control.sent[control.sent.length - 2].change);
+    await expect.poll(() => control.value.episodes[0].segments[0].task).toBe('C');
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(shown(control).map((item) => item.id)).toEqual(['a', 'd']);
   });
 
   it('a refusal names its change: one change of a multi-change step is refused', async () => {
