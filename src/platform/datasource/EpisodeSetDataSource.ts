@@ -170,6 +170,10 @@ export class EpisodeSetDataSource implements DataSource {
   private readonly resolved = new Map<number, ResolvedFiles>();
   private readonly refused = new Map<number, EpisodeSetError>();
   private readonly pending = new Map<number, Promise<void>>();
+  /** Recordings whose prefetch failed: never batched again, only resolved on their own. */
+  private readonly prefetchFailed = new Set<number>();
+  /** Episode the viewer last said it is reading (`focusEpisode`). */
+  private focusedEpisode: number | null = null;
   private readonly refreshCoalescer = new Coalescer();
   private readonly urlChanges = new UrlChangeEmitter();
   private readonly proactiveRefresh: ProactiveRefreshTimer;
@@ -379,35 +383,23 @@ export class EpisodeSetDataSource implements DataSource {
         { recordingId: id },
       );
     }
-    const batch = [r, ...this.prefetchCandidates(r)];
-    const ids = batch.map((index) => this.manifest.recordings[index]!.id);
-    const task = (async () => {
-      this.resolveCalls += 1;
-      const results = await resolve(ids);
-      for (const result of results ?? []) {
-        const index = this.recordingIndexById.get(result?.id);
-        if (index === undefined || !batch.includes(index) || this.resolved.has(index)) continue;
+    // The selected recording and the next ones go in one call; when that call
+    // fails, the selected recording is resolved on its own, so a failing
+    // prefetch id never fails the episode the viewer asked for.
+    const prefetch = this.prefetchCandidates(r);
+    try {
+      await this.resolveBatch([r, ...prefetch]);
+    } catch (error) {
+      if (prefetch.length === 0) throw this.resolveFailed(r, error);
+      if (!this.resolved.has(r) && !this.refused.has(r)) {
         try {
-          this.resolved.set(index, this.checkLayout(index, result.files));
-        } catch (error) {
-          if (error instanceof EpisodeSetError) this.refused.set(index, error);
-          else throw error;
+          await this.resolveBatch([r]);
+        } catch (retryError) {
+          throw this.resolveFailed(r, retryError);
         }
       }
-    })();
-    for (const index of batch) this.pending.set(index, task);
-    try {
-      await task;
-    } catch (error) {
-      throw new EpisodeSetError(
-        'RECORDING_RESOLVE_FAILED',
-        `Recording ${id} could not be resolved: ${error instanceof Error ? error.message : String(error)}`,
-        { recordingId: id, cause: error },
-      );
-    } finally {
-      for (const index of batch) {
-        if (this.pending.get(index) === task) this.pending.delete(index);
-      }
+      // The selected recording resolves alone: a prefetch id broke the batch.
+      for (const index of prefetch) if (!this.resolved.has(index)) this.prefetchFailed.add(index);
     }
     const refused = this.refused.get(r);
     if (refused) throw refused;
@@ -420,16 +412,67 @@ export class EpisodeSetDataSource implements DataSource {
     }
   }
 
-  /** Recordings of the next episodes after the first episode of `r` (distinct, unresolved). */
+  /** Resolve `batch` in one resolver call; results outside the batch are ignored. */
+  private async resolveBatch(batch: number[]): Promise<void> {
+    const resolve = this.options.resolve!;
+    const ids = batch.map((index) => this.manifest.recordings[index]!.id);
+    const task = (async () => {
+      this.resolveCalls += 1;
+      const results = await resolve(ids);
+      for (const result of results ?? []) {
+        const index = this.recordingIndexById.get(result?.id);
+        if (index === undefined || !batch.includes(index) || this.resolved.has(index)) continue;
+        try {
+          this.resolved.set(index, this.checkLayout(index, result.files));
+          this.prefetchFailed.delete(index);
+        } catch (error) {
+          if (error instanceof EpisodeSetError) this.refused.set(index, error);
+          else throw error;
+        }
+      }
+    })();
+    for (const index of batch) this.pending.set(index, task);
+    try {
+      await task;
+    } finally {
+      for (const index of batch) {
+        if (this.pending.get(index) === task) this.pending.delete(index);
+      }
+    }
+  }
+
+  private resolveFailed(r: number, error: unknown): EpisodeSetError {
+    const id = this.manifest.recordings[r]!.id;
+    return new EpisodeSetError(
+      'RECORDING_RESOLVE_FAILED',
+      `Recording ${id} could not be resolved: ${error instanceof Error ? error.message : String(error)}`,
+      { recordingId: id, cause: error },
+    );
+  }
+
+  focusEpisode(episodeIndex: number): void {
+    if (Number.isInteger(episodeIndex) && episodeIndex >= 0) this.focusedEpisode = episodeIndex;
+  }
+
+  /**
+   * Recordings of the episodes after the focused episode when it belongs to
+   * `r`, else after the first episode of `r` (distinct, unresolved, not
+   * known to fail).
+   */
   private prefetchCandidates(r: number): number[] {
     const id = this.manifest.recordings[r]!.id;
     const episodes = this.manifest.episodes;
-    const first = episodes.findIndex((episode) => episode.recordingId === id);
+    const focused = this.focusedEpisode;
+    const first =
+      focused != null && episodes[focused]?.recordingId === id
+        ? focused
+        : episodes.findIndex((episode) => episode.recordingId === id);
     const out: number[] = [];
     for (let k = first + 1; k < episodes.length && out.length < PREFETCH_RECORDINGS; k++) {
       const index = this.recordingIndexById.get(episodes[k]!.recordingId)!;
       if (index === r || out.includes(index)) continue;
       if (this.resolved.has(index) || this.pending.has(index) || this.refused.has(index)) continue;
+      if (this.prefetchFailed.has(index)) continue;
       if (out.length + 1 >= EPISODE_SET_RESOLVE_BATCH) break;
       out.push(index);
     }

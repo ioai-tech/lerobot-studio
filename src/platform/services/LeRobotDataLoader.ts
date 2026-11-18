@@ -382,6 +382,7 @@ export class LeRobotDataLoader {
   private getEpisodeRange(episodeIndex: number): { path: string; start: number; end: number } {
     if (!this.info || !this.adapter) throw new Error('Not initialized');
 
+    this._dataSource.focusEpisode?.(episodeIndex);
     const result = this.adapter.getEpisodeDataPath(this.info, this.episodes, episodeIndex);
     if (!result) throw new Error(`Episode ${episodeIndex} not found`);
 
@@ -398,6 +399,7 @@ export class LeRobotDataLoader {
   ): Promise<{ table: Table; start: number; end: number; path: string }> {
     if (!this.info || !this.adapter) throw new Error('Not initialized');
 
+    this._dataSource.focusEpisode?.(episodeIndex);
     const result = this.adapter.getEpisodeDataPath(this.info, this.episodes, episodeIndex);
     if (!result) throw new Error(`Episode ${episodeIndex} not found`);
 
@@ -527,6 +529,7 @@ export class LeRobotDataLoader {
    */
   getEpisodeDataPath(episodeIndex: number): EpisodeDataPathResult | null {
     if (!this.info || !this.adapter) return null;
+    this._dataSource.focusEpisode?.(episodeIndex);
     return this.adapter.getEpisodeDataPath(this.info, this.episodes, episodeIndex);
   }
 
@@ -536,6 +539,7 @@ export class LeRobotDataLoader {
    */
   getEpisodeVideoPath(episodeIndex: number, featureKey: string): EpisodeVideoPathResult | null {
     if (!this.info || !this.adapter) return null;
+    this._dataSource.focusEpisode?.(episodeIndex);
     return this.adapter.getEpisodeVideoPath(this.info, this.episodes, episodeIndex, featureKey);
   }
 

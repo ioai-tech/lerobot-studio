@@ -53,4 +53,11 @@ export interface DataSource {
    * keeping position and play state. Returns an unsubscribe function.
    */
   subscribeUrlChanges?(listener: (paths: readonly string[]) => void): () => void;
+
+  /**
+   * Hint that the viewer is about to read this dataset `episode_index`
+   * (selection or playback reached it). Sources that sign or fetch lazily can
+   * prefetch what follows it.
+   */
+  focusEpisode?(episodeIndex: number): void;
 }

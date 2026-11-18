@@ -244,6 +244,50 @@ describe('episode set data source', () => {
     expect(other['observation.state']!.rows).toBe(120);
   });
 
+  it('a failing prefetch id never fails the selected episode, nor is batched again', async () => {
+    stubStore();
+    const calls: string[][] = [];
+    const resolve = vi.fn(async (ids: string[]) => {
+      calls.push([...ids]);
+      if (ids.includes('r2')) throw new Error('signing service down for r2');
+      return ids.map((id) => ({ id, files: filesFor(id) }));
+    });
+    const { loader } = await openLoader(manyRecordings(10), { resolve });
+
+    const first = await loader.loadAllNumericalData(0, ['observation.state']);
+    expect(first['observation.state']!.rows).toBe(120);
+    const second = await loader.loadAllNumericalData(1, ['observation.state']);
+    expect(second['observation.state']!.rows).toBe(120);
+    // r1 was in the failed batch, so it resolves now, and r2 is never batched again.
+    expect(calls).toEqual([['r0', 'r1', 'r2'], ['r0'], ['r1', 'r3', 'r4']]);
+    const error = await loader
+      .loadAllNumericalData(2, ['observation.state'])
+      .catch((caught: unknown) => caught);
+    expect(error).toMatchObject({ code: 'RECORDING_RESOLVE_FAILED', recordingId: 'r2' });
+  });
+
+  it("prefetches the recordings after the focused episode, not after its recording's first", async () => {
+    stubStore();
+    const { resolve, calls } = resolver();
+    const order = ['r0', 'r1', 'r2', 'r0', 'r3', 'r4'];
+    const manifest: EpisodeSetManifest = {
+      fps: FPS,
+      features: FEATURES,
+      recordings: ['r0', 'r1', 'r2', 'r3', 'r4'].map((id) => ({ id })),
+      episodes: order.map((recordingId, k) => ({
+        recordingId,
+        task: 'pick',
+        fromRow: recordingId === 'r0' && k === 3 ? 120 : 0,
+        toRow: recordingId === 'r0' && k === 3 ? 240 : 120,
+        fromS: 0,
+        toS: 4,
+      })),
+    };
+    const { loader } = await openLoader(manifest, { resolve });
+    await loader.loadAllNumericalData(3, ['observation.state']).catch(() => undefined);
+    expect(calls[0]).toEqual(['r0', 'r3', 'r4']);
+  });
+
   it('refuses recordings that are not one-episode v3 trees, naming them', async () => {
     stubStore();
     const resolve = vi.fn(async (ids: string[]) =>
