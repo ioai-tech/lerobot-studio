@@ -1,9 +1,13 @@
 import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
+  clipSubtasksToRange,
   fixedTrim,
   getDefaultChartFeatureKeys,
+  getEpisodeSegments,
+  segmentsFromFrameIndices,
   suggestTrim,
+  type AnnotationChange,
   type EpisodeMetadata,
   type EpisodeTrimRange,
 } from '@/core';
@@ -11,6 +15,7 @@ import { Pagination } from '../Pagination';
 import {
   useLeRobotData,
   useLeRobotPlayback,
+  useLeRobotSegments,
   useLeRobotSelection,
   useLeRobotUi,
 } from '../../contexts/LeRobotContext';
@@ -47,8 +52,10 @@ export function BatchTrimDialog({
   onClose: () => void;
 }) {
   const { t } = useTranslation();
-  const { info, dataLoader } = useLeRobotData();
-  const { trimRanges, trimEpisodes, selectEpisode, deletedEpisodes } = useLeRobotSelection();
+  const { info, dataLoader, subtasks: sourceSubtaskTable } = useLeRobotData();
+  const { selectEpisode, deletedEpisodes } = useLeRobotSelection();
+  const segments = useLeRobotSegments();
+  const hasSegments = (index: number) => getEpisodeSegments(segments.doc, index).length > 0;
   const { setPlaying, setFrameIndex } = useLeRobotPlayback();
   const { trimSuggestion, setTrimSuggestion, setTrimPreviewHandlers } = useLeRobotUi();
   const [mode, setMode] = useState('auto');
@@ -73,8 +80,9 @@ export function BatchTrimDialog({
   const [notice, setNotice] = useState('');
   const [previewing, setPreviewing] = useState(false);
   const [previewLoading, setPreviewLoading] = useState(false);
-  const [undo, setUndo] = useState<Map<number, EpisodeTrimRange | null> | null>(null);
-  const applied = useRef(new Map<number, EpisodeTrimRange>());
+  /** The batch just added (count and its history step), while it can still be undone. */
+  const [undo, setUndo] = useState<{ count: number; step: object | null } | null>(null);
+  const [applying, setApplying] = useState(false);
   const generation = useRef(0);
   const fps = info?.fps ?? 0;
   const left = Number(mode === 'auto' ? before : head);
@@ -122,7 +130,7 @@ export function BatchTrimDialog({
       let range: EpisodeTrimRange | null = null;
       let status = '';
       if (deletedEpisodes.has(episode.episode_index)) status = 'deleted';
-      else if (!overwrite && trimRanges.has(episode.episode_index)) status = 'existing';
+      else if (!overwrite && hasSegments(episode.episode_index)) status = 'existing';
       else {
         try {
           if (mode === 'fixed') range = fixedTrim(episode.length, fps, left, right);
@@ -201,45 +209,63 @@ export function BatchTrimDialog({
     });
     return () => setTrimPreviewHandlers?.(null);
   }, [setTrimPreviewHandlers]);
-  const apply = () => {
-    const next = new Map<number, EpisodeTrimRange>();
-    const previous = new Map<number, EpisodeTrimRange | null>();
-    for (const row of results) {
-      const index = row.episode.episode_index;
+  /** Each checked suggestion becomes a suggested, to-review segment (one undo step). */
+  const apply = async () => {
+    if (!dataLoader) return;
+    setApplying(true);
+    try {
+      const withSubtasks = Object.keys(sourceSubtaskTable).length > 0;
+      const changes: AnnotationChange[] = [];
+      let count = 0;
+      for (const row of results) {
+        const index = row.episode.episode_index;
+        if (!row.checked || !row.range || deletedEpisodes.has(index)) continue;
+        const existing = getEpisodeSegments(segments.doc, index);
+        if (existing.length > 0 && !overwrite) continue;
+        for (const segment of existing)
+          changes.push({ op: 'delete', episodeIndex: index, id: segment.id });
+        // A segment keeps the dataset's own subtask labels inside its range.
+        const source = withSubtasks ? await dataLoader.loadEpisodeSubtaskSource(index) : null;
+        const subtasks = source
+          ? clipSubtasksToRange(segmentsFromFrameIndices(source.indices, source.table), row.range)
+          : [];
+        changes.push({
+          op: 'create',
+          episodeIndex: index,
+          segment: {
+            id: segments.createId(),
+            startFrame: row.range.startFrame,
+            endFrame: row.range.endFrame,
+            task: null,
+            subtasks,
+            values: {},
+            review: 'to_review',
+            origin: { kind: 'suggested' },
+          },
+        });
+        count += 1;
+      }
       if (
-        !row.checked ||
-        !row.range ||
-        deletedEpisodes.has(index) ||
-        (!overwrite && trimRanges.has(index))
-      )
-        continue;
-      next.set(index, row.range);
-      previous.set(index, trimRanges.get(index) ?? null);
+        segments.dispatch(changes, {
+          notice: { key: 'segments.notice.suggestionsApplied', values: { count } },
+        })
+      ) {
+        setUndo({ count, step: segments.latestStep() });
+        setNotice(t('batchTrim.applied', { count }));
+      }
+    } catch {
+      setNotice(t('batchTrim.readError'));
+    } finally {
+      setApplying(false);
     }
-    trimEpisodes(next);
-    applied.current = next;
-    setUndo(previous);
-    setNotice(t('batchTrim.applied', { count: next.size }));
   };
   const undoApply = () => {
-    if (!undo) return;
-    const restore = new Map<number, EpisodeTrimRange | null>();
-    const lengths = new Map(episodes.map((ep) => [ep.episode_index, ep.length]));
-    for (const [index, previous] of undo) {
-      const expected = applied.current.get(index)!;
-      const current = trimRanges.get(index);
-      const length = lengths.get(index)!;
-      if (
-        (current?.startFrame ?? 0) === expected.startFrame &&
-        (current?.endFrame ?? length - 1) === expected.endFrame
-      )
-        restore.set(index, previous);
-    }
-    trimEpisodes(restore);
+    if (undo == null) return;
+    // Only while this batch is still the newest step: a later edit is never undone here.
+    if (segments.undoStep(undo.step)) setNotice(t('batchTrim.undone', { count: undo.count }));
     setUndo(null);
-    setNotice(t('batchTrim.undone', { count: restore.size }));
   };
-  const busy = progress !== null || previewLoading;
+  const busy = progress !== null || previewLoading || applying;
   return (
     <Dialog
       open={!previewing}
@@ -515,7 +541,7 @@ export function BatchTrimDialog({
           )}
           <Button
             disabled={busy || undo !== null || !results.some((row) => row.checked && row.range)}
-            onClick={apply}
+            onClick={() => void apply()}
           >
             {t('batchTrim.apply')}
           </Button>

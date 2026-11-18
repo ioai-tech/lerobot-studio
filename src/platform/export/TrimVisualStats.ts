@@ -1,10 +1,10 @@
 import type { DatasetStats, FeatureStats, LeRobotInfo } from '@/core';
-import type { LeRobotDataLoader } from '../services/LeRobotDataLoader';
+import type { ExportDataLoader } from './SegmentExportPlan';
 import type { ExportTrim } from './TrimExportPlan';
 
 /** Recompute visual statistics from retained frames; never reuse full-episode statistics after a trim. */
 export async function computeTrimVisualStats(
-  loader: LeRobotDataLoader,
+  loader: ExportDataLoader,
   info: LeRobotInfo,
   episodeIndex: number,
   range: ExportTrim,

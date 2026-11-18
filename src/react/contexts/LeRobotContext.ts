@@ -14,6 +14,7 @@ import type { ParquetImageServiceImpl } from '@/platform';
 import type { ValidationReport, SubtaskSegment, SubtaskCoverage, SubtaskTable } from '@/core';
 import type { PendingSubtaskRange } from './useSubtaskAnnotation';
 import type { PlaybackClock } from '../services/PlaybackClock';
+import type { SegmentAnnotationState } from './useSegmentAnnotation';
 
 // 帧索引订阅者回调类型
 export type FrameIndexSubscriber = (frameIndex: number) => void;
@@ -44,9 +45,6 @@ export interface LeRobotDataContextType {
 
 /** Episode / export selection — changes shouldn't re-render video panels */
 export interface LeRobotSelectionContextType {
-  trimRanges: ReadonlyMap<number, EpisodeTrimRange>;
-  trimEpisode: (episodeIndex: number, range: EpisodeTrimRange | null) => void;
-  trimEpisodes: (ranges: ReadonlyMap<number, EpisodeTrimRange | null>) => void;
   selectedEpisodeIndex: number | null;
   selectedEpisodeIndices: Set<number>;
   toggleEpisodeSelection: (index: number) => void;
@@ -84,7 +82,6 @@ export interface LeRobotPlaybackContextType {
 
 export interface LeRobotSubtaskContextType {
   canAnnotate: boolean;
-  overlay: ReadonlyMap<number, SubtaskSegment[]>;
   currentSegments: SubtaskSegment[];
   knownLabels: string[];
   coverage: SubtaskCoverage;
@@ -95,7 +92,7 @@ export interface LeRobotSubtaskContextType {
   clearPendingAnnotation: () => void;
   commitPending: (label: string, range?: PendingSubtaskRange | null) => void;
   updateSegment: (index: number, segment: SubtaskSegment) => void;
-  replaceEpisodeSegments: (segments: SubtaskSegment[]) => void;
+  replaceEpisodeSegments: (segments: SubtaskSegment[]) => boolean;
   removeSegment: (index: number) => void;
 }
 
@@ -111,10 +108,6 @@ export interface LeRobotUiContextType {
   returnFromTrimPreview: () => void;
   cancelTrimPreview: () => void;
   setTrimPreviewHandlers: (handlers: TrimPreviewHandlers | null) => void;
-  trimEditMode: boolean;
-  setTrimEditMode: (enabled: boolean) => void;
-  previewTrim: boolean;
-  setPreviewTrim: (enabled: boolean) => void;
   healthDialogOpen: boolean;
   setHealthDialogOpen: (open: boolean) => void;
   subtaskDialogOpen: boolean;
@@ -142,6 +135,9 @@ export const LeRobotPlaybackContext = createContext<LeRobotPlaybackContextType |
 export const LeRobotSelectionContext = createContext<LeRobotSelectionContextType | null>(null);
 export const LeRobotUiContext = createContext<LeRobotUiContextType | null>(null);
 export const LeRobotSubtaskContext = createContext<LeRobotSubtaskContextType | null>(null);
+/** Segments, review state, selection and change operations. */
+export type LeRobotSegmentContextType = SegmentAnnotationState;
+export const LeRobotSegmentContext = createContext<LeRobotSegmentContextType | null>(null);
 
 /** @deprecated Prefer domain hooks (useLeRobotData / useLeRobotPlayback / useLeRobotSelection). */
 export const useLeRobot = () => {
@@ -177,5 +173,11 @@ export const useLeRobotUi = () => {
 export const useLeRobotSubtask = () => {
   const context = useContext(LeRobotSubtaskContext);
   if (!context) throw new Error('useLeRobotSubtask must be used within LeRobotDataProvider');
+  return context;
+};
+
+export const useLeRobotSegments = () => {
+  const context = useContext(LeRobotSegmentContext);
+  if (!context) throw new Error('useLeRobotSegments must be used within LeRobotDataProvider');
   return context;
 };

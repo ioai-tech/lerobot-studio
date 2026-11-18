@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef, useCallback, useMemo } from 'react';
+import React, { useEffect, useLayoutEffect, useState, useRef, useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { LeRobotStudioProvider } from './LeRobotStudioProvider';
 import { EpisodeSidebar } from './Sidebar/EpisodeSidebar';
@@ -13,7 +13,10 @@ import {
   preflightRemoteArchive,
   translateRemotePreflightFailure,
 } from '../../platform/datasource/remotePreflight';
-import { useLeRobotData } from '../contexts/LeRobotContext';
+import { useLeRobotData, useLeRobotSegments } from '../contexts/LeRobotContext';
+import type { LeRobotAnnotationProps } from '../contexts/annotationTypes';
+import type { LeRobotMessages } from '../i18n/messageKeys';
+import type { AnnotationField } from '../../core/annotation/types';
 import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts';
 import { ViewerLayout } from '../features/viewer/ViewerLayout';
 import { ErrorState } from './Commons/ErrorState';
@@ -78,6 +81,20 @@ export interface LeRobotViewerProps {
   auxiliarySeries?: AuxiliarySeries[];
   /** Receives typed auxiliary-series warnings (missing column, read failure …). */
   onAuxiliarySeriesWarning?: (warning: AuxiliarySeriesWarning) => void;
+  /**
+   * Host-controlled segments: the viewer emits typed changes and shows
+   * `value`. Omit for session-only editing (the standalone app's model).
+   */
+  annotation?: LeRobotAnnotationProps;
+  /**
+   * No edit control and no edit key, whatever else is set. With
+   * `annotation={{ value }}` segments, review states and badges stay visible.
+   */
+  readOnly?: boolean;
+  /** Fields shown in the segment inspector, in order (values live in `Segment.values`). */
+  fields?: AnnotationField[];
+  /** Host copy for built-in messages, e.g. to call segments "Episodes". */
+  messages?: LeRobotMessages;
 }
 
 /** Viewer without the provider wrapper; render inside `LeRobotStudioProvider`. */
@@ -91,12 +108,21 @@ export function LeRobotViewerContent({
   onExport,
   auxiliarySeries,
   onAuxiliarySeriesWarning,
-}: Omit<LeRobotViewerProps, 'theme' | 'language' | 'className'> & {
+  annotation,
+  readOnly,
+  fields,
+}: Omit<LeRobotViewerProps, 'theme' | 'language' | 'className' | 'messages'> & {
   showSidebar: boolean;
   showPlaybackBar: boolean;
 }) {
   const { t } = useTranslation();
   const { initialize, error, isLoading, clearError } = useLeRobotData();
+  const { configure } = useLeRobotSegments();
+
+  // Segment configuration lives in the data provider; push the props before paint.
+  useLayoutEffect(() => {
+    configure({ annotation, readOnly, fields });
+  }, [annotation, configure, fields, readOnly]);
 
   useKeyboardShortcuts(enableKeyboardShortcuts);
 
@@ -333,9 +359,19 @@ export const LeRobotViewer: React.FC<LeRobotViewerProps> = ({
   onExport,
   auxiliarySeries,
   onAuxiliarySeriesWarning,
+  annotation,
+  readOnly,
+  fields,
+  messages,
 }) => {
   return (
-    <LeRobotStudioProvider theme={theme} language={language} className={className} showToaster>
+    <LeRobotStudioProvider
+      theme={theme}
+      language={language}
+      messages={messages}
+      className={className}
+      showToaster
+    >
       <LeRobotViewerContent
         dataSource={dataSource}
         showSidebar={showSidebar}
@@ -346,6 +382,9 @@ export const LeRobotViewer: React.FC<LeRobotViewerProps> = ({
         onExport={onExport}
         auxiliarySeries={auxiliarySeries}
         onAuxiliarySeriesWarning={onAuxiliarySeriesWarning}
+        annotation={annotation}
+        readOnly={readOnly}
+        fields={fields}
       />
     </LeRobotStudioProvider>
   );

@@ -2,22 +2,38 @@ import { useEffect, useCallback, useRef } from 'react';
 import {
   useLeRobotData,
   useLeRobotPlayback,
+  useLeRobotSegments,
   useLeRobotSelection,
   useLeRobotSubtask,
   useLeRobotUi,
 } from '../contexts/LeRobotContext';
 import { usePortalContainer } from '@/ui';
+import { fieldOptionForKey } from '@/core';
 import { isEventInsideStudio, isPlaybackShortcutBlocked } from './shortcutTarget';
+import {
+  isSegmentShortcutTarget,
+  matchFieldOptionKey,
+  matchSegmentShortcut,
+  SEGMENT_SHORTCUTS,
+  type SegmentShortcutId,
+} from './segmentShortcuts';
 
-/** Video-player keyboard shortcuts. */
+/** Video-player and segment keyboard shortcuts. */
 export const useKeyboardShortcuts = (enabled: boolean = true) => {
   const portalContainer = usePortalContainer();
-  const { episodes, getFrameIndex, isLoading } = useLeRobotData();
+  const { episodes, getFrameIndex, isLoading, info } = useLeRobotData();
   const { selectedEpisodeIndex, selectEpisode } = useLeRobotSelection();
   const { setFrameIndex, setPlaying, currentFrames, isPlaying } = useLeRobotPlayback();
-  const { canAnnotate, endAtPlayhead, pendingRange, clearPendingAnnotation } = useLeRobotSubtask();
-  const { setSubtaskDialogOpen, episodeEditMode, subtaskDialogOpen, trimEditMode, trimSuggestion } =
-    useLeRobotUi();
+  const { canAnnotate, endAtPlayhead, pendingRange, clearPendingAnnotation, beginPendingRange } =
+    useLeRobotSubtask();
+  const { setSubtaskDialogOpen, subtaskDialogOpen, trimSuggestion } = useLeRobotUi();
+  const segments = useLeRobotSegments();
+  const segmentsRef = useRef(segments);
+  segmentsRef.current = segments;
+  const fpsRef = useRef(info?.fps ?? 30);
+  fpsRef.current = info?.fps ?? 30;
+  const beginPendingRangeRef = useRef(beginPendingRange);
+  beginPendingRangeRef.current = beginPendingRange;
 
   const enabledRef = useRef(enabled);
   const episodesRef = useRef(episodes);
@@ -25,7 +41,8 @@ export const useKeyboardShortcuts = (enabled: boolean = true) => {
   const currentFramesRef = useRef(currentFrames);
   const isLoadingRef = useRef(isLoading);
   const canAnnotateRef = useRef(canAnnotate);
-  const episodeEditModeRef = useRef(episodeEditMode && !trimEditMode && !trimSuggestion);
+  // Pause-to-label is the standalone flow; a host-controlled viewer labels with Shift+[ / Shift+].
+  const pauseToLabelRef = useRef(!segments.controlled && !trimSuggestion);
   const endAtPlayheadRef = useRef(endAtPlayhead);
   const pendingRangeRef = useRef(pendingRange);
   const clearPendingAnnotationRef = useRef(clearPendingAnnotation);
@@ -60,8 +77,8 @@ export const useKeyboardShortcuts = (enabled: boolean = true) => {
   }, [canAnnotate]);
 
   useEffect(() => {
-    episodeEditModeRef.current = episodeEditMode && !trimEditMode && !trimSuggestion;
-  }, [episodeEditMode, trimEditMode, trimSuggestion]);
+    pauseToLabelRef.current = !segments.controlled && !trimSuggestion;
+  }, [segments.controlled, trimSuggestion]);
 
   useEffect(() => {
     endAtPlayheadRef.current = endAtPlayhead;
@@ -95,12 +112,127 @@ export const useKeyboardShortcuts = (enabled: boolean = true) => {
     trimSuggestionRef.current = trimSuggestion;
   }, [trimSuggestion]);
 
+  const runSegmentShortcut = useCallback(
+    (id: SegmentShortcutId): boolean => {
+      const api = segmentsRef.current;
+      const shortcut = SEGMENT_SHORTCUTS.find((item) => item.id === id);
+      if (!shortcut || (shortcut.edit && !api.canEdit)) return false;
+      const frame = getFrameIndex();
+      const nudge = (direction: 1 | -1, seconds: boolean) => {
+        api.nudgeEdgeNearPlayhead(
+          direction * (seconds ? Math.max(1, Math.round(fpsRef.current)) : 1),
+        );
+        return true;
+      };
+      switch (id) {
+        case 'confirm':
+          api.confirmSelected();
+          return true;
+        case 'confirmAll':
+          if (api.toReviewInView.length === 0) api.showNotice('segments.notice.noneToReview');
+          else api.setConfirmAllOpen(true);
+          return true;
+        case 'delete':
+          api.deleteSelected();
+          return true;
+        case 'split':
+          api.splitAtPlayhead();
+          return true;
+        case 'merge':
+          api.mergeWithNext();
+          return true;
+        case 'setIn':
+          api.setEdgeAtPlayhead('start');
+          return true;
+        case 'setOut':
+          api.setEdgeAtPlayhead('end');
+          return true;
+        case 'nudgeBack':
+          return nudge(-1, false);
+        case 'nudgeForward':
+          return nudge(1, false);
+        case 'nudgeBackSecond':
+          return nudge(-1, true);
+        case 'nudgeForwardSecond':
+          return nudge(1, true);
+        case 'new':
+          api.createAtPlayhead();
+          return true;
+        case 'nextUncovered':
+          api.jumpToNextUncovered();
+          return true;
+        case 'next':
+          api.selectRelative(1);
+          return true;
+        case 'previous':
+          api.selectRelative(-1);
+          return true;
+        case 'loop':
+          api.toggleLoop();
+          return true;
+        case 'subtaskStart':
+          if (!api.canEditSubtasks) return false;
+          api.setSubtaskStart(frame);
+          api.showNotice('segments.notice.subtaskStartSet');
+          return true;
+        case 'subtaskEnd': {
+          if (!api.canEditSubtasks) return false;
+          const start = api.subtaskStart;
+          if (start == null) {
+            api.showNotice('segments.notice.subtaskStartFirst', undefined, 'error');
+            return true;
+          }
+          setPlayingRef.current(false);
+          if (beginPendingRangeRef.current(start, frame)) {
+            api.setSubtaskStart(null);
+            setSubtaskDialogOpenRef.current(true);
+          } else {
+            api.showNotice('segments.notice.subtaskInvalid', undefined, 'error');
+          }
+          return true;
+        }
+        case 'undo':
+          api.undo();
+          return true;
+        case 'redo':
+          api.redo();
+          return true;
+        case 'help':
+          api.setShortcutSheetOpen(true);
+          return true;
+      }
+    },
+    [getFrameIndex],
+  );
+
   const handleKeyDown = useCallback(
     (e: KeyboardEvent) => {
       if (!enabledRef.current || isLoadingRef.current) return;
       if (e.defaultPrevented) return;
 
       const target = e.target;
+      if (isSegmentShortcutTarget(target, portalContainer)) {
+        const id = matchSegmentShortcut(e);
+        if (id) {
+          if (runSegmentShortcut(id)) {
+            e.preventDefault();
+            e.stopPropagation();
+          }
+          return;
+        }
+        const optionKey = matchFieldOptionKey(e);
+        const api = segmentsRef.current;
+        if (optionKey && api.canEdit) {
+          const match = fieldOptionForKey(api.fields, optionKey);
+          if (match) {
+            e.preventDefault();
+            e.stopPropagation();
+            api.setFieldValue(match.field.id, match.value);
+            return;
+          }
+        }
+      }
+
       if (!isEventInsideStudio(target, portalContainer)) return;
       if (isPlaybackShortcutBlocked(target, e.key)) return;
 
@@ -116,7 +248,7 @@ export const useKeyboardShortcuts = (enabled: boolean = true) => {
       const currentFrameIndex = getFrameIndex();
       const totalFrames = currentFrames.length;
       const canUseSubtaskKeys =
-        canAnnotateRef.current && episodeEditModeRef.current && totalFrames > 0;
+        canAnnotateRef.current && pauseToLabelRef.current && totalFrames > 0;
 
       switch (e.key) {
         case 'ArrowUp': {
@@ -230,6 +362,9 @@ export const useKeyboardShortcuts = (enabled: boolean = true) => {
         }
 
         case 'Escape': {
+          if (segmentsRef.current.subtaskStart != null) {
+            segmentsRef.current.setSubtaskStart(null);
+          }
           if (pendingRangeRef.current != null && !subtaskDialogOpenRef.current) {
             e.preventDefault();
             clearPendingAnnotationRef.current();
@@ -238,7 +373,7 @@ export const useKeyboardShortcuts = (enabled: boolean = true) => {
         }
       }
     },
-    [selectEpisode, setFrameIndex, getFrameIndex, portalContainer],
+    [selectEpisode, setFrameIndex, getFrameIndex, portalContainer, runSegmentShortcut],
   );
 
   useEffect(() => {

@@ -6,6 +6,7 @@ import { ToastProvider } from '../contexts/ToastContext';
 import { LeRobotDataProvider } from '../contexts/LeRobotProvider';
 import { I18nProvider } from '../i18n/core';
 import { Toaster } from './ui/toaster';
+import type { LeRobotMessages } from '../i18n/messageKeys';
 import { useTranslation } from '../i18n/reactI18nextCompat';
 
 /**
@@ -33,6 +34,8 @@ const ScopedRoot = React.forwardRef<
 export interface LeRobotStudioProviderProps {
   theme?: 'light' | 'dark' | 'system';
   language?: string;
+  /** Host copy for built-in messages, e.g. to call segments "Episodes". */
+  messages?: LeRobotMessages;
   className?: string;
   children: React.ReactNode;
   /** When true, render the shared Sonner toaster inside the studio root. @defaultValue true */
@@ -79,6 +82,7 @@ function StudioTree({
 export const LeRobotStudioProvider: React.FC<LeRobotStudioProviderProps> = ({
   theme,
   language,
+  messages,
   className,
   children,
   showToaster = true,
@@ -87,7 +91,7 @@ export const LeRobotStudioProvider: React.FC<LeRobotStudioProviderProps> = ({
   const [rootEl, setRootEl] = useState<HTMLElement | null>(null);
 
   return (
-    <I18nProvider forcedLanguage={language}>
+    <I18nProvider forcedLanguage={language} messages={messages}>
       <ScopedRoot
         ref={setRootEl}
         className={cn(

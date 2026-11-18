@@ -1,4 +1,4 @@
-import type { LeRobotDataLoader } from '../services/LeRobotDataLoader';
+import type { ExportDataLoader } from './SegmentExportPlan';
 import type { LeRobotInfo, EpisodeMetadata } from '@/core';
 import type { ExportAdapter } from '@/core';
 import type { ExportProgress, EpisodeVideoOffsets, TargetVersion } from '@/core';
@@ -120,7 +120,7 @@ function isUint8ArrayLike(val: unknown): val is Uint8Array {
 }
 
 async function readFramesForEpisode(
-  dataLoader: LeRobotDataLoader,
+  dataLoader: ExportDataLoader,
   episodeIndex: number,
   key: string,
   range?: ExportTrim,
@@ -154,7 +154,7 @@ async function readFramesForEpisode(
  *  - v3.0 target → `videos/{key}/chunk-XXX/file-YYY.mp4`
  */
 export async function exportImageFeaturesAsVideo(
-  dataLoader: LeRobotDataLoader,
+  dataLoader: ExportDataLoader,
   info: LeRobotInfo,
   episodes: EpisodeMetadata[],
   targetVersion: TargetVersion,

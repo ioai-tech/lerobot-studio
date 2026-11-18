@@ -33,6 +33,71 @@ The viewer supports in-session episode changes when the dataset allows them. `on
 
 ---
 
+## Segments and review
+
+`LeRobotViewer` can show, edit and review _segments_: inclusive frame ranges inside an episode that export as their own episodes. A host passes four props.
+
+```tsx
+import {
+  LeRobotViewer,
+  applyChange,
+  type AnnotationChange,
+  type AnnotationDocument,
+  type AnnotationField,
+} from '@ioai/lerobot-studio';
+
+const fields: AnnotationField[] = [
+  {
+    id: 'outcome',
+    label: 'Outcome',
+    kind: 'select',
+    options: [
+      { value: 'success', label: 'Success', key: '1' },
+      { value: 'failure', label: 'Failure', key: '2' },
+    ],
+  },
+  { id: 'tags', label: 'Tags', kind: 'tags', suggestions: ['occluded'] },
+];
+
+<LeRobotViewer
+  dataSource={source}
+  annotation={{
+    value, // AnnotationDocument
+    onChange: (change: AnnotationChange) => save(change), // persist, then pass the new value back
+    saveState, // { kind: 'saving' | 'saved' | 'offline' | 'reloaded' | 'refused' | 'idle', message?, actions? }
+    createSegmentId: () => uuidv7(),
+  }}
+  fields={fields}
+  messages={{ 'segments.title': 'Takes' }}
+/>;
+```
+
+- **`annotation`** makes the segments host-controlled. `value` is an `AnnotationDocument`: segments keyed by `episode_index`; an episode with no entry or no segments is used whole. The viewer shows each change at once and calls `onChange` with one typed `AnnotationChange` per step. The host applies it (the exported `applyChange(doc, change, ctx)` is the reference reducer), persists it, and passes the new `value` back, which replaces the preview. To refuse a change, keep `value` and set `saveState.kind` to `'refused'` with a `message`; the viewer drops its preview and shows the reason. Without `onChange` the document is view-only. `canDelete(segment)` hides deletion per segment, and `newSegmentReview` sets the review state of segments a person creates (default `'confirmed'`). Without `annotation`, segments live in the viewer's session and editing needs **Edit episodes** on a writable dataset.
+- **`readOnly`** always wins: no edit control is rendered and no edit key acts, whatever `annotation` contains. Segments, review states, field values and host badges (`segment.status`) are still shown, and navigation keys still work. A segment with `readOnly: true` refuses edits on its own.
+- **`fields`** declares the values a person sets on a segment, in order: `select` (one option; an option's `key` from `1` to `9` sets it from the keyboard), `tags` (a string list, with optional `suggestions`), or `text`. Values are stored in `segment.values[field.id]`. The reducer refuses an unknown field or a value that does not fit its kind.
+- **`messages`** replaces built-in copy by key (`LeRobotMessageKey`, all `segments.*` keys) in the current language. Values are ICU messages; `{{name}}` placeholders are accepted too.
+
+### Changes and their inverses
+
+Every change is one of eight ops. Undo sends the inverse change through `onChange`; the viewer keeps the last 100 steps and never sends a history snapshot.
+
+| Op        | Effect                                                                                                                                                               | Inverse sent by Undo              |
+| --------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------- |
+| `create`  | Adds a segment                                                                                                                                                       | `delete`                          |
+| `update`  | Changes `startFrame`, `endFrame`, `task`, `subtasks` or `values` (`values` merges key by key; `null` clears a key)                                                   | `update` with the old values      |
+| `delete`  | Removes a segment                                                                                                                                                    | `restore` with the full segment   |
+| `restore` | Brings a deleted segment back                                                                                                                                        | `delete`                          |
+| `split`   | Left part keeps `id` (`startFrame..atFrame-1`), right part gets `newId`; task, values, review and origin are copied; a crossing subtask is cut                       | `merge`                           |
+| `merge`   | `withId` must be the next segment; keeps the first task, values and origin, joins tag lists, is confirmed only if both were; a subtask cut by a split is joined back | `unmerge`                         |
+| `unmerge` | Restores both segments exactly                                                                                                                                       | `merge`                           |
+| `confirm` | Sets `review: 'confirmed'`                                                                                                                                           | none: confirming cannot be undone |
+
+Redo resends the forward change; a redone `split` asks `createSegmentId` for a fresh `newId`, and a redone `create` is sent as `restore`. Editing never changes `review`. A change that breaks a rule is refused with a typed `AnnotationRefusalCode` (for example `SEGMENT_OVERLAP`, `RANGE_OUTSIDE_EPISODE`, `MERGE_NOT_ADJACENT`); values are never clamped.
+
+The full key table is in the [User Guide](./user-manual.md#split-and-review-episodes).
+
+---
+
 ## Custom data sources
 
 Implement `DataSource` if your application needs to read bytes or text by path. Treat paths and content as untrusted, and release object URLs in `clear()`.

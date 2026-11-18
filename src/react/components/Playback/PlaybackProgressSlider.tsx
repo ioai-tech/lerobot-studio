@@ -30,6 +30,8 @@ export interface PlaybackProgressSliderProps {
   setFrameIndex: (index: number) => void;
   getFrameIndex: () => number;
   subscribeFrameIndex: (callback: (frameIndex: number) => void) => () => void;
+  /** Rendered above the subtask lane on the same x-scale (e.g. the segment band). */
+  aboveTrack?: React.ReactNode;
   segments?: SubtaskSegment[];
   pendingRange?: PendingSubtaskRange | null;
   editRanges?: boolean;
@@ -51,6 +53,7 @@ const PlaybackProgressSliderComponent: React.FC<PlaybackProgressSliderProps> = (
   setFrameIndex,
   getFrameIndex,
   subscribeFrameIndex,
+  aboveTrack,
   segments = [],
   pendingRange = null,
   editRanges = false,
@@ -312,6 +315,7 @@ const PlaybackProgressSliderComponent: React.FC<PlaybackProgressSliderProps> = (
         </div>
       </div>
 
+      {aboveTrack}
       {editRanges || segments.length > 0 || pendingRange ? (
         <SubtaskRangeTrack
           segments={segments}

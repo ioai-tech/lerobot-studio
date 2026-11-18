@@ -62,6 +62,30 @@ export type {
   AuxiliarySeriesWarning,
   AuxiliarySeriesWarningCode,
 } from '../platform/services/auxiliarySeries';
+export type {
+  LeRobotAnnotationProps,
+  LeRobotAnnotationSaveState,
+} from './contexts/annotationTypes';
+export { LEROBOT_MESSAGE_KEYS } from './i18n/messageKeys';
+export type { LeRobotMessageKey, LeRobotMessages } from './i18n/messageKeys';
+export type {
+  AnnotationChange,
+  AnnotationChangeOp,
+  AnnotationContext,
+  AnnotationDocument,
+  AnnotationField,
+  AnnotationRefusal,
+  AnnotationRefusalCode,
+  ApplyChangeResult,
+  ReviewState,
+  Segment,
+  SegmentFieldValue,
+  SegmentOrigin,
+  SegmentPatch,
+  SegmentStatus,
+  SegmentSubtask,
+} from '../core/annotation/types';
+export { applyChange } from '../core/annotation/reducer';
 
 /** Create a viewer data source for a local ZIP, TAR, or TAR.GZ archive. */
 export function createArchiveDataSourceFromFile(file: File): DataSource {

@@ -19,6 +19,7 @@ export type {
   ExportProgress,
   ExportManifest,
   ExportOptions,
+  ExportSegment,
   TargetVersion,
   EpisodeVideoOffsets,
   V3DataEpisodeLocation,
@@ -68,3 +69,4 @@ export type { ParquetWorkerAPI, ParquetImageWorkerAPI } from './workers/types';
 export * from './subtask';
 export * from './export/trim';
 export { fixedTrim, suggestTrim } from './export/suggestTrim';
+export * from './annotation';

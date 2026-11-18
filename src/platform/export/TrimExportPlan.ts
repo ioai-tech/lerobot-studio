@@ -1,6 +1,6 @@
 import * as arrow from 'apache-arrow';
 import { validateEpisodeTrim, type EpisodeTrimRange, type EpisodeMetadata } from '@/core';
-import type { LeRobotDataLoader } from '../services/LeRobotDataLoader';
+import type { ExportDataLoader } from './SegmentExportPlan';
 
 export interface ExportTrim extends EpisodeTrimRange {
   fromSec: number;
@@ -9,7 +9,7 @@ export interface ExportTrim extends EpisodeTrimRange {
 }
 
 export async function buildTrimExportPlan(
-  loader: LeRobotDataLoader,
+  loader: ExportDataLoader,
   episodes: EpisodeMetadata[],
   requested: ReadonlyMap<number, EpisodeTrimRange> | undefined,
   fps: number,

@@ -51,7 +51,7 @@ afterEach(async () => {
 
 describe.skipIf(!python)('official LeRobot dataset compatibility', () => {
   it(
-    'reads trimmed episodes with reset timestamps and padded action windows',
+    'reads a segment exported as an episode with reset timestamps and padded action windows',
     async () => {
       const root = await mkdtemp(path.join(os.tmpdir(), 'lerobot-studio-trim-'));
       tempDirs.push(root);
@@ -75,7 +75,12 @@ describe.skipIf(!python)('official LeRobot dataset compatibility', () => {
             targetVersion: 'v3.0',
             includeData: true,
             includeVideos: false,
-            trimRanges: new Map([[episodes[1].episode_index, { startFrame: 1, endFrame: 2 }]]),
+            segments: new Map([
+              [
+                episodes[1].episode_index,
+                [{ id: 'kept', startFrame: 1, endFrame: 2, task: null, subtasks: [], columns: {} }],
+              ],
+            ]),
           },
         );
         const script = [

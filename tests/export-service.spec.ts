@@ -15,7 +15,8 @@ const mocks = vi.hoisted(() => ({
   computeTrimVisualStats: vi.fn(),
 }));
 
-vi.mock('../src/platform/export/MetadataExporter', () => ({
+vi.mock('../src/platform/export/MetadataExporter', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../src/platform/export/MetadataExporter')>()),
   writeMetadata: mocks.writeMetadata,
   validateMetadataForExport: mocks.validateMetadataForExport,
 }));
@@ -51,6 +52,14 @@ import { SubtaskCoverageError, classifyLeRobotVersion } from '@/core';
 
 const info = { codebase_version: 'v3.0', features: { camera: { dtype: 'image' } } } as any;
 const episodes = [{ episode_index: 0, length: 2, tasks: ['pick'] }] as any;
+
+function segment(
+  startFrame: number,
+  endFrame: number,
+  subtasks: Array<{ startFrame: number; endFrame: number; label: string }> = [],
+) {
+  return { id: `s${startFrame}`, startFrame, endFrame, task: null, subtasks, columns: {} };
+}
 
 function adapter() {
   return { clear: vi.fn(), finalize: vi.fn() } as any;
@@ -190,7 +199,7 @@ describe('ExportService', () => {
         includeData: true,
         includeVideos: false,
         includeSubtasks: false,
-        subtaskOverlay: new Map([[0, [{ startFrame: 0, endFrame: 0, label: 'grasp' }]]]),
+        segments: new Map([[0, [segment(0, 1, [{ startFrame: 0, endFrame: 0, label: 'grasp' }])]]]),
       },
     );
 
@@ -215,11 +224,36 @@ describe('ExportService', () => {
           includeData: true,
           includeVideos: false,
           includeSubtasks: true,
-          subtaskOverlay: new Map([[0, [{ startFrame: 0, endFrame: 0, label: 'grasp' }]]]),
+          segments: new Map([
+            [0, [segment(0, 1, [{ startFrame: 0, endFrame: 0, label: 'grasp' }])]],
+          ]),
         },
       ),
-    ).rejects.toBeInstanceOf(SubtaskCoverageError);
+    ).rejects.toMatchObject({
+      constructor: SubtaskCoverageError,
+      episodeIndex: 0,
+      segmentId: 's0',
+    });
     expect(mocks.writeMetadata).not.toHaveBeenCalled();
+  });
+
+  it('fills uncovered subtask frames as unlabeled when asked', async () => {
+    await new ExportService(loader(), adapter()).exportWithData(
+      info,
+      episodes,
+      { 0: 'pick' },
+      {
+        format: 'zip',
+        targetVersion: 'v3.0',
+        includeData: true,
+        includeVideos: false,
+        includeSubtasks: true,
+        fillSubtaskGaps: true,
+        segments: new Map([[0, [segment(0, 1, [{ startFrame: 0, endFrame: 0, label: 'grasp' }])]]]),
+      },
+    );
+    const table = mocks.writeMetadata.mock.calls[0][11];
+    expect(Object.values(table).sort()).toEqual(['grasp', 'unlabeled']);
   });
 
   it('does not mutate an adapter when cancellation precedes export', async () => {
@@ -496,7 +530,7 @@ describe('ExportService', () => {
           targetVersion: 'v3.0',
           includeData: false,
           includeVideos: false,
-          trimRanges: new Map([[0, { startFrame: 1, endFrame: 1 }]]),
+          segments: new Map([[0, [segment(1, 1)]]]),
         },
       ),
     ).rejects.toThrow(/trimming requires exporting frame data/i);
@@ -538,7 +572,7 @@ describe('ExportService', () => {
         targetVersion: 'v3.0',
         includeData: true,
         includeVideos: true,
-        trimRanges: new Map([[0, { startFrame: 1, endFrame: 1 }]]),
+        segments: new Map([[0, [segment(0, 0)]]]),
       },
     );
 

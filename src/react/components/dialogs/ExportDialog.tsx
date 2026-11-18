@@ -11,15 +11,15 @@ import {
 import { Button } from '@/ui';
 import {
   useLeRobotData,
+  useLeRobotSegments,
   useLeRobotSelection,
-  useLeRobotSubtask,
 } from '../../contexts/LeRobotContext';
 import { canUseFileSystemAccess, detectPlatformCapabilities } from '@/platform';
 import { ExportService } from '@/platform';
 import { WebExportAdapter } from '@/platform';
 import type { ExportFormat } from '@/core';
 import type { ExportProgress } from '@/core';
-import { SubtaskCoverageError } from '@/core';
+import { SubtaskCoverageError, annotationToExportSegments } from '@/core';
 
 export interface ExportDialogProps {
   open: boolean;
@@ -29,9 +29,28 @@ export interface ExportDialogProps {
 export const ExportDialog: React.FC<ExportDialogProps> = ({ open, onOpenChange }) => {
   const { t } = useTranslation();
   const { dataLoader, info, tasks, subtasks } = useLeRobotData();
-  const { episodesForExport, modifiedEpisodes, deletedEpisodes, trimRanges } =
-    useLeRobotSelection();
-  const { overlay } = useLeRobotSubtask();
+  const { episodesForExport, modifiedEpisodes, deletedEpisodes } = useLeRobotSelection();
+  const { doc, fields } = useLeRobotSegments();
+  // Each kept segment is exported as its own episode; episodes without segments stay whole.
+  const exportSegments = useMemo(() => annotationToExportSegments(doc, fields), [doc, fields]);
+  const segmentSummary = useMemo(() => {
+    let segmentCount = 0;
+    let episodesWithSegments = 0;
+    let keptFrames = 0;
+    for (const episode of episodesForExport) {
+      const list = exportSegments.get(episode.episode_index);
+      if (!list?.length) {
+        keptFrames += episode.length;
+        continue;
+      }
+      episodesWithSegments += 1;
+      segmentCount += list.length;
+      keptFrames += list.reduce((sum, item) => sum + item.endFrame - item.startFrame + 1, 0);
+    }
+    const outputEpisodes = episodesForExport.length - episodesWithSegments + segmentCount;
+    const originalFrames = episodesForExport.reduce((sum, episode) => sum + episode.length, 0);
+    return { segmentCount, episodesWithSegments, keptFrames, outputEpisodes, originalFrames };
+  }, [episodesForExport, exportSegments]);
 
   const capabilities = useMemo(() => detectPlatformCapabilities(), []);
   const versionCapability = dataLoader?.getVersionCapability() ?? null;
@@ -44,6 +63,7 @@ export const ExportDialog: React.FC<ExportDialogProps> = ({ open, onOpenChange }
   const [format, setFormat] = useState<ExportFormat>('zip');
   const [targetVersion, setTargetVersion] = useState<'v2.1' | 'v3.0'>(defaultTargetVersion);
   const [includeSubtasks, setIncludeSubtasks] = useState(false);
+  const [fillSubtaskGaps, setFillSubtaskGaps] = useState(false);
   const [compactVideos, setCompactVideos] = useState(false);
   const [progress, setProgress] = useState<ExportProgress | null>(null);
   const [exportError, setExportError] = useState<string | null>(null);
@@ -56,6 +76,7 @@ export const ExportDialog: React.FC<ExportDialogProps> = ({ open, onOpenChange }
   useEffect(() => {
     if (!open) return;
     setIncludeSubtasks(false);
+    setFillSubtaskGaps(false);
     setExportError(null);
   }, [open]);
 
@@ -129,10 +150,10 @@ export const ExportDialog: React.FC<ExportDialogProps> = ({ open, onOpenChange }
           includeData: true,
           includeVideos: true,
           compactVideos,
-          trimRanges,
+          segments: exportSegments,
           includeSubtasks: targetVersion === 'v3.0' && includeSubtasks,
+          fillSubtaskGaps: targetVersion === 'v3.0' && includeSubtasks && fillSubtaskGaps,
           signal,
-          subtaskOverlay: overlay,
           sourceSubtasks: subtasks,
         });
         abortControllerRef.current = null;
@@ -154,20 +175,31 @@ export const ExportDialog: React.FC<ExportDialogProps> = ({ open, onOpenChange }
         if (isAbort) {
           setExportError(t('export.cancelled', 'Export cancelled.'));
         } else if (e instanceof SubtaskCoverageError) {
+          const segmentNumber = e.segmentId
+            ? (exportSegments.get(e.episodeIndex)?.findIndex((item) => item.id === e.segmentId) ??
+                -1) + 1
+            : 0;
           setExportError(
-            e.coverage.labeledFrames === 0
-              ? t('export.subtaskCoverageMissing', 'Episode #{{index}} has no subtask labels.', {
+            segmentNumber > 0
+              ? t('export.subtaskCoverageSegment', {
                   index: e.episodeIndex,
+                  n: segmentNumber,
+                  labeled: e.coverage.labeledFrames,
+                  total: e.coverage.totalFrames,
                 })
-              : t(
-                  'export.subtaskCoverageIncomplete',
-                  'Episode #{{index}} is missing labels ({{labeled}}/{{total}}).',
-                  {
+              : e.coverage.labeledFrames === 0
+                ? t('export.subtaskCoverageMissing', 'Episode #{{index}} has no subtask labels.', {
                     index: e.episodeIndex,
-                    labeled: e.coverage.labeledFrames,
-                    total: e.coverage.totalFrames,
-                  },
-                ),
+                  })
+                : t(
+                    'export.subtaskCoverageIncomplete',
+                    'Episode #{{index}} is missing labels ({{labeled}}/{{total}}).',
+                    {
+                      index: e.episodeIndex,
+                      labeled: e.coverage.labeledFrames,
+                      total: e.coverage.totalFrames,
+                    },
+                  ),
           );
         } else {
           const msg =
@@ -190,12 +222,12 @@ export const ExportDialog: React.FC<ExportDialogProps> = ({ open, onOpenChange }
     episodesForExport,
     tasks,
     subtasks,
-    overlay,
+    exportSegments,
     format,
     targetVersion,
     includeSubtasks,
+    fillSubtaskGaps,
     compactVideos,
-    trimRanges,
     onOpenChange,
     t,
   ]);
@@ -283,15 +315,28 @@ export const ExportDialog: React.FC<ExportDialogProps> = ({ open, onOpenChange }
               </div>
             </div>
             {targetVersion === 'v3.0' ? (
-              <label className="flex items-start gap-2 text-sm">
-                <input
-                  type="checkbox"
-                  className="mt-0.5 h-3.5 w-3.5 shrink-0 accent-primary"
-                  checked={includeSubtasks}
-                  onChange={(event) => setIncludeSubtasks(event.target.checked)}
-                />
-                <span>{t('export.includeSubtasks', 'Include subtasks')}</span>
-              </label>
+              <div className="space-y-1">
+                <label className="flex items-start gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    className="mt-0.5 h-3.5 w-3.5 shrink-0 accent-primary"
+                    checked={includeSubtasks}
+                    onChange={(event) => setIncludeSubtasks(event.target.checked)}
+                  />
+                  <span>{t('export.includeSubtasks', 'Include subtasks')}</span>
+                </label>
+                {includeSubtasks ? (
+                  <label className="ml-5 flex items-start gap-2 text-sm">
+                    <input
+                      type="checkbox"
+                      className="mt-0.5 h-3.5 w-3.5 shrink-0 accent-primary"
+                      checked={fillSubtaskGaps}
+                      onChange={(event) => setFillSubtaskGaps(event.target.checked)}
+                    />
+                    <span>{t('export.fillSubtaskGaps')}</span>
+                  </label>
+                ) : null}
+              </div>
             ) : null}
             {targetVersion === 'v3.0' && versionCapability?.adapterVersion === 'v3.0' ? (
               <div className="space-y-1 text-sm">
@@ -324,26 +369,26 @@ export const ExportDialog: React.FC<ExportDialogProps> = ({ open, onOpenChange }
                   {t('export.deletedCount', 'Deleted')}: {deletedEpisodes.size}
                 </li>
                 <li>
-                  {t('export.subtaskEpisodes', 'Subtask episodes')}: {overlay.size}
+                  {t('export.segmentSummary', {
+                    count: segmentSummary.segmentCount,
+                    episodes: segmentSummary.episodesWithSegments,
+                  })}
                 </li>
                 <li>
-                  {t('export.totalEpisodes', 'Total episodes')}: {episodesForExport.length}
+                  {t('export.totalEpisodes', 'Total episodes')}: {segmentSummary.outputEpisodes}
                 </li>
               </ul>
-              {targetVersion === 'v3.0' && includeSubtasks ? (
+              {targetVersion === 'v3.0' && includeSubtasks && !fillSubtaskGaps ? (
                 <p className="mt-2 text-xs text-muted-foreground">
                   {t('export.subtaskCoverageHint', 'Every exported episode must be fully labeled.')}
                 </p>
               ) : null}
             </div>
-            {episodesForExport.some((episode) => trimRanges?.has(episode.episode_index)) ? (
+            {segmentSummary.segmentCount > 0 ? (
               <p className="text-xs text-muted-foreground" role="status">
-                {t('trim.exportSummary', {
-                  original: episodesForExport.reduce((sum, episode) => sum + episode.length, 0),
-                  kept: episodesForExport.reduce((sum, episode) => {
-                    const range = trimRanges?.get(episode.episode_index);
-                    return sum + (range ? range.endFrame - range.startFrame + 1 : episode.length);
-                  }, 0),
+                {t('export.segmentFrames', {
+                  original: segmentSummary.originalFrames,
+                  kept: segmentSummary.keptFrames,
                 })}
               </p>
             ) : null}

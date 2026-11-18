@@ -2,10 +2,12 @@ import React, { Suspense, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   useLeRobotData,
+  useLeRobotSegments,
   useLeRobotSelection,
   useLeRobotSubtask,
   useLeRobotUi,
 } from '../../contexts/LeRobotContext';
+import { SegmentList } from '../Segments/SegmentList';
 import type { EpisodeMetadata } from '@/core';
 import { EditTaskDialog } from '../dialogs/EditTaskDialog';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/ui';
@@ -54,8 +56,13 @@ export const EpisodeSidebar: React.FC = () => {
     setBatchTrimEpisodes(null);
   }, [dataLoader]);
   const [bulkEditText, setBulkEditText] = useState('');
-  const mutationDisabled = isReadOnly || Boolean(info && versionCapability?.status !== 'supported');
+  const segments = useLeRobotSegments();
+  const versionLocked = isReadOnly || Boolean(info && versionCapability?.status !== 'supported');
+  // A host that controls segments (or a read-only viewer) owns no dataset-episode edits.
+  const hostOwned = segments.controlled || segments.readOnly;
+  const mutationDisabled = versionLocked || hostOwned;
   const editMode = !mutationDisabled && episodeEditMode;
+  const singleEpisode = episodes.length === 1;
 
   useEffect(() => {
     if (!mutationDisabled) return;
@@ -184,6 +191,45 @@ export const EpisodeSidebar: React.FC = () => {
     selectedEpisodeIndices,
   ]);
 
+  if (singleEpisode) {
+    // One episode: the sidebar is its segment list.
+    return (
+      <div className="flex h-full min-h-0 w-full min-w-0 flex-col overflow-hidden bg-background">
+        {!hostOwned ? (
+          <div className="shrink-0 border-b px-3 pt-0 pb-2 min-w-0 overflow-x-hidden">
+            <EpisodeHeader
+              totalCount={episodes.length}
+              editMode={editMode}
+              multiSelectMode={false}
+              isReadOnly={mutationDisabled}
+              onToggleEditMode={() => {
+                const next = !editMode;
+                setEpisodeEditMode(next);
+                if (!next) {
+                  clearPendingAnnotation();
+                  setSubtaskDialogOpen(false);
+                }
+              }}
+              onToggleMultiSelectMode={() => undefined}
+              showMultiSelect={false}
+            />
+            {versionLocked && versionCapability && (
+              <p className="rounded-md border border-border/60 bg-muted/40 px-2 py-1.5 text-xs text-muted-foreground">
+                {t('sidebar.readOnlyVersion', {
+                  version:
+                    versionCapability.normalizedVersion ?? info?.codebase_version ?? 'unknown',
+                })}
+              </p>
+            )}
+          </div>
+        ) : null}
+        <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+          <SegmentList episodeIndex={episodes[0].episode_index} />
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="flex h-full min-h-0 w-full min-w-0 flex-col overflow-hidden bg-background">
       <div className="shrink-0 space-y-3 border-b px-3 pt-0 pb-2 min-w-0 overflow-x-hidden">
@@ -205,7 +251,7 @@ export const EpisodeSidebar: React.FC = () => {
             if (multiSelectMode) clearEpisodeSelection();
           }}
         />
-        {mutationDisabled && versionCapability && (
+        {versionLocked && !hostOwned && versionCapability && (
           <p className="rounded-md border border-border/60 bg-muted/40 px-2 py-1.5 text-xs text-muted-foreground">
             {t('sidebar.readOnlyVersion', {
               version: versionCapability.normalizedVersion ?? info?.codebase_version ?? 'unknown',
@@ -258,6 +304,13 @@ export const EpisodeSidebar: React.FC = () => {
           onEdit={(episode, event) => openEditDialog(event, episode)}
           onDelete={(episodeIndex, event) => handleDelete(event, episodeIndex)}
           onRestore={(episodeIndex, event) => handleRestore(event, episodeIndex)}
+          renderSelectedExpansion={(episode) => (
+            <SegmentList episodeIndex={episode.episode_index} showTitle={false} />
+          )}
+          expansionHeight={(episode) => {
+            const count = (segments.doc.episodes[episode.episode_index]?.segments ?? []).length;
+            return count === 0 ? 72 : 96 + Math.min(count, 6) * 56;
+          }}
         />
       </div>
 

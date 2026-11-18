@@ -6,6 +6,7 @@ import {
   SUBTASK_INDEX_FEATURE_KEY,
   assertExportCoverage,
   assignNewSubtaskLabels,
+  computeSubtaskCoverage,
   collectSubtaskLabels,
   frameIndicesFromSegments,
   resolveSubtaskIndexFeatureKey,
@@ -13,8 +14,11 @@ import {
   type SubtaskSegment,
   type SubtaskTable,
 } from '@/core';
-import type { LeRobotDataLoader } from '../services/LeRobotDataLoader';
+import type { ExportDataLoader } from './SegmentExportPlan';
 import type { TargetVersion } from '@/core';
+
+/** Label written for frames no subtask covers when the export fills gaps. */
+export const UNLABELED_SUBTASK = 'unlabeled';
 
 export interface ExportSubtaskPlan {
   table: SubtaskTable;
@@ -22,18 +26,21 @@ export interface ExportSubtaskPlan {
 }
 
 export async function buildExportSubtaskPlan(options: {
-  dataLoader: LeRobotDataLoader;
+  dataLoader: ExportDataLoader;
   info: LeRobotInfo;
   episodes: EpisodeMetadata[];
+  /** Subtasks (source frames) of segment episodes; other episodes read the source parquet. */
   overlay: ReadonlyMap<number, SubtaskSegment[]>;
   sourceTable: SubtaskTable;
   targetVersion: TargetVersion;
   trimRanges?: ReadonlyMap<number, EpisodeTrimRange>;
+  /** Label uncovered frames `unlabeled` instead of refusing. */
+  fillGaps?: boolean;
 }): Promise<ExportSubtaskPlan | null> {
   if (options.targetVersion !== 'v3.0') return null;
 
   const hasSourceTable = Object.keys(options.sourceTable).length > 0;
-  const hasOverlay = options.overlay.size > 0;
+  const hasOverlay = Array.from(options.overlay.values()).some((list) => list.length > 0);
   const hasFeature = resolveSubtaskIndexFeatureKey(options.info.features) != null;
   if (!hasSourceTable && !hasOverlay && !hasFeature) return null;
 
@@ -56,11 +63,26 @@ export async function buildExportSubtaskPlan(options: {
   table = assignNewSubtaskLabels(table, collectSubtaskLabels(options.overlay.values(), table));
   if (Object.keys(table).length === 0) return null;
 
-  const framesBySourceEpisode = new Map<number, number[]>();
+  const resolvedSegments = new Map<number, SubtaskSegment[]>();
+  let needsUnlabeled = false;
   for (const episode of options.episodes) {
     const sourceSegments = episodeSegments.get(episode.episode_index) ?? [];
     const range = options.trimRanges?.get(episode.episode_index);
-    const segments = range ? trimSubtaskSegments(sourceSegments, range) : sourceSegments;
+    let segments = range ? trimSubtaskSegments(sourceSegments, range) : sourceSegments;
+    if (options.fillGaps) {
+      const { gaps } = computeSubtaskCoverage(episode.length, segments);
+      if (gaps.length > 0) {
+        needsUnlabeled = true;
+        segments = [...segments, ...gaps.map((gap) => ({ ...gap, label: UNLABELED_SUBTASK }))];
+      }
+    }
+    resolvedSegments.set(episode.episode_index, segments);
+  }
+  if (needsUnlabeled) table = assignNewSubtaskLabels(table, [UNLABELED_SUBTASK]);
+
+  const framesBySourceEpisode = new Map<number, number[]>();
+  for (const episode of options.episodes) {
+    const segments = resolvedSegments.get(episode.episode_index) ?? [];
     assertExportCoverage(episode.episode_index, episode.length, segments);
     const frames = frameIndicesFromSegments(episode.length, segments, table);
     const resolved = frames.map((value, row) => {

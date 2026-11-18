@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { AlertCircle } from 'lucide-react';
 import { List, type RowComponentProps } from 'react-window';
@@ -31,10 +31,15 @@ interface EpisodeListProps {
   onEdit: (episode: EpisodeMetadata, event: React.MouseEvent) => void;
   onDelete: (episodeIndex: number, event: React.MouseEvent) => void;
   onRestore: (episodeIndex: number, event: React.MouseEvent) => void;
+  /** Content shown under the selected row (e.g. its segments). */
+  renderSelectedExpansion?: (episode: EpisodeMetadata) => React.ReactNode;
+  /** Height of that content in the virtualized list. */
+  expansionHeight?: (episode: EpisodeMetadata) => number;
 }
 
 type VirtualEpisodeRowProps = Pick<
   EpisodeListProps,
+  | 'renderSelectedExpansion'
   | 'filteredEpisodes'
   | 'isLoading'
   | 'multiSelectMode'
@@ -48,6 +53,7 @@ type VirtualEpisodeRowProps = Pick<
 
 function EpisodeListRow({
   item,
+  renderSelectedExpansion,
   isLoading,
   multiSelectMode,
   editMode,
@@ -59,23 +65,30 @@ function EpisodeListRow({
 }: {
   item: EpisodeListItem;
 } & Omit<VirtualEpisodeRowProps, 'filteredEpisodes'>) {
+  const expansion =
+    item.isSelected && !item.isDeleted && renderSelectedExpansion
+      ? renderSelectedExpansion(item.episode)
+      : null;
   return (
-    <EpisodeRow
-      episode={item.episode}
-      taskDescription={item.taskDescription}
-      formattedDuration={item.formattedDuration}
-      isDeleted={item.isDeleted}
-      isSelected={item.isSelected}
-      isChecked={item.isChecked}
-      isLoading={isLoading}
-      multiSelectMode={multiSelectMode}
-      showActions={editMode}
-      onRowClick={() => onRowClick(item.episode)}
-      onToggleSelection={(event) => onToggleSelection(item.episode, event)}
-      onEdit={(event) => onEdit(item.episode, event)}
-      onDelete={(event) => onDelete(item.episode.episode_index, event)}
-      onRestore={(event) => onRestore(item.episode.episode_index, event)}
-    />
+    <>
+      <EpisodeRow
+        episode={item.episode}
+        taskDescription={item.taskDescription}
+        formattedDuration={item.formattedDuration}
+        isDeleted={item.isDeleted}
+        isSelected={item.isSelected}
+        isChecked={item.isChecked}
+        isLoading={isLoading}
+        multiSelectMode={multiSelectMode}
+        showActions={editMode}
+        onRowClick={() => onRowClick(item.episode)}
+        onToggleSelection={(event) => onToggleSelection(item.episode, event)}
+        onEdit={(event) => onEdit(item.episode, event)}
+        onDelete={(event) => onDelete(item.episode.episode_index, event)}
+        onRestore={(event) => onRestore(item.episode.episode_index, event)}
+      />
+      {expansion ? <div className="border-b border-border/30 bg-muted/20">{expansion}</div> : null}
+    </>
   );
 }
 
@@ -110,10 +123,13 @@ export const EpisodeList: React.FC<EpisodeListProps> = ({
   onEdit,
   onDelete,
   onRestore,
+  renderSelectedExpansion,
+  expansionHeight,
 }) => {
   const { t } = useTranslation();
   const virtualRowProps = useMemo<VirtualEpisodeRowProps>(
     () => ({
+      renderSelectedExpansion,
       filteredEpisodes,
       isLoading,
       multiSelectMode,
@@ -125,6 +141,7 @@ export const EpisodeList: React.FC<EpisodeListProps> = ({
       onRestore,
     }),
     [
+      renderSelectedExpansion,
       filteredEpisodes,
       isLoading,
       multiSelectMode,
@@ -135,6 +152,17 @@ export const EpisodeList: React.FC<EpisodeListProps> = ({
       onDelete,
       onRestore,
     ],
+  );
+
+  const baseRowHeight = editMode && !multiSelectMode ? EPISODE_ROW_HEIGHT_EDIT : EPISODE_ROW_HEIGHT;
+  const rowHeight = useCallback(
+    (index: number, props: VirtualEpisodeRowProps) => {
+      const item = props.filteredEpisodes[index];
+      return item?.isSelected && !item.isDeleted && props.renderSelectedExpansion && expansionHeight
+        ? baseRowHeight + expansionHeight(item.episode)
+        : baseRowHeight;
+    },
+    [baseRowHeight, expansionHeight],
   );
 
   const errorBanner = error ? (
@@ -168,7 +196,7 @@ export const EpisodeList: React.FC<EpisodeListProps> = ({
         {errorBanner}
         <List
           rowCount={filteredEpisodes.length}
-          rowHeight={editMode && !multiSelectMode ? EPISODE_ROW_HEIGHT_EDIT : EPISODE_ROW_HEIGHT}
+          rowHeight={rowHeight}
           rowComponent={VirtualEpisodeRow}
           rowProps={virtualRowProps}
           rowKey={episodeRowKey}

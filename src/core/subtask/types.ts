@@ -51,14 +51,17 @@ export class SubtaskCoverageError extends Error {
   readonly code = SUBTASK_COVERAGE_INCOMPLETE;
   readonly episodeIndex: number;
   readonly coverage: SubtaskCoverage;
+  /** The segment of the episode, when the export unit is a segment. */
+  readonly segmentId?: string;
 
-  constructor(episodeIndex: number, coverage: SubtaskCoverage) {
+  constructor(episodeIndex: number, coverage: SubtaskCoverage, segmentId?: string) {
     super(
-      `Episode ${episodeIndex} has unlabeled frames (${coverage.labeledFrames}/${coverage.totalFrames}); export requires complete subtask coverage`,
+      `Episode ${episodeIndex}${segmentId ? ` segment ${segmentId}` : ''} has unlabeled frames (${coverage.labeledFrames}/${coverage.totalFrames}); export requires complete subtask coverage`,
     );
     this.name = 'SubtaskCoverageError';
     this.episodeIndex = episodeIndex;
     this.coverage = coverage;
+    this.segmentId = segmentId;
   }
 }
 

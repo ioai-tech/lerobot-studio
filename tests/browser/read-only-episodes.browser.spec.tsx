@@ -6,10 +6,12 @@ import { classifyLeRobotVersion, type EpisodeMetadata, type LeRobotInfo } from '
 import { EpisodeSidebar } from '../../src/react/components/Sidebar/EpisodeSidebar';
 import {
   LeRobotDataContext,
+  LeRobotSegmentContext,
   LeRobotSelectionContext,
   LeRobotSubtaskContext,
   LeRobotUiContext,
   type LeRobotDataContextType,
+  type LeRobotSegmentContextType,
   type LeRobotSelectionContextType,
   type LeRobotSubtaskContextType,
   type LeRobotUiContextType,
@@ -95,7 +97,6 @@ describe('read-only future dataset episodes', () => {
     } as unknown as LeRobotSelectionContextType;
     const subtaskValue = {
       canAnnotate: false,
-      overlay: new Map(),
       currentSegments: [],
       knownLabels: [],
       coverage: { labeledFrames: 0, totalFrames: 0, gaps: [], complete: false },
@@ -108,6 +109,17 @@ describe('read-only future dataset episodes', () => {
       updateSegment: vi.fn(),
       removeSegment: vi.fn(),
     } as unknown as LeRobotSubtaskContextType;
+    const segmentValue = {
+      controlled: false,
+      readOnly: false,
+      canEdit: false,
+      doc: { episodes: {} },
+      fields: undefined,
+      filter: 'all',
+      setFilter: vi.fn(),
+      selectedSegmentId: null,
+      selectSegment: vi.fn(),
+    } as unknown as LeRobotSegmentContextType;
     const uiValue = {
       healthDialogOpen: false,
       setHealthDialogOpen: vi.fn(),
@@ -130,7 +142,9 @@ describe('read-only future dataset episodes', () => {
             <LeRobotSelectionContext.Provider value={selectionValue}>
               <LeRobotSubtaskContext.Provider value={subtaskValue}>
                 <LeRobotUiContext.Provider value={uiValue}>
-                  <EpisodeSidebar />
+                  <LeRobotSegmentContext.Provider value={segmentValue}>
+                    <EpisodeSidebar />
+                  </LeRobotSegmentContext.Provider>
                 </LeRobotUiContext.Provider>
               </LeRobotSubtaskContext.Provider>
             </LeRobotSelectionContext.Provider>
