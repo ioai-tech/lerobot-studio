@@ -8,6 +8,120 @@ import { default as React_2 } from 'react';
 import * as React_3 from 'react';
 
 // @public
+export type AnnotationChange = {
+    op: 'create';
+    episodeIndex: number;
+    segment: Segment;
+} | {
+    op: 'update';
+    episodeIndex: number;
+    id: string;
+    patch: SegmentPatch;
+} | {
+    op: 'delete';
+    episodeIndex: number;
+    id: string;
+}
+/** Inverse of `delete`: brings the segment back with its fields. */
+| {
+    op: 'restore';
+    episodeIndex: number;
+    segment: Segment;
+}
+/** Left part keeps `id` (`startFrame..atFrame-1`); the right part gets `newId` (`atFrame..endFrame`). */
+| {
+    op: 'split';
+    episodeIndex: number;
+    id: string;
+    atFrame: number;
+    newId: string;
+}
+/** `withId` must be the segment right after `id`; the result keeps `id`. */
+| {
+    op: 'merge';
+    episodeIndex: number;
+    id: string;
+    withId: string;
+}
+/** Inverse of `merge`: `id` returns to `before` and `restored` comes back. */
+| {
+    op: 'unmerge';
+    episodeIndex: number;
+    id: string;
+    restored: Segment;
+    before: Segment;
+} | {
+    op: 'confirm';
+    episodeIndex: number;
+    ids: string[];
+};
+
+// @public
+export interface AnnotationChangeMeta {
+    changeId: string;
+}
+
+// @public (undocumented)
+export type AnnotationChangeOp = AnnotationChange['op'];
+
+// @public
+export interface AnnotationContext {
+    episodeLength: (episodeIndex: number) => number | undefined;
+    fields?: readonly AnnotationField[];
+}
+
+// @public
+export interface AnnotationDocument {
+    // (undocumented)
+    episodes: Record<number, {
+        segments: Segment[];
+    }>;
+}
+
+// @public
+export interface AnnotationField {
+    id: string;
+    kind: 'select' | 'tags' | 'text';
+    label: string;
+    options?: Array<{
+        value: string;
+        label: string;
+        key?: '1' | '2' | '3' | '4' | '5' | '6' | '7' | '8' | '9';
+    }>;
+    suggestions?: string[];
+}
+
+// @public
+export interface AnnotationRefusal {
+    // (undocumented)
+    code: AnnotationRefusalCode;
+    // (undocumented)
+    episodeIndex: number;
+    fieldId?: string;
+    message: string;
+    // (undocumented)
+    op: AnnotationChangeOp;
+    otherId?: string;
+    segmentId?: string;
+}
+
+// @public (undocumented)
+export type AnnotationRefusalCode = 'EPISODE_UNKNOWN' | 'SEGMENT_NOT_FOUND' | 'SEGMENT_ID_TAKEN' | 'SEGMENT_ID_INVALID' | 'SEGMENT_READ_ONLY' | 'RANGE_INVALID' | 'RANGE_OUTSIDE_EPISODE' | 'SEGMENT_OVERLAP' | 'SUBTASK_INVALID' | 'SUBTASK_OUTSIDE_SEGMENT' | 'SUBTASK_OVERLAP' | 'FIELD_UNKNOWN' | 'FIELD_INVALID' | 'PATCH_INVALID' | 'SPLIT_OUTSIDE_SEGMENT' | 'MERGE_NOT_ADJACENT' | 'UNMERGE_MISMATCH';
+
+// @public
+export function applyChange(doc: AnnotationDocument, change: AnnotationChange, ctx: AnnotationContext): ApplyChangeResult;
+
+// @public (undocumented)
+export type ApplyChangeResult = {
+    ok: true;
+    doc: AnnotationDocument;
+    inverse: AnnotationChange | null;
+} | {
+    ok: false;
+    refusal: AnnotationRefusal;
+};
+
+// @public
 export interface AuxiliarySeries {
     columns?: string[];
     episodeIndex?: number;
@@ -164,6 +278,37 @@ export interface EpisodeSetResolvedRecording {
     id: string;
 }
 
+// @public
+export const LEROBOT_MESSAGE_KEYS: readonly ["segments.title", "segments.track", "segments.trackSegment", "segments.progress", "segments.progressLabel", "segments.filter.label", "segments.filter.all", "segments.filter.toReview", "segments.filter.issues", "segments.empty", "segments.emptyReadOnly", "segments.emptyFilter", "segments.row", "segments.review.toReview", "segments.review.confirmed", "segments.origin.suggested", "segments.origin.suggestedConfidence", "segments.readOnly", "segments.inheritTask", "segments.inspector.label", "segments.inspector.none", "segments.inspector.noneEditable", "segments.inspector.in", "segments.inspector.out", "segments.inspector.task", "segments.inspector.taskPlaceholder", "segments.inspector.timePlaceholder", "segments.inspector.timeInvalid", "segments.inspector.addTag", "segments.inspector.addTagPlaceholder", "segments.inspector.removeTag", "segments.actions.new", "segments.actions.split", "segments.actions.merge", "segments.actions.delete", "segments.actions.confirm", "segments.actions.confirmAll", "segments.actions.setIn", "segments.actions.setOut", "segments.actions.nudge", "segments.actions.nudgeBack", "segments.actions.nudgeForward", "segments.actions.nudgeBackSecond", "segments.actions.nudgeForwardSecond", "segments.actions.nextUncovered", "segments.actions.next", "segments.actions.previous", "segments.actions.loop", "segments.actions.subtaskStart", "segments.actions.subtaskEnd", "segments.actions.undo", "segments.actions.redo", "segments.actions.help", "segments.confirmAll.title", "segments.confirmAll.description", "segments.confirmAll.confirm", "segments.save.idle", "segments.save.saving", "segments.save.saved", "segments.save.offline", "segments.save.reloaded", "segments.save.refused", "segments.notice.created", "segments.notice.split", "segments.notice.merged", "segments.notice.deleted", "segments.notice.confirmed", "segments.notice.undone", "segments.notice.redone", "segments.notice.nothingToUndo", "segments.notice.nothingToRedo", "segments.notice.selectFirst", "segments.notice.insideSegment", "segments.notice.splitOutside", "segments.notice.splitAtStart", "segments.notice.nothingToMerge", "segments.notice.cannotDelete", "segments.notice.allCovered", "segments.notice.none", "segments.notice.first", "segments.notice.last", "segments.notice.noneToReview", "segments.notice.subtaskStartSet", "segments.notice.subtaskStartFirst", "segments.notice.subtaskInvalid", "segments.notice.subtaskOutside", "segments.notice.subtaskNeedsSegment", "segments.notice.suggestionsApplied", "segments.refusal.EPISODE_UNKNOWN", "segments.refusal.SEGMENT_NOT_FOUND", "segments.refusal.SEGMENT_ID_TAKEN", "segments.refusal.SEGMENT_ID_INVALID", "segments.refusal.SEGMENT_READ_ONLY", "segments.refusal.RANGE_INVALID", "segments.refusal.RANGE_OUTSIDE_EPISODE", "segments.refusal.SEGMENT_OVERLAP", "segments.refusal.SUBTASK_INVALID", "segments.refusal.SUBTASK_OUTSIDE_SEGMENT", "segments.refusal.SUBTASK_OVERLAP", "segments.refusal.FIELD_UNKNOWN", "segments.refusal.FIELD_INVALID", "segments.refusal.PATCH_INVALID", "segments.refusal.SPLIT_OUTSIDE_SEGMENT", "segments.refusal.MERGE_NOT_ADJACENT", "segments.refusal.UNMERGE_MISMATCH", "segments.shortcuts.title", "segments.shortcuts.description", "segments.shortcuts.key", "segments.shortcuts.action", "segments.shortcuts.playPause", "segments.shortcuts.frameStep", "segments.shortcuts.frameStep10", "segments.shortcuts.firstLast"];
+
+// @public
+export interface LeRobotAnnotationProps {
+    canDelete?: (segment: Segment) => boolean;
+    createSegmentId?: () => string;
+    newSegmentReview?: ReviewState;
+    onChange?: (change: AnnotationChange, meta: AnnotationChangeMeta) => void;
+    saveState?: LeRobotAnnotationSaveState;
+    value: AnnotationDocument;
+}
+
+// @public
+export interface LeRobotAnnotationSaveState {
+    actions?: Array<{
+        id: string;
+        label: string;
+        onSelect: () => void;
+    }>;
+    changeIds?: string[];
+    kind: 'idle' | 'saving' | 'saved' | 'offline' | 'reloaded' | 'refused';
+    message?: string;
+}
+
+// @public
+export type LeRobotMessageKey = (typeof LEROBOT_MESSAGE_KEYS)[number];
+
+// @public
+export type LeRobotMessages = Partial<Record<LeRobotMessageKey, string>>;
+
 // @public @deprecated (undocumented)
 export const LeRobotProvider: React_2.FC<LeRobotStudioProviderProps>;
 
@@ -178,6 +323,7 @@ export interface LeRobotStudioProviderProps {
     className?: string;
     // (undocumented)
     language?: string;
+    messages?: LeRobotMessages;
     showToaster?: boolean;
     // (undocumented)
     theme?: 'light' | 'dark' | 'system';
@@ -188,7 +334,7 @@ export interface LeRobotStudioProviderProps {
 export const LeRobotViewer: React_2.FC<LeRobotViewerProps>;
 
 // @public
-export function LeRobotViewerContent(input: Omit<LeRobotViewerProps, 'theme' | 'language' | 'className'> & {
+export function LeRobotViewerContent(input: Omit<LeRobotViewerProps, 'theme' | 'language' | 'className' | 'messages'> & {
     showSidebar: boolean;
     showPlaybackBar: boolean;
 }): React_2.JSX.Element | null;
@@ -206,15 +352,19 @@ export type LeRobotViewerErrorCode = 'INVALID_DATA_SOURCE' | 'REMOTE_SOURCE_UNAV
 
 // @public
 export interface LeRobotViewerProps {
+    annotation?: LeRobotAnnotationProps;
     auxiliarySeries?: AuxiliarySeries[];
     className?: string;
     dataSource: string | DataSource;
     enableKeyboardShortcuts?: boolean;
+    fields?: AnnotationField[];
     language?: string;
+    messages?: LeRobotMessages;
     onAuxiliarySeriesWarning?: (warning: AuxiliarySeriesWarning) => void;
     onBack?: () => void;
     onExport?: () => void;
     onFatalError?: (error: LeRobotViewerError) => void;
+    readOnly?: boolean;
     showPlaybackBar?: boolean;
     showSidebar?: boolean;
     theme?: 'light' | 'dark' | 'system';
@@ -306,6 +456,9 @@ export class RemoteSourceError extends Error {
 export type RemoteSourceErrorCode = 'HTTP_STATUS' | 'NETWORK' | 'REFRESH_FAILED';
 
 // @public
+export type ReviewState = 'to_review' | 'confirmed';
+
+// @public
 export interface SampleDataset {
     // (undocumented)
     archiveUrl?: string;
@@ -338,6 +491,48 @@ export interface SampleDatasetCardProps {
     onSelect: (sample: SampleDataset) => void | Promise<void>;
     // (undocumented)
     sample: SampleDataset;
+}
+
+// @public
+export interface Segment {
+    endFrame: number;
+    id: string;
+    origin: SegmentOrigin;
+    readOnly?: boolean;
+    review: ReviewState;
+    startFrame: number;
+    status?: SegmentStatus;
+    subtasks: SegmentSubtask[];
+    task: string | null;
+    values: Record<string, SegmentFieldValue>;
+}
+
+// @public
+export type SegmentFieldValue = string | string[] | null;
+
+// @public
+export type SegmentOrigin = {
+    kind: 'manual';
+} | {
+    kind: 'suggested';
+    confidence?: number;
+};
+
+// @public
+export type SegmentPatch = Partial<Pick<Segment, 'startFrame' | 'endFrame' | 'task' | 'subtasks' | 'values'>>;
+
+// @public
+export interface SegmentStatus {
+    count?: number;
+    label: string;
+    severity: 'info' | 'warn' | 'fail';
+}
+
+// @public
+export interface SegmentSubtask {
+    endFrame: number;
+    label: string;
+    startFrame: number;
 }
 
 // @public (undocumented)

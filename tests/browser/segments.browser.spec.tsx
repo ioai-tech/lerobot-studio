@@ -13,6 +13,7 @@ import {
 import type { LeRobotAnnotationSaveState } from '@/contexts/annotationTypes';
 import type { LeRobotMessages } from '@/i18n/messageKeys';
 import { FetchDataSource } from './fixtures';
+import { pauseOnEpisode } from './playback';
 import { expectNoBlockingA11yViolations } from './a11y';
 import '../../src/react/index.css';
 
@@ -438,6 +439,22 @@ describe('browser: segments, review and change ops', () => {
         patch: { values: { outcome: 'failure' } },
       });
     expect(document.activeElement?.textContent).toContain('Failure');
+  });
+
+  it('a host-controlled viewer plays through the episode end with no pause-to-label dialog', async () => {
+    const log: HostLog = { changes: [], value: () => ({ episodes: {} }) };
+    root.render(<Host log={log} initial={{ episodes: { 0: { segments: [seg('a', 0, 2)] } } }} />);
+    await waitForSegments(host);
+    await pauseOnEpisode(host, 0);
+    host.querySelector<HTMLButtonElement>('button[aria-label="Play/pause"]')!.click();
+    // Sequential playback leaves episode 0 instead of holding on its last frame.
+    await expect
+      .poll(() => host.querySelector('[aria-label="Select Episode 1"][aria-current="true"]'), {
+        timeout: 30_000,
+      })
+      .not.toBeNull();
+    expect(document.querySelector('[role="dialog"]')).toBeNull();
+    expect(log.changes).toEqual([]);
   });
 
   it('a plain embedded viewer has no segment keys or UI', async () => {
