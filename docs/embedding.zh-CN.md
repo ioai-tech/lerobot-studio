@@ -345,7 +345,7 @@ export function RecordingStudio({ view, url, navigate }: HostProps) {
 
 - `initialSelection`（`episodeIndex`、`segmentId`、`timeS`）在第一次加载后应用一次。查看器打开该 episode（只给 `segmentId` 时打开分段所在的 episode），选中分段，并**暂停**在包含 `timeS` 的那一帧（没有 `timeS` 时为分段的第一帧）。
 - `onSelectionChange` 在打开 episode 后报告 `{ episodeIndex, segmentId, timeS }`：episode 或分段变化时立即报告，时间变化时每秒最多四次。深层链接尚未落地时不会报告，因此第一次报告就是链接落地的位置。
-- 传入时间轴相同的新 `dataSource`（同一个 episode、帧数相同，例如同一录制的另一种版本）时，保留 episode、分段和帧；原本在播放就继续播放。时间轴不同时照常打开。
+- 传入时间轴相同的新 `dataSource`（同一个 episode、帧数相同，例如同一录制的另一种版本）时，保留 episode、分段和帧；原本在播放就继续播放。新数据源打开期间，当前数据集保持显示（暂停），打开后一次性切换，每个相机保留最后一帧，直到新文件显示同一帧；新数据源打开失败时，保留当前数据源，错误中写明失败原因。时间轴不同时照常打开。
 
 ### 主题变量 {#theme-tokens}
 

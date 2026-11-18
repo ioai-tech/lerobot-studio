@@ -234,11 +234,14 @@ describe('browser: embedding — selection', () => {
     await expect.poll(sliderFrame).toBe(240);
     await seekTo(277);
     const before = videos();
+    const beforeUrls = before.map((video) => video.src);
 
-    // Another rendition of the same frames (e.g. anonymized), as a new source.
+    // Another rendition of the same frames (e.g. anonymized), as a new source:
+    // the cameras stay mounted and load the new source's files in place.
     root.render(view(new FetchDataSource(FRAME_CODED)));
-    await expect.poll(() => videos()[0] !== before[0], { timeout: 30_000 }).toBe(true);
+    await expect.poll(() => videos()[0]?.src !== beforeUrls[0], { timeout: 30_000 }).toBe(true);
     await videosReady(2);
+    expect(videos().every((video, index) => video === before[index])).toBe(true);
     await expect.poll(sliderFrame, { timeout: 30_000 }).toBe(277);
     await expect.poll(() => cameraFrames()).toEqual([277, 277]);
     expect(isPlaying()).toBe(false);

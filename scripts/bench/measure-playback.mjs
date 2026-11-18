@@ -175,6 +175,29 @@ await page.waitForFunction(() => window.__probe.chartsCompleteAt != null, null, 
   timeout: 120_000,
 });
 result.chartsCompleteMs = await page.evaluate(() => Math.round(window.__probe.chartsCompleteAt));
+Object.assign(
+  result,
+  await page.evaluate((allRequests) => {
+    const ready = performance.getEntriesByName('bench:source-ready')[0]?.startTime ?? null;
+    // Dataset requests (metadata, data, first video bytes), relative to the
+    // source; with --all-requests also the page's own chunks and WASM.
+    const requests = performance
+      .getEntriesByType('resource')
+      .filter((entry) => allRequests || /\/data\/[^/]+\//.test(new URL(entry.name).pathname))
+      .map((entry) => ({
+        path: new URL(entry.name).pathname.replace(/^\/data\/[^/]+\//, ''),
+        startMs: Math.round(entry.startTime - (ready ?? 0)),
+        endMs: Math.round(entry.responseEnd - (ready ?? 0)),
+      }))
+      .sort((a, b) => a.startMs - b.startMs);
+    const marks = performance
+      .getEntriesByType('mark')
+      .map((mark) => ({ name: mark.name, ms: Math.round(mark.startTime - (ready ?? 0)) }));
+    return { sourceReadyMs: ready == null ? null : Math.round(ready), requests, marks };
+  }, argv.includes('--all-requests')),
+);
+result.firstFrameAfterSourceMs =
+  result.sourceReadyMs == null ? null : result.firstFrameMs - result.sourceReadyMs;
 result.chartsAfterFirstFrameMs = result.chartsVisibleMs - result.firstFrameMs;
 result.chartsCompleteAfterFirstFrameMs = result.chartsCompleteMs - result.firstFrameMs;
 if (argv.includes('--charts-only')) {

@@ -345,7 +345,7 @@ Switching `rendition` passes another `dataSource` with the same frames; the view
 
 - `initialSelection` (`episodeIndex`, `segmentId`, `timeS`) applies once, after the first load. The viewer opens the episode (the segment's episode when only `segmentId` is given), selects the segment and lands **paused** on the frame that contains `timeS` (the segment's first frame without `timeS`).
 - `onSelectionChange` reports `{ episodeIndex, segmentId, timeS }` once an episode is open: at once when the episode or segment changes, and at most four times a second while time moves. Nothing is reported while a deep link is still on its way, so the first report is where the link landed.
-- Passing a new `dataSource` with the same timeline (the same episode with the same number of frames, for example another rendition of the same recording) keeps the episode, segment and frame, and keeps playing if it was playing. Another timeline opens as usual.
+- Passing a new `dataSource` with the same timeline (the same episode with the same number of frames, for example another rendition of the same recording) keeps the episode, segment and frame, and keeps playing if it was playing. The shown dataset stays on screen (paused) while the new source opens, then the view changes in one step, each camera holding its last frame until the new file shows the same one; if the new source fails to open, the shown one stays and the error names what failed. Another timeline opens as usual.
 
 ### Theme tokens
 

@@ -83,11 +83,21 @@ export const DockviewLayout: React.FC = () => {
   const [dockviewApi, setDockviewApi] = useState<DockviewApi | null>(null);
   const { t } = useTranslation();
   const { resolvedTheme } = useTheme();
-  const { info } = useLeRobotData();
+  const { info: currentInfo } = useLeRobotData();
+  // The panels follow the dataset's features only: another source of the
+  // same recording (a swap) keeps every panel, and its cameras, mounted.
+  const layoutInfoRef = useRef(currentInfo);
+  const featuresSignature = (value: typeof currentInfo) =>
+    value ? JSON.stringify(value.features) : null;
+  if (featuresSignature(layoutInfoRef.current) !== featuresSignature(currentInfo)) {
+    layoutInfoRef.current = currentInfo;
+  }
+  const info = layoutInfoRef.current;
   const dockviewRef = useRef<HTMLDivElement>(null);
   const [box, setBox] = useState({ width: 0, height: 0 });
   // Narrow containers (embedded viewers on phones) get a single stacked column.
   const stacked = isStackedPanelsWidth(box.width);
+  const measured = box.width > 0;
   const [panelCount, setPanelCount] = useState(0);
 
   useLayoutEffect(() => {
@@ -196,6 +206,9 @@ export const DockviewLayout: React.FC = () => {
   // Handle dynamic panel creation when info changes
   useEffect(() => {
     if (!apiRef.current || !info) return;
+    // Build once the container is measured: a first build at the unmeasured
+    // default would mount every camera twice on open.
+    if (!measured && (dockviewRef.current?.clientWidth ?? 0) > 0) return;
 
     const api = apiRef.current;
     api.panels.forEach((p) => p.api.close());
@@ -359,7 +372,7 @@ export const DockviewLayout: React.FC = () => {
     });
 
     applyLayoutSizes(api);
-  }, [info, t, maxPerRow, stacked]);
+  }, [info, t, maxPerRow, stacked, measured]);
 
   const onReady = (event: DockviewReadyEvent) => {
     const { api } = event;
