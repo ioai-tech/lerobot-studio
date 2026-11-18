@@ -413,6 +413,38 @@ it('a newer swap that fails while an earlier one reloads lets that one finish: r
   expect(videos()).toHaveLength(2);
 });
 
+it('after a hand-back, a newer open defers that landing again', async () => {
+  vi.spyOn(console, 'error').mockImplementation(() => undefined);
+  await openAtFrame(30);
+  host!.querySelector<HTMLElement>('button[aria-label="Play/pause"]')!.click();
+  await expect.poll(playing, { timeout: 10_000 }).toBe(true);
+  // B commits, its data is slow; C fails and hands the landing back to B.
+  const b = new Slow(FRAME_CODED, { infoMs: 200, dataMs: 2500 });
+  root!.render(<LeRobotViewer dataSource={b} language="en" />);
+  await expect.poll(() => b.dataReads.includes('start'), { timeout: 10_000 }).toBe(true);
+  root!.render(
+    <LeRobotViewer
+      dataSource={new Slow(FRAME_CODED, { infoMs: 200, failInfo: true })}
+      language="en"
+    />,
+  );
+  await expect.poll(() => host!.textContent, { timeout: 10_000 }).toContain('503');
+  // D opens before B's data is in: B waits for D again.
+  expect(b.dataReads.includes('end')).toBe(false);
+  const d = new Slow(FRAME_CODED, { infoMs: 4000, dataMs: 300 });
+  root!.render(<LeRobotViewer dataSource={d} language="en" />);
+  let early = false;
+  const started = performance.now();
+  while (!d.dataReads.includes('end') && performance.now() - started < 20_000) {
+    if (playing()) early = true;
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+  expect(b.dataReads.includes('end')).toBe(true);
+  expect(early).toBe(false);
+  // Then it plays, on D's data.
+  await expect.poll(playing, { timeout: 10_000 }).toBe(true);
+});
+
 it('a swap during a pending swap lands on the newest source only', async () => {
   await openAtFrame(60);
   const b = new Slow(FRAME_CODED, { infoMs: 2500 });

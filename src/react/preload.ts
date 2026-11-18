@@ -1,9 +1,10 @@
-import { loadParquetWasmModule } from '../platform/workers/workerManager';
+import { loadParquetWasm } from '../platform/workers/workerManager';
 import { loadDataLoaderModule, loadDockviewLayout } from './lazyChunks';
 
 /**
  * Start what every viewer open waits for, before a data source exists: the
- * parquet WASM (fetched and compiled once, then reused by every loader) and
+ * parquet WASM (downloaded once; compiled once on the page, or by each worker
+ * under a page CSP without 'wasm-unsafe-eval'; reused by every loader) and
  * the viewer's lazily loaded layout and loader code.
  *
  * Call it as early as the host knows a viewer will open: on the viewer's
@@ -23,7 +24,7 @@ export function preloadLeRobotViewer(): void {
       // Reported when the viewer opens.
     }
   };
-  if (typeof WebAssembly !== 'undefined') settle(loadParquetWasmModule);
+  if (typeof WebAssembly !== 'undefined') settle(loadParquetWasm);
   settle(loadDataLoaderModule);
   settle(loadDockviewLayout);
 }

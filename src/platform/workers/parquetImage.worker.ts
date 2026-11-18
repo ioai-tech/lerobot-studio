@@ -30,9 +30,10 @@ import {
 let wasmInitialized = false;
 let wasmInitPromise: Promise<void> | null = null;
 
-let wasmBufferResolve: ((module: WebAssembly.Module) => void) | null = null;
+// The page's compiled module, or the bytes to compile here (a page CSP without 'wasm-unsafe-eval').
+let wasmBufferResolve: ((wasm: WebAssembly.Module | ArrayBuffer) => void) | null = null;
 let wasmBufferReject: ((err: Error) => void) | null = null;
-const wasmBufferSignal = new Promise<WebAssembly.Module>((resolve, reject) => {
+const wasmBufferSignal = new Promise<WebAssembly.Module | ArrayBuffer>((resolve, reject) => {
   wasmBufferResolve = resolve;
   wasmBufferReject = reject;
 });
@@ -108,7 +109,7 @@ self.onmessage = async (event: MessageEvent) => {
   const { type } = event.data as { type: string };
 
   if (type === 'init-wasm') {
-    wasmBufferResolve?.(event.data.wasmModule as WebAssembly.Module);
+    wasmBufferResolve?.(event.data.wasmModule as WebAssembly.Module | ArrayBuffer);
     return;
   }
 

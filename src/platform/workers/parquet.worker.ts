@@ -27,9 +27,10 @@ let wasmInitialized = false;
 let wasmInitPromise: Promise<void> | null = null;
 
 // 用 Promise 替代轮询：一旦收到 buffer 立即 resolve，永不超时
-let wasmBufferResolve: ((module: WebAssembly.Module) => void) | null = null;
+// The page's compiled module, or the bytes to compile here (a page CSP without 'wasm-unsafe-eval').
+let wasmBufferResolve: ((wasm: WebAssembly.Module | ArrayBuffer) => void) | null = null;
 let wasmBufferReject: ((err: Error) => void) | null = null;
-const wasmBufferSignal = new Promise<WebAssembly.Module>((resolve, reject) => {
+const wasmBufferSignal = new Promise<WebAssembly.Module | ArrayBuffer>((resolve, reject) => {
   wasmBufferResolve = resolve;
   wasmBufferReject = reject;
 });
@@ -43,7 +44,7 @@ interface FileCache {
 
 let fileCache: FileCache | null = null;
 
-// 接收主线程传来的已编译 WASM 模块（或错误通知）
+// 接收主线程传来的 WASM（已编译模块或字节，或错误通知）
 self.onmessage = (event: MessageEvent) => {
   if (event.data.type === 'init-wasm') {
     wasmBufferResolve?.(event.data.wasmModule);

@@ -425,10 +425,11 @@ preloadLeRobotViewer();
 link.addEventListener('pointerenter', () => preloadLeRobotViewer(), { once: true });
 ```
 
-- The WASM is fetched and compiled once. It is compiled while it streams when the server sends `Content-Type: application/wasm`. Every later viewer reuses it, and repeated calls share the same work.
+- The WASM is fetched once and, where the page may compile it (see Content Security Policy below), compiled once. It is compiled while it streams when the server sends `Content-Type: application/wasm`. Every later viewer reuses it, and repeated calls share the same work.
 - It never throws, and it does nothing during server rendering.
 - If loading fails, the viewer reports it when it opens, as `PARQUET_ENGINE_UNAVAILABLE` with the cause. A failed load is not kept, so the next open tries again.
 - The viewer also starts this work itself when it mounts. Calling the function earlier only moves the start forward.
+- **Content Security Policy.** The Parquet reader runs in module workers, loaded from the package's own files next to its JS. `worker-src` (or `script-src`) must allow those files. The WASM ships inside the package as a `data:` URL, so a `connect-src` must allow `data:`. With `'wasm-unsafe-eval'` in the page's `script-src`, the page compiles the WASM once for every worker. Without it, the page keeps the downloaded bytes and each worker compiles them under its own policy. The viewer opens either way, with one download.
 
 ## Next.js
 

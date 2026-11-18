@@ -18,38 +18,61 @@ async function workerManager() {
   return import('../src/platform/workers/workerManager');
 }
 
-describe('compileWasmResponse', () => {
+describe('prepareParquetWasm', () => {
   it('compiles while streaming a response served as application/wasm', async () => {
-    const { compileWasmResponse } = await workerManager();
+    const { prepareParquetWasm } = await workerManager();
     const module = {} as WebAssembly.Module;
     const streaming = vi.spyOn(WebAssembly, 'compileStreaming').mockResolvedValue(module);
     const bytes = vi.spyOn(WebAssembly, 'compile');
-    await expect(compileWasmResponse(wasmResponse())).resolves.toBe(module);
+    await expect(prepareParquetWasm(wasmResponse())).resolves.toBe(module);
     expect(streaming).toHaveBeenCalledTimes(1);
     expect(bytes).not.toHaveBeenCalled();
   });
 
   it('compiles from the bytes when the server sends another type', async () => {
-    const { compileWasmResponse } = await workerManager();
+    const { prepareParquetWasm } = await workerManager();
     const module = {} as WebAssembly.Module;
     const streaming = vi.spyOn(WebAssembly, 'compileStreaming');
     const bytes = vi.spyOn(WebAssembly, 'compile').mockResolvedValue(module);
-    await expect(compileWasmResponse(wasmResponse('application/octet-stream'))).resolves.toBe(
+    await expect(prepareParquetWasm(wasmResponse('application/octet-stream'))).resolves.toBe(
       module,
     );
     expect(streaming).not.toHaveBeenCalled();
     expect(bytes).toHaveBeenCalledTimes(1);
   });
 
+  it('keeps the bytes of the same download when the page may not compile (CSP), streaming or not', async () => {
+    const { prepareParquetWasm } = await workerManager();
+    const refused = () =>
+      new WebAssembly.CompileError("violates the Content Security Policy: 'wasm-unsafe-eval'");
+    vi.spyOn(WebAssembly, 'compileStreaming').mockImplementation(async () => {
+      throw refused();
+    });
+    vi.spyOn(WebAssembly, 'compile').mockImplementation(async () => {
+      throw refused();
+    });
+    for (const type of ['application/wasm', 'application/octet-stream']) {
+      const wasm = await prepareParquetWasm(wasmResponse(type));
+      expect(wasm).toBeInstanceOf(ArrayBuffer);
+      expect([...new Uint8Array(wasm as ArrayBuffer)]).toEqual([0, 97, 115, 109]);
+    }
+  });
+
+  it('still fails on an error that is not a refused compile', async () => {
+    const { prepareParquetWasm } = await workerManager();
+    vi.spyOn(WebAssembly, 'compileStreaming').mockRejectedValue(new TypeError('body used'));
+    await expect(prepareParquetWasm(wasmResponse())).rejects.toThrow('body used');
+  });
+
   it('names a failed fetch', async () => {
-    const { compileWasmResponse } = await workerManager();
-    await expect(compileWasmResponse(wasmResponse('application/wasm', 404))).rejects.toThrow(
+    const { prepareParquetWasm } = await workerManager();
+    await expect(prepareParquetWasm(wasmResponse('application/wasm', 404))).rejects.toThrow(
       'Failed to fetch WASM: 404',
     );
   });
 });
 
-describe('loadParquetWasmModule', () => {
+describe('loadParquetWasm', () => {
   it('fetches and compiles once for every caller, and retries after a failure', async () => {
     const module = {} as WebAssembly.Module;
     vi.spyOn(WebAssembly, 'compileStreaming').mockResolvedValue(module);
@@ -58,13 +81,27 @@ describe('loadParquetWasmModule', () => {
       .mockRejectedValueOnce(new TypeError('network down'))
       .mockImplementation(async () => wasmResponse());
     vi.stubGlobal('fetch', fetch);
-    const { loadParquetWasmModule } = await workerManager();
-    await expect(loadParquetWasmModule()).rejects.toThrow('network down');
-    const first = loadParquetWasmModule();
-    expect(loadParquetWasmModule()).toBe(first);
+    const { loadParquetWasm } = await workerManager();
+    await expect(loadParquetWasm()).rejects.toThrow('network down');
+    const first = loadParquetWasm();
+    expect(loadParquetWasm()).toBe(first);
     await expect(first).resolves.toBe(module);
-    await expect(loadParquetWasmModule()).resolves.toBe(module);
+    await expect(loadParquetWasm()).resolves.toBe(module);
     expect(fetch).toHaveBeenCalledTimes(2);
+  });
+
+  it('downloads once and shares the bytes when the page may not compile', async () => {
+    vi.spyOn(WebAssembly, 'compileStreaming').mockRejectedValue(
+      new WebAssembly.CompileError('Content Security Policy'),
+    );
+    const fetch = vi.fn(async () => wasmResponse());
+    vi.stubGlobal('fetch', fetch);
+    const { loadParquetWasm } = await workerManager();
+    const [first, second] = await Promise.all([loadParquetWasm(), loadParquetWasm()]);
+    expect(first).toBeInstanceOf(ArrayBuffer);
+    expect(second).toBe(first);
+    await expect(loadParquetWasm()).resolves.toBe(first);
+    expect(fetch).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -73,12 +110,12 @@ describe('preloadLeRobotViewer', () => {
     const fetch = vi.fn();
     vi.stubGlobal('fetch', fetch);
     vi.doMock('../src/platform/workers/workerManager', () => ({
-      loadParquetWasmModule: vi.fn(),
+      loadParquetWasm: vi.fn(),
     }));
     const { preloadLeRobotViewer } = await import('../src/react/preload');
-    const { loadParquetWasmModule } = await import('../src/platform/workers/workerManager');
+    const { loadParquetWasm } = await import('../src/platform/workers/workerManager');
     expect(() => preloadLeRobotViewer()).not.toThrow();
-    expect(loadParquetWasmModule).not.toHaveBeenCalled();
+    expect(loadParquetWasm).not.toHaveBeenCalled();
     expect(fetch).not.toHaveBeenCalled();
     vi.doUnmock('../src/platform/workers/workerManager');
   });
@@ -92,7 +129,7 @@ describe('preloadLeRobotViewer', () => {
         throw new Error('synchronous failure');
       })
       .mockRejectedValue(new Error('Failed to fetch WASM: 503'));
-    vi.doMock('../src/platform/workers/workerManager', () => ({ loadParquetWasmModule: load }));
+    vi.doMock('../src/platform/workers/workerManager', () => ({ loadParquetWasm: load }));
     const { preloadLeRobotViewer } = await import('../src/react/preload');
     expect(() => preloadLeRobotViewer()).not.toThrow();
     expect(() => preloadLeRobotViewer()).not.toThrow();
@@ -109,7 +146,7 @@ describe('preloadLeRobotViewer', () => {
     };
     vi.doMock('../src/react/lazyChunks', () => chunks);
     vi.doMock('../src/platform/workers/workerManager', () => ({
-      loadParquetWasmModule: vi.fn(() => Promise.resolve({})),
+      loadParquetWasm: vi.fn(() => Promise.resolve({})),
     }));
     const { preloadLeRobotViewer } = await import('../src/react/preload');
     preloadLeRobotViewer();

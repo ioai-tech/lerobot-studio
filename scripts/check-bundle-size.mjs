@@ -28,10 +28,11 @@ if (!Number.isFinite(scale) || scale <= 0 || scale > 1) {
 // 37.5 KiB / 10.5 KiB; library 62,355 / 16,563).
 //
 // 2026-11-19 review (DataLoader ceilings only, reset to ~3% headroom): the
-// DataLoader now requests every metadata file at once through a six-slot
-// read limiter, and reports a Parquet reader that cannot load as the named
-// PARQUET_ENGINE_UNAVAILABLE error instead of an invalid file (library
-// 64,355 / 17,116, web 52,534 / 15,372).
+// six-slot metadata read limiter (#120) still fit the old ceilings; the
+// overrun is the DataLoader reporting a Parquet reader that cannot load as
+// the named PARQUET_ENGINE_UNAVAILABLE error instead of an invalid file, and
+// the limiter's try / finally slot release (library 64,355 / 17,116, web
+// 52,534 / 15,372; c801b91 64,029 / 16,938 and 52,308 / 15,281).
 const budgets = {
   libEntry: { raw: 448_000, gzip: 138_500 },
   libCss: { raw: 360_000, gzip: 107_000 },
