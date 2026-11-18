@@ -9,6 +9,7 @@ import { ExportService, LeRobotDataLoader } from '@/platform';
 import { getParquetWasm } from '../../src/platform/export/parquetWasmLoader';
 import { InMemoryExportAdapter } from '../helpers/inMemoryExportAdapter';
 import { FetchDataSource } from './fixtures';
+import { pauseOnEpisode } from './playback';
 import '../../src/react/index.css';
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = false;
@@ -253,6 +254,7 @@ describe('browser: episode trim controls', () => {
           timeout: 10_000,
         })
         .toBe(false);
+      await pauseOnEpisode(host, 0);
       host.querySelector<HTMLButtonElement>('[title="Edit episodes"]')!.click();
       await userEvent.click(page.getByRole('button', { name: 'Trim episode', exact: true }));
       const start = page.getByRole('spinbutton', { name: 'Start frame', exact: true });
