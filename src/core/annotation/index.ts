@@ -32,9 +32,12 @@ export {
   EMPTY_ANNOTATION_HISTORY,
   pushHistory,
   reconcileHistory,
+  removeHistoryEntry,
   takeRedo,
   takeUndo,
 } from './history';
+export type { PendingBatch } from './pending';
+export { composeUpdateSteps, rebasePending } from './pending';
 export type { SegmentFilter } from './queries';
 export {
   clipSubtasksToRange,

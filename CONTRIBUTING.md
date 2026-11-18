@@ -25,9 +25,13 @@ remains free of React and browser APIs, while WASM, workers, and file-system
 integration stay in `src/platform`. The public npm API is
 `src/react/index.ts`.
 
-The stable 1.0 library is viewer-only, ESM/CSR-only, browser-only, and targets
-React `^19.0.0`. Do not add editing or export services to the stable public API,
-SSR/RSC paths, CommonJS output, telemetry, or undocumented network calls.
+The stable library is ESM/CSR-only, browser-only, and targets React `^19.0.0`.
+It is a viewer plus host-controlled segment annotation: through `annotation`,
+`readOnly`, `fields` and `messages`, the host owns the data and persists each
+typed change (`applyChange` is the reference reducer); the viewer never writes
+files or calls a network service itself. Do not add an export service or any
+other editing to the stable public API, nor SSR/RSC paths, CommonJS output,
+telemetry, or undocumented network calls.
 Documented welcome-page UI (provider, viewer content, source picker, sample
 card, pagination, directory data-source factory, drag-and-drop) may be added to
 the public API when an embedding app needs a custom welcome page without the

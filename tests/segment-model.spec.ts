@@ -199,6 +199,14 @@ describe('segment keys', () => {
     expect(matchSegmentShortcut(key(init))).toBe(id);
   });
 
+  it('letters follow the printed key (AZERTY "A" is on the physical Q key)', () => {
+    expect(matchSegmentShortcut(key({ key: 'a', code: 'KeyQ' }))).toBe('confirm');
+    expect(matchSegmentShortcut(key({ key: 'q', code: 'KeyA' }))).toBeNull();
+    expect(matchSegmentShortcut(key({ key: 'z', code: 'KeyW', ctrlKey: true }))).toBe('undo');
+    // A layout without Latin letters falls back to the physical key.
+    expect(matchSegmentShortcut(key({ key: 'ф', code: 'KeyA' }))).toBe('confirm');
+  });
+
   it('never binds Ctrl/Cmd+K and ignores unrelated keys', () => {
     expect(matchSegmentShortcut(key({ key: 'k', code: 'KeyK', ctrlKey: true }))).toBeNull();
     expect(matchSegmentShortcut(key({ key: 'k', code: 'KeyK', metaKey: true }))).toBeNull();

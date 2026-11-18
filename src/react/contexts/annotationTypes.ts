@@ -17,10 +17,12 @@ export interface LeRobotAnnotationSaveState {
 }
 
 /**
- * Host-controlled segments. The viewer previews each change locally and calls
- * `onChange`; the host applies and persists it and passes the new `value`
- * back, which replaces the preview. A host that refuses a change keeps
- * `value` and sets `saveState.kind` to `'refused'`.
+ * Host-controlled segments. The viewer shows each change at once and calls
+ * `onChange` (in order); the host applies and persists it and passes the new
+ * `value` back. Changes not yet in `value` stay shown on top of it. To refuse
+ * a change, keep `value` and set a new `saveState` object with
+ * `kind: 'refused'`: the oldest change in flight and its undo step are
+ * dropped. `value` and `saveState` are compared by identity.
  */
 export interface LeRobotAnnotationProps {
   /** The persisted document; replaces the viewer's preview whenever it changes. */

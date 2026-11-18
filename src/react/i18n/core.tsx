@@ -7,6 +7,10 @@ import {
   persistLocale,
   type SupportedLocale,
 } from './messages';
+import { LEROBOT_MESSAGE_KEYS } from './messageKeys';
+
+/** Only the documented keys can be replaced; internal copy is not API. */
+const HOST_MESSAGE_KEYS: ReadonlySet<string> = new Set(LEROBOT_MESSAGE_KEYS);
 
 type TranslationValues = Record<string, unknown>;
 type TFunction = (
@@ -107,7 +111,8 @@ export function I18nProvider({
     const overrides = Object.fromEntries(
       Object.entries(messages)
         .filter(
-          (entry): entry is [string, string] => typeof entry[1] === 'string' && entry[0] in base,
+          (entry): entry is [string, string] =>
+            typeof entry[1] === 'string' && HOST_MESSAGE_KEYS.has(entry[0]),
         )
         .map(([key, text]) => [key, text.replace(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g, '{$1}')]),
     );

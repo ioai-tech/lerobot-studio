@@ -69,8 +69,7 @@ export const PlaybackBar: React.FC = () => {
   // Pause-to-label is the standalone flow; a host-controlled viewer labels with Shift+[ / Shift+].
   const pauseToLabel = annotationEnabled && !segments.controlled;
   const trimRange = suggestion?.range;
-  const showSegments =
-    !trimming && (segments.controlled || segments.canEdit || segments.episodeSegments.length > 0);
+  const showSegments = !trimming && segments.active;
   const [renameIndex, setRenameIndex] = useState<number | null>(null);
 
   const { tasks } = useLoading();

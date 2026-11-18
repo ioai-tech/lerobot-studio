@@ -35,6 +35,7 @@ import {
 import { shortcutKeys, type SegmentShortcutId } from '../../hooks/segmentShortcuts';
 import { TimeField } from './TimeField';
 import { useNoticeText } from './annotationText';
+import { onRadioGroupKeyDown, radioTabIndex } from './radioGroup';
 
 function Kbd({ children }: { children: React.ReactNode }) {
   return (
@@ -103,8 +104,14 @@ function TextCommitInput({
   useEffect(() => {
     if (!editing) setText(value);
   }, [editing, value]);
+  /** Set by Enter / Escape so the blur that follows does not commit again. */
+  const settledRef = React.useRef(false);
   const commit = () => {
     setEditing(false);
+    if (settledRef.current) {
+      settledRef.current = false;
+      return;
+    }
     if (text !== value) onCommit(text);
   };
   return (
@@ -119,18 +126,25 @@ function TextCommitInput({
         placeholder={placeholder}
         disabled={disabled}
         list={list}
-        onFocus={() => setEditing(true)}
+        onFocus={() => {
+          settledRef.current = false;
+          setEditing(true);
+        }}
         onChange={(event) => setText(event.target.value)}
         onBlur={commit}
         onKeyDown={(event) => {
           if (event.key === 'Enter') {
             event.preventDefault();
             commit();
+            settledRef.current = true;
             event.currentTarget.blur();
           } else if (event.key === 'Escape') {
+            // Revert: the typed text is never committed.
             event.preventDefault();
+            event.stopPropagation();
             setText(value);
             setEditing(false);
+            settledRef.current = true;
             event.currentTarget.blur();
           }
         }}
@@ -152,16 +166,20 @@ function FieldControl({
 }) {
   const { t } = useTranslation();
   const value = segment.values[field.id] ?? null;
-  const listId = `lerobot-field-${field.id}-suggestions`;
+  // Unique per viewer instance: two viewers on one page never share a datalist.
+  const listId = `${React.useId()}-suggestions`;
   if (field.kind === 'select') {
+    const options = field.options ?? [];
+    const anyChecked = options.some((option) => option.value === value);
     return (
       <div
         role="radiogroup"
         aria-label={field.label}
         className="flex flex-wrap items-center gap-1 text-xs"
+        onKeyDown={onRadioGroupKeyDown}
       >
         <span className="text-muted-foreground">{field.label}</span>
-        {(field.options ?? []).map((option) => {
+        {options.map((option, index) => {
           const active = value === option.value;
           return (
             <button
@@ -169,6 +187,7 @@ function FieldControl({
               type="button"
               role="radio"
               aria-checked={active}
+              tabIndex={radioTabIndex(active, index, anyChecked)}
               aria-keyshortcuts={option.key}
               disabled={!editable}
               className={cn(
@@ -362,6 +381,7 @@ export const SegmentInspector: React.FC = () => {
   const { setSubtaskDialogOpen } = useLeRobotUi();
   const noticeText = useNoticeText();
   const fps = info?.fps || 30;
+  const framesPerSecond = Math.max(1, Math.round(fps));
   const selected = segments.selected;
   const segment = selected?.segment ?? null;
   const editable = segments.canEdit && !segment?.readOnly;
@@ -486,6 +506,16 @@ export const SegmentInspector: React.FC = () => {
                   shortcut="nudgeForward"
                   label={t('segments.actions.nudgeForward')}
                   onClick={() => segments.nudgeEdgeNearPlayhead(1)}
+                />
+                <ActionButton
+                  shortcut="nudgeBackSecond"
+                  label={t('segments.actions.nudgeBackSecond')}
+                  onClick={() => segments.nudgeEdgeNearPlayhead(-framesPerSecond)}
+                />
+                <ActionButton
+                  shortcut="nudgeForwardSecond"
+                  label={t('segments.actions.nudgeForwardSecond')}
+                  onClick={() => segments.nudgeEdgeNearPlayhead(framesPerSecond)}
                 />
               </span>
               <TextCommitInput

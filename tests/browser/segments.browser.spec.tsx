@@ -11,6 +11,7 @@ import {
   type Segment,
 } from '@/core';
 import type { LeRobotAnnotationSaveState } from '@/contexts/annotationTypes';
+import type { LeRobotMessages } from '@/i18n/messageKeys';
 import { FetchDataSource } from './fixtures';
 import { expectNoBlockingA11yViolations } from './a11y';
 import '../../src/react/index.css';
@@ -125,7 +126,13 @@ function Host({
       annotation={annotation}
       readOnly={readOnly}
       fields={fields}
-      messages={{ 'segments.progress': '{{confirmed}} of {{total}} reviewed' }}
+      messages={
+        {
+          'segments.progress': '{{confirmed}} of {{total}} reviewed',
+          // Not a public key: ignored.
+          'sidebar.episodesCount': 'INTERNAL COPY',
+        } as LeRobotMessages
+      }
     />
   );
 }
@@ -183,6 +190,11 @@ async function expectSegmentUiAccessible(host: HTMLElement) {
   }
 }
 
+function trackCount(host: HTMLElement) {
+  return () =>
+    host.querySelectorAll('[data-testid="lerobot-segment-track"] [role="listitem"]').length;
+}
+
 function status(host: HTMLElement) {
   return host.querySelector('[data-testid="lerobot-segment-status"]')?.textContent ?? '';
 }
@@ -214,8 +226,9 @@ describe('browser: segments, review and change ops', () => {
       />,
     );
     await waitForSegments(host);
-    // Host copy replaces the built-in message.
+    // Host copy replaces the built-in message; internal copy cannot be replaced.
     expect(host.textContent).toContain('0 of 2 reviewed');
+    expect(host.textContent).not.toContain('INTERNAL COPY');
     await selectWithKeys(host, 1);
     await press('a');
     await press('1');
@@ -289,10 +302,14 @@ describe('browser: segments, review and change ops', () => {
     expect(document.querySelector('[role="dialog"]')).toBeNull();
   });
 
-  it('a refusing host keeps its value: the preview is dropped and the reason shown', async () => {
+  it('a refusing host keeps its value: each refusal drops its change and its undo step', async () => {
     const log: HostLog = { changes: [], value: () => ({ episodes: {} }) };
     root.render(
-      <Host log={log} refuse initial={{ episodes: { 0: { segments: [seg('a', 0, 1)] } } }} />,
+      <Host
+        log={log}
+        refuse
+        initial={{ episodes: { 0: { segments: [seg('a', 0, 0), seg('b', 1, 2)] } } }}
+      />,
     );
     await waitForSegments(host);
     await selectWithKeys(host, 1);
@@ -300,12 +317,137 @@ describe('browser: segments, review and change ops', () => {
     await expect.poll(() => log.changes).toEqual([{ op: 'delete', episodeIndex: 0, id: 'a' }]);
     await expect.poll(() => status(host)).toContain('Not saved · Server says no');
     // The segment is still shown: the host's value wins over the preview.
+    await expect.poll(trackCount(host)).toBe(2);
+    // A second refusal in a row is dropped too.
+    await selectWithKeys(host, 2);
+    await press('r');
+    await expect.poll(() => log.changes).toHaveLength(2);
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    expect(trackCount(host)()).toBe(2);
+    // Nothing the host refused is left to undo.
+    await press('{Control>}z{/Control}');
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    expect(log.changes).toHaveLength(2);
+    expect(status(host)).toContain('Nothing to undo');
+  });
+
+  it('changes made faster than the host answers stay shown and stay undoable', async () => {
+    const log: HostLog = { changes: [], value: () => ({ episodes: {} }) };
+    root.render(
+      <Host
+        log={log}
+        delayMs={600}
+        initial={{ episodes: { 0: { segments: [seg('a', 0, 0)] } } }}
+      />,
+    );
+    await waitForSegments(host);
+    await selectWithKeys(host, 1);
+    // N at frame 1 creates new-1 (1–2); S at frame 2 splits it: both before any answer.
+    await press('{ArrowRight}');
+    await press('n');
+    await press('{ArrowRight}');
+    await press('s');
+    expect(log.changes.map((change) => change.op)).toEqual(['create', 'split']);
+    expect(trackCount(host)()).toBe(3);
+    // The host answers the create only: the split stays shown.
+    await expect.poll(() => log.value().episodes[0].segments.length, { timeout: 5_000 }).toBe(2);
+    expect(trackCount(host)()).toBe(3);
+    await expect.poll(() => log.value().episodes[0].segments.length, { timeout: 5_000 }).toBe(3);
+    // The whole history survived both answers.
+    await press('{Control>}z{/Control}');
+    await press('{Control>}z{/Control}');
+    expect(log.changes.slice(2)).toEqual([
+      { op: 'merge', episodeIndex: 0, id: 'new-1', withId: 'new-2' },
+      { op: 'delete', episodeIndex: 0, id: 'new-1' },
+    ]);
+    await expect.poll(() => log.value().episodes[0].segments.length, { timeout: 5_000 }).toBe(1);
+    expect(trackCount(host)()).toBe(1);
+  });
+
+  it('a burst of nudges is one step whose undo restores clipped subtasks and whose redo applies', async () => {
+    const log: HostLog = { changes: [], value: () => ({ episodes: {} }) };
+    root.render(
+      <Host
+        log={log}
+        initial={{
+          episodes: {
+            0: {
+              segments: [
+                seg('a', 0, 1, { subtasks: [{ startFrame: 1, endFrame: 1, label: 'grasp' }] }),
+              ],
+            },
+          },
+        }}
+      />,
+    );
+    await waitForSegments(host);
+    await selectWithKeys(host, 1);
+    await press('{ArrowRight}'); // playhead on the end edge
+    await press('.'); // end 2
+    await press(','); // end 1
+    await press(','); // end 0: the subtask is clipped away
     await expect
-      .poll(
-        () =>
-          host.querySelectorAll('[data-testid="lerobot-segment-track"] [role="listitem"]').length,
-      )
-      .toBe(1);
+      .poll(() => log.value().episodes[0].segments[0])
+      .toMatchObject({
+        endFrame: 0,
+        subtasks: [],
+      });
+    await press('{Control>}z{/Control}');
+    await expect
+      .poll(() => log.value().episodes[0].segments[0])
+      .toMatchObject({
+        endFrame: 1,
+        subtasks: [{ startFrame: 1, endFrame: 1, label: 'grasp' }],
+      });
+    await press('{Control>}{Shift>}z{/Shift}{/Control}');
+    await expect
+      .poll(() => log.value().episodes[0].segments[0])
+      .toMatchObject({
+        endFrame: 0,
+        subtasks: [],
+      });
+    expect(status(host)).not.toContain('Not saved');
+  });
+
+  it('Escape in the task field reverts and sends nothing; arrows move between options', async () => {
+    const log: HostLog = { changes: [], value: () => ({ episodes: {} }) };
+    root.render(<Host log={log} initial={{ episodes: { 0: { segments: [seg('a', 0, 1)] } } }} />);
+    await waitForSegments(host);
+    await selectWithKeys(host, 1);
+    const task = page.getByRole('textbox', { name: 'Task' });
+    await userEvent.click(task);
+    await userEvent.keyboard('hello');
+    await press('{Escape}');
+    await expect.element(task).toHaveValue('');
+    expect(log.changes).toEqual([]);
+    // Radio group: one tab stop, arrows choose.
+    const success = page.getByRole('radio', { name: /^Success/ });
+    await expect.element(success).toHaveAttribute('tabindex', '0');
+    (success.element() as HTMLElement).focus();
+    await press('{ArrowRight}');
+    await expect
+      .poll(() => log.changes.at(-1))
+      .toEqual({
+        op: 'update',
+        episodeIndex: 0,
+        id: 'a',
+        patch: { values: { outcome: 'failure' } },
+      });
+    expect(document.activeElement?.textContent).toContain('Failure');
+  });
+
+  it('a plain embedded viewer has no segment keys or UI', async () => {
+    root.render(<LeRobotViewer dataSource={new FetchDataSource(FIXTURE)} language="en" />);
+    await expect
+      .poll(() => /\d+ episodes?/.test(host.textContent ?? ''), { timeout: 60_000 })
+      .toBe(true);
+    viewerRoot(host).focus();
+    await press('?');
+    await press('j');
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    expect(document.querySelector('[role="dialog"]')).toBeNull();
+    expect(host.querySelector('[data-testid="lerobot-segment-track"]')).toBeNull();
+    expect(host.querySelector('[data-testid="lerobot-segment-list"]')).toBeNull();
   });
 
   it('read-only shows segments, review and badges with no edit control and no edit key', async () => {

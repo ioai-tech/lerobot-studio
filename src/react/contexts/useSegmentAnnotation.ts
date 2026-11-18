@@ -13,8 +13,11 @@ import {
   nearerEdge,
   newSegmentRangeAt,
   nextUncoveredFrame,
+  composeUpdateSteps,
   pushHistory,
+  rebasePending,
   reconcileHistory,
+  removeHistoryEntry,
   segmentAtFrame,
   takeRedo,
   takeUndo,
@@ -22,6 +25,8 @@ import {
   type AnnotationContext,
   type AnnotationDocument,
   type AnnotationHistory,
+  type AnnotationHistoryEntry,
+  type PendingBatch,
   type AnnotationRefusal,
   type EpisodeMetadata,
   type LeRobotVersionCapability,
@@ -51,6 +56,8 @@ type DispatchOptions = {
   coalesceKey?: string;
   /** Notice shown after success. */
   notice?: { key: string; values?: Record<string, string | number>; undo?: boolean };
+  /** The history step this dispatch performs (undo / redo), kept with the changes in flight. */
+  entry?: AnnotationHistoryEntry;
 };
 
 const COALESCE_MS = 1000;
@@ -87,10 +94,16 @@ export function useSegmentAnnotation({
 }: UseSegmentAnnotationOptions) {
   const [config, setConfig] = useState<AnnotationConfig>({});
   const [localDoc, setLocalDoc] = useState<AnnotationDocument>(EMPTY_ANNOTATION_DOCUMENT);
-  const [preview, setPreview] = useState<{
-    base: AnnotationDocument;
-    doc: AnnotationDocument;
-  } | null>(null);
+  /**
+   * Controlled mode: changes sent to the host that its `value` does not show
+   * yet, oldest first. The viewer shows `value` with these replayed on top.
+   */
+  const [pending, setPendingState] = useState<PendingBatch<AnnotationHistoryEntry | null>[]>([]);
+  const pendingRef = useRef(pending);
+  const setPending = useCallback((next: PendingBatch<AnnotationHistoryEntry | null>[]) => {
+    pendingRef.current = next;
+    setPendingState(next);
+  }, []);
   const [history, setHistory] = useState<AnnotationHistory>(EMPTY_ANNOTATION_HISTORY);
   const [selectedSegmentId, setSelectedSegmentId] = useState<string | null>(null);
   const [filter, setFilter] = useState<SegmentFilter>('all');
@@ -105,21 +118,10 @@ export function useSegmentAnnotation({
   const annotation = config.annotation;
   const controlled = annotation !== undefined;
   const value = annotation?.value;
-  const saveKind = annotation?.saveState?.kind;
+  const saveState = annotation?.saveState;
   const fields = config.fields;
 
   const configure = useCallback((next: AnnotationConfig) => setConfig(next), []);
-
-  // A refused change leaves the host's value as it was: drop the preview.
-  useEffect(() => {
-    if (saveKind === 'refused') setPreview(null);
-  }, [saveKind]);
-
-  const doc: AnnotationDocument = controlled
-    ? preview && preview.base === value
-      ? preview.doc
-      : (value ?? EMPTY_ANNOTATION_DOCUMENT)
-    : localDoc;
 
   const lengths = useMemo(
     () => new Map(episodes.map((episode) => [episode.episode_index, episode.length])),
@@ -141,24 +143,60 @@ export function useSegmentAnnotation({
   /** Subtask edits additionally need a dataset that can store them when uncontrolled. */
   const canEditSubtasks = canEdit && (controlled || canMutateSubtasks(versionCapability));
 
-  // The host replaced its value: keep only the history that still applies.
+  // Controlled: the host's value with the changes still in flight on top.
+  const rebased = useMemo(
+    () => (controlled ? rebasePending(value ?? EMPTY_ANNOTATION_DOCUMENT, pending, ctx) : null),
+    [controlled, ctx, pending, value],
+  );
+  const doc: AnnotationDocument = rebased ? rebased.doc : localDoc;
+
+  const historyRef = useRef(history);
+  historyRef.current = history;
+  const setHistoryNow = useCallback((next: AnnotationHistory) => {
+    historyRef.current = next;
+    setHistory(next);
+  }, []);
+  /** Keep only the history that still applies to `against`. */
+  const reconcileWith = useCallback(
+    (against: AnnotationDocument) => {
+      const current = historyRef.current;
+      if (!current.undo.length && !current.redo.length) return;
+      const next = reconcileHistory(current, against, ctx);
+      if (next !== current) setHistoryNow(next);
+    },
+    [ctx, setHistoryNow],
+  );
+
+  // The host answered (new value): forget the changes it now shows, then keep
+  // the history that applies to what is shown (value + changes in flight).
   const lastValueRef = useRef(value);
   useEffect(() => {
-    if (!controlled || lastValueRef.current === value) return;
+    if (!controlled || !rebased || lastValueRef.current === value) return;
     lastValueRef.current = value;
-    setHistory((previous) =>
-      previous.undo.length || previous.redo.length
-        ? reconcileHistory(previous, value ?? EMPTY_ANNOTATION_DOCUMENT, ctx)
-        : previous,
-    );
-  }, [controlled, ctx, value]);
+    if (rebased.dropped || rebased.pending.length !== pendingRef.current.length) {
+      setPending(rebased.pending);
+    }
+    reconcileWith(rebased.doc);
+  }, [controlled, rebased, reconcileWith, setPending, value]);
+
+  // Each new refused saveState refuses the oldest change in flight: forget it
+  // and its history step; the host's value stands.
+  const lastRefusalRef = useRef(saveState);
+  useEffect(() => {
+    if (!controlled || saveState === lastRefusalRef.current) return;
+    lastRefusalRef.current = saveState;
+    if (saveState?.kind !== 'refused') return;
+    const [refused, ...rest] = pendingRef.current;
+    if (!refused) return;
+    setPending(rest);
+    if (refused.tag) setHistoryNow(removeHistoryEntry(historyRef.current, refused.tag));
+    reconcileWith(rebasePending(value ?? EMPTY_ANNOTATION_DOCUMENT, rest, ctx).doc);
+  }, [controlled, ctx, reconcileWith, saveState, setHistoryNow, setPending, value]);
 
   const docRef = useRef(doc);
   docRef.current = doc;
   const configRef = useRef(config);
   configRef.current = config;
-  const historyRef = useRef(history);
-  historyRef.current = history;
 
   const createId = useCallback(
     () => (configRef.current.annotation?.createSegmentId ?? defaultSegmentId)(),
@@ -210,40 +248,48 @@ export function useSegmentAnnotation({
         inverses.push(result.inverse);
       }
       docRef.current = working;
-      if (isControlled) {
-        const base = current.annotation!.value;
-        setPreview({ base, doc: working });
-        for (const change of changes) current.annotation!.onChange?.(change);
-      } else {
-        setLocalDoc(working);
-      }
+      let recorded: AnnotationHistoryEntry | null = options.entry ?? null;
       if (options.record !== false && inverses.every((item) => item !== null)) {
-        const entry = {
+        const entry: AnnotationHistoryEntry = {
           forward: changes,
           inverse: (inverses as AnnotationChange[]).slice().reverse(),
         };
         const now = Date.now();
         const last = lastStepRef.current;
-        const top = historyRef.current.undo[historyRef.current.undo.length - 1];
-        const next =
+        const history = historyRef.current;
+        const top = history.undo[history.undo.length - 1];
+        const folded =
           options.coalesceKey &&
           last?.key === options.coalesceKey &&
           now - last.at < COALESCE_MS &&
           top &&
-          historyRef.current.redo.length === 0
-            ? {
-                undo: [
-                  ...historyRef.current.undo.slice(0, -1),
-                  { forward: changes, inverse: top.inverse },
-                ],
-                redo: [],
-              }
-            : pushHistory(historyRef.current, entry);
-        historyRef.current = next;
-        setHistory(next);
+          history.redo.length === 0
+            ? composeUpdateSteps(top, entry)
+            : null;
+        if (folded && top) {
+          // One step for a burst of nudges: the changes in flight that belonged
+          // to the older step now belong to the folded one.
+          setPending(
+            pendingRef.current.map((batch) =>
+              batch.tag === top ? { ...batch, tag: folded } : batch,
+            ),
+          );
+          setHistoryNow({ undo: [...history.undo.slice(0, -1), folded], redo: [] });
+          recorded = folded;
+        } else {
+          const next = pushHistory(history, entry);
+          setHistoryNow(next);
+          recorded = next.undo[next.undo.length - 1] === entry ? entry : null;
+        }
         lastStepRef.current = options.coalesceKey ? { key: options.coalesceKey, at: now } : null;
       } else {
         lastStepRef.current = null;
+      }
+      if (isControlled) {
+        setPending([...pendingRef.current, { changes, tag: recorded }]);
+        for (const change of changes) current.annotation!.onChange?.(change);
+      } else {
+        setLocalDoc(working);
       }
       if (options.notice) {
         showNotice(options.notice.key, options.notice.values, 'info', options.notice.undo);
@@ -252,11 +298,12 @@ export function useSegmentAnnotation({
       }
       return true;
     },
-    [ctx, publishNotice, showNotice, showRefusal],
+    [ctx, publishNotice, setHistoryNow, setPending, showNotice, showRefusal],
   );
 
   /** Undo the newest step; callers check permission. */
   const performUndo = useCallback(() => {
+    const entry = historyRef.current.undo[historyRef.current.undo.length - 1];
     const step = takeUndo(historyRef.current);
     if (!step) {
       showNotice('segments.notice.nothingToUndo');
@@ -264,15 +311,14 @@ export function useSegmentAnnotation({
     }
     lastStepRef.current = null;
     historyRef.current = step.history;
-    if (!dispatch(step.changes, { record: false })) {
-      historyRef.current = EMPTY_ANNOTATION_HISTORY;
-      setHistory(EMPTY_ANNOTATION_HISTORY);
+    if (!dispatch(step.changes, { record: false, entry })) {
+      setHistoryNow(EMPTY_ANNOTATION_HISTORY);
       return false;
     }
-    setHistory(step.history);
+    setHistoryNow(step.history);
     showNotice('segments.notice.undone');
     return true;
-  }, [dispatch, showNotice]);
+  }, [dispatch, setHistoryNow, showNotice]);
 
   const undo = useCallback(() => canEdit && performUndo(), [canEdit, performUndo]);
 
@@ -299,27 +345,26 @@ export function useSegmentAnnotation({
     }
     lastStepRef.current = null;
     historyRef.current = step.history;
-    if (!dispatch(step.changes, { record: false })) {
-      historyRef.current = EMPTY_ANNOTATION_HISTORY;
-      setHistory(EMPTY_ANNOTATION_HISTORY);
+    const entry = step.history.undo[step.history.undo.length - 1];
+    if (!dispatch(step.changes, { record: false, entry })) {
+      setHistoryNow(EMPTY_ANNOTATION_HISTORY);
       return false;
     }
-    setHistory(step.history);
+    setHistoryNow(step.history);
     showNotice('segments.notice.redone');
     return true;
-  }, [canEdit, createId, dispatch, showNotice]);
+  }, [canEdit, createId, dispatch, setHistoryNow, showNotice]);
 
   const reset = useCallback(() => {
     setLocalDoc(EMPTY_ANNOTATION_DOCUMENT);
-    setPreview(null);
-    setHistory(EMPTY_ANNOTATION_HISTORY);
-    historyRef.current = EMPTY_ANNOTATION_HISTORY;
+    setPending([]);
+    setHistoryNow(EMPTY_ANNOTATION_HISTORY);
     setSelectedSegmentId(null);
     publishNotice(null);
     setSubtaskStart(null);
     setConfirmAllOpen(false);
     lastStepRef.current = null;
-  }, [publishNotice]);
+  }, [publishNotice, setHistoryNow, setPending]);
 
   const episodeSegments = useMemo(
     () => (selectedEpisodeIndex == null ? [] : getEpisodeSegments(doc, selectedEpisodeIndex)),
@@ -717,7 +762,18 @@ export function useSegmentAnnotation({
             .map((segment) => ({ episodeIndex: selectedEpisodeIndex, id: segment.id })),
     [episodeSegments, filter, selectedEpisodeIndex],
   );
-  const saveState = annotation?.saveState ?? null;
+  const shownSaveState = saveState ?? null;
+  /**
+   * Whether the segment UI and keys are on: a host opted in (`annotation`),
+   * editing is possible, or segments exist. A plain viewer stays as it was.
+   */
+  const active = useMemo(
+    () =>
+      controlled ||
+      canEdit ||
+      Object.values(doc.episodes).some((entry) => (entry?.segments.length ?? 0) > 0),
+    [canEdit, controlled, doc],
+  );
   const canUndo = canEdit && history.undo.length > 0;
   const canRedo = canEdit && history.redo.length > 0;
   const resolvedFields = useMemo(() => fields ?? [], [fields]);
@@ -733,7 +789,8 @@ export function useSegmentAnnotation({
       canEditSubtasks,
       readOnly,
       fields: resolvedFields,
-      saveState,
+      active,
+      saveState: shownSaveState,
       canUndo,
       canRedo,
       episodeSegments,
@@ -789,7 +846,8 @@ export function useSegmentAnnotation({
       canEditSubtasks,
       readOnly,
       resolvedFields,
-      saveState,
+      active,
+      shownSaveState,
       canUndo,
       canRedo,
       episodeSegments,

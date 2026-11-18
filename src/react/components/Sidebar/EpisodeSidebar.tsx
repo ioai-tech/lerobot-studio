@@ -62,7 +62,8 @@ export const EpisodeSidebar: React.FC = () => {
   const hostOwned = segments.controlled || segments.readOnly;
   const mutationDisabled = versionLocked || hostOwned;
   const editMode = !mutationDisabled && episodeEditMode;
-  const singleEpisode = episodes.length === 1;
+  // A single episode with segment UI shows its segments instead of a one-row list.
+  const singleEpisode = episodes.length === 1 && segments.active;
 
   useEffect(() => {
     if (!mutationDisabled) return;
@@ -304,9 +305,11 @@ export const EpisodeSidebar: React.FC = () => {
           onEdit={(episode, event) => openEditDialog(event, episode)}
           onDelete={(episodeIndex, event) => handleDelete(event, episodeIndex)}
           onRestore={(episodeIndex, event) => handleRestore(event, episodeIndex)}
-          renderSelectedExpansion={(episode) => (
-            <SegmentList episodeIndex={episode.episode_index} showTitle={false} />
-          )}
+          renderSelectedExpansion={
+            segments.active
+              ? (episode) => <SegmentList episodeIndex={episode.episode_index} showTitle={false} />
+              : undefined
+          }
           expansionHeight={(episode) => {
             const count = (segments.doc.episodes[episode.episode_index]?.segments ?? []).length;
             return count === 0 ? 72 : 96 + Math.min(count, 6) * 56;

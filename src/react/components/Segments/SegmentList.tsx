@@ -12,6 +12,7 @@ import {
 } from '@/core';
 import { cn } from '@/ui';
 import { useLeRobotData, useLeRobotSegments } from '../../contexts/LeRobotContext';
+import { onRadioGroupKeyDown, radioTabIndex } from './radioGroup';
 
 const FILTERS: SegmentFilter[] = ['all', 'to_review', 'issues'];
 const FILTER_KEYS: Record<SegmentFilter, string> = {
@@ -92,13 +93,15 @@ export const SegmentList: React.FC<{ episodeIndex: number; showTitle?: boolean }
             role="radiogroup"
             aria-label={t('segments.filter.label')}
             className="flex flex-wrap gap-1"
+            onKeyDown={onRadioGroupKeyDown}
           >
-            {FILTERS.map((filter) => (
+            {FILTERS.map((filter, index) => (
               <button
                 key={filter}
                 type="button"
                 role="radio"
                 aria-checked={segments.filter === filter}
+                tabIndex={radioTabIndex(segments.filter === filter, index, true)}
                 className={cn(
                   'h-6 rounded-md border px-2 text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50',
                   segments.filter === filter

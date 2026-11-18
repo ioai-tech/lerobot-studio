@@ -211,7 +211,8 @@ export const useKeyboardShortcuts = (enabled: boolean = true) => {
       if (e.defaultPrevented) return;
 
       const target = e.target;
-      if (isSegmentShortcutTarget(target, portalContainer)) {
+      // Segment keys exist only while the segment UI does (a plain viewer is unchanged).
+      if (segmentsRef.current.active && isSegmentShortcutTarget(target, portalContainer)) {
         const id = matchSegmentShortcut(e);
         if (id) {
           if (runSegmentShortcut(id)) {

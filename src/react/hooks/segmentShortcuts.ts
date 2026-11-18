@@ -1,7 +1,8 @@
 /**
  * The segment key table: one list drives the key handler, the shortcut sheet
  * and the key hints on buttons. Matching uses `KeyboardEvent.code` where the
- * printed character depends on the layout (brackets, comma, period).
+ * printed character depends on the layout (brackets, comma, period); letters
+ * follow the printed key.
  */
 
 export type SegmentShortcutId =
@@ -65,9 +66,15 @@ export function shortcutKeys(id: SegmentShortcutId): string {
   return SEGMENT_SHORTCUTS.find((item) => item.id === id)?.keys.join(' / ') ?? '';
 }
 
+/**
+ * The letter a key prints in the person's layout (so AZERTY "A" confirms);
+ * the physical key only when the layout prints no Latin letter (e.g.
+ * Cyrillic, or Alt / Option combinations on macOS).
+ */
 function letter(event: KeyLike): string | null {
+  if (/^[a-z]$/i.test(event.key)) return event.key.toUpperCase();
   if (/^Key[A-Z]$/.test(event.code)) return event.code.slice(3);
-  return event.key.length === 1 ? event.key.toUpperCase() : null;
+  return null;
 }
 
 /** The segment action a key event asks for, if any. `Ctrl/Cmd+K` is never bound. */

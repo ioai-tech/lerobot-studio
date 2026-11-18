@@ -165,3 +165,15 @@ export function reconcileHistory(
   if (undoOk && redoOk) return history;
   return { undo: undoOk ? history.undo : [], redo: redoOk ? history.redo : [] };
 }
+
+/** Drop one step (by identity) from either stack, e.g. after the host refused it. */
+export function removeHistoryEntry(
+  history: AnnotationHistory,
+  entry: AnnotationHistoryEntry,
+): AnnotationHistory {
+  if (!history.undo.includes(entry) && !history.redo.includes(entry)) return history;
+  return {
+    undo: history.undo.filter((item) => item !== entry),
+    redo: history.redo.filter((item) => item !== entry),
+  };
+}
