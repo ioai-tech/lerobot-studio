@@ -441,7 +441,7 @@ export class LeRobotDataLoader {
   /**
    * Read by range when possible, else the file whole. A decoder read that
    * meets a new version of the file (`FILE_CHANGED`) is planned again once,
-   * from the new footer.
+   * from the new footer; if the file changes again, it is read whole, by name.
    */
   private async readRangedOrWhole<T>(
     path: string,
@@ -457,10 +457,21 @@ export class LeRobotDataLoader {
       try {
         return await ranged(prepared);
       } catch (error) {
-        if (attempt === 0 && this.rangeReader.takeChanged(path)) continue;
-        throw error;
+        if (!this.rangeReader.takeChanged(path)) throw error;
+        if (attempt === 0) continue;
+        this.reportFallback('FILE_CHANGED', path);
+        // The current version, read fresh.
+        if (this.fileBytesCache?.path === path) this.fileBytesCache = null;
+        return this.readWholeFile(path, whole);
       }
     }
+  }
+
+  /** Warn once per reason that a file is read whole instead of by range. */
+  private reportFallback(reason: ParquetRangeFallbackReason, path: string): void {
+    if (this.reportedFallbacks.has(reason)) return;
+    this.reportedFallbacks.add(reason);
+    console.warn(`[lerobot-studio] ${reason}: reading ${path} whole instead of by range`);
   }
 
   private async prepareRangedRead(
@@ -474,10 +485,7 @@ export class LeRobotDataLoader {
       return await this.rangeReader.prepare(path, columns, start, end);
     } catch (error) {
       if (!(error instanceof RangeFallback)) throw error;
-      if (!this.reportedFallbacks.has(error.reason)) {
-        this.reportedFallbacks.add(error.reason);
-        console.warn(`[lerobot-studio] ${error.reason}: reading ${path} whole instead of by range`);
-      }
+      this.reportFallback(error.reason, path);
       if (error.wholeFile) this.fileBytesCache = { path, bytes: error.wholeFile };
       return null;
     }

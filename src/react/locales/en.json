@@ -75,7 +75,8 @@
     "reload": "Reload application"
   },
   "lazyChunk": {
-    "failed": "Part of the viewer could not load (CHUNK_LOAD_FAILED). Check the connection and retry."
+    "failed": "Part of the viewer could not load (CHUNK_LOAD_FAILED). Check the connection and retry.",
+    "reload": "Reload page"
   },
   "panelErrorBoundary": {
     "title": "Panel failed to load",

@@ -75,7 +75,8 @@
     "reload": "重新加载应用"
   },
   "lazyChunk": {
-    "failed": "查看器的部分内容加载失败（CHUNK_LOAD_FAILED）。请检查网络后重试。"
+    "failed": "查看器的部分内容加载失败（CHUNK_LOAD_FAILED）。请检查网络后重试。",
+    "reload": "重新加载页面"
   },
   "panelErrorBoundary": {
     "title": "面板加载失败",

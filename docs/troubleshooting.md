@@ -47,7 +47,7 @@ Playback depends on the video codec and browser. Try the file in the target brow
 
 ## Part of the viewer could not load
 
-The layout, segment panels and some dialogs load as separate files on first use. If one cannot be fetched (often after a new deployment while the tab stayed open), its place shows "Part of the viewer could not load (CHUNK_LOAD_FAILED)" with **Retry**; the rest of the viewer keeps working. Retry, or reload the page if the deployment changed.
+The layout, segment panels and some dialogs load as separate files on first use. If one cannot be fetched (often after a new deployment while the tab stayed open), its place shows "Part of the viewer could not load (CHUNK_LOAD_FAILED)" with **Retry**; the rest of the viewer keeps working. If the retry fails too (browsers can keep a failed module fetch), the notice also offers **Reload page**.
 
 ---
 

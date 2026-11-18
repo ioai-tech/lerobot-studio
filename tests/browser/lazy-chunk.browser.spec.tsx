@@ -73,6 +73,29 @@ it('shows a failed chunk as a named notice with a retry; the rest keeps working'
   }
 });
 
+it('offers a page reload when the retry fails too', async () => {
+  vi.spyOn(console, 'error').mockImplementation(() => undefined);
+  let attempts = 0;
+  const Chunk = lazyChunk(async () => {
+    attempts += 1;
+    throw new TypeError('Failed to fetch dynamically imported module');
+  });
+  const { host, unmount } = mount(<Chunk />);
+  const buttons = () =>
+    Array.from(host.querySelectorAll('[role="alert"] button')).map((button) =>
+      button.textContent?.trim(),
+    );
+  try {
+    await expect.poll(buttons).toEqual(['Retry']);
+    host.querySelector<HTMLButtonElement>('[role="alert"] button')!.click();
+    await expect.poll(buttons).toEqual(['Retry', 'Reload page']);
+    expect(attempts).toBe(2);
+  } finally {
+    unmount();
+    vi.restoreAllMocks();
+  }
+});
+
 it('passes errors of the loaded component on, as without the chunk', async () => {
   vi.spyOn(console, 'error').mockImplementation(() => undefined);
   const Broken = lazyChunk(async () => () => {
