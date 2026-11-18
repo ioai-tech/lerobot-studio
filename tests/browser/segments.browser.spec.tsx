@@ -85,17 +85,21 @@ function Host({
   const next = useRef(0);
   log.value = () => valueRef.current;
   const onChange = useCallback(
-    (change: AnnotationChange) => {
+    (change: AnnotationChange, meta: { changeId: string }) => {
       log.changes.push(change);
       if (refuse) {
-        setSaveState({ kind: 'refused', message: 'Server says no' });
+        setSaveState({ kind: 'refused', message: 'Server says no', changeIds: [meta.changeId] });
         return;
       }
       setSaveState({ kind: 'saving' });
       const answer = () => {
         const result = applyChange(valueRef.current, change, ctx);
         if (!result.ok) {
-          setSaveState({ kind: 'refused', message: result.refusal.code });
+          setSaveState({
+            kind: 'refused',
+            message: result.refusal.code,
+            changeIds: [meta.changeId],
+          });
           return;
         }
         valueRef.current = result.doc;

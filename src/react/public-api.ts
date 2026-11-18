@@ -63,6 +63,7 @@ export type {
   AuxiliarySeriesWarningCode,
 } from '../platform/services/auxiliarySeries';
 export type {
+  AnnotationChangeMeta,
   LeRobotAnnotationProps,
   LeRobotAnnotationSaveState,
 } from './contexts/annotationTypes';

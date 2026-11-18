@@ -62,8 +62,8 @@ describe('changes in flight on top of the host value', () => {
     afterSplit.entry,
   );
   const pending = [
-    { changes: [create], tag: afterCreate.entry },
-    { changes: [split], tag: afterSplit.entry },
+    { change: create, changeId: 'c1', tag: afterCreate.entry },
+    { change: split, changeId: 'c2', tag: afterSplit.entry },
   ];
 
   it('the host answered the first of two: the second stays shown and history stays whole', () => {
@@ -96,8 +96,8 @@ describe('changes in flight on top of the host value', () => {
     };
     const confirm: AnnotationChange = { op: 'confirm', episodeIndex: 0, ids: ['a'] };
     const queue = [
-      { changes: [rename], tag: null },
-      { changes: [confirm], tag: null },
+      { change: rename, changeId: 'c1', tag: null },
+      { change: confirm, changeId: 'c2', tag: null },
     ];
     expect(rebasePending(base, queue, ctx).pending).toHaveLength(2);
     const applied = step(step(base, rename).doc, confirm).doc;

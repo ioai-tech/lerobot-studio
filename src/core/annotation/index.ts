@@ -36,7 +36,7 @@ export {
   takeRedo,
   takeUndo,
 } from './history';
-export type { PendingBatch } from './pending';
+export type { PendingChange } from './pending';
 export { composeUpdateSteps, rebasePending } from './pending';
 export type { SegmentFilter } from './queries';
 export {

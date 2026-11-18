@@ -63,7 +63,7 @@ const fields: AnnotationField[] = [
   dataSource={source}
   annotation={{
     value, // AnnotationDocument
-    onChange: (change: AnnotationChange) => save(change), // 持久化后把新的 value 传回
+    onChange: (change: AnnotationChange, { changeId }) => save(change, changeId), // 持久化后把新的 value 传回
     saveState, // { kind: 'saving' | 'saved' | 'offline' | 'reloaded' | 'refused' | 'idle', message?, actions? }
     createSegmentId: () => uuidv7(),
   }}
@@ -72,8 +72,8 @@ const fields: AnnotationField[] = [
 />;
 ```
 
-- **`annotation`** 让分段由宿主控制。`value` 是 `AnnotationDocument`：按 `episode_index` 存放分段；没有条目或没有分段的 Episode 整段使用。查看器立即显示每次修改，并以每步一个带类型的 `AnnotationChange` 调用 `onChange`。宿主应用修改（导出的 `applyChange(doc, change, ctx)` 是参考 reducer）、持久化，然后把新的 `value` 传回以替换预览。修改按顺序传给 `onChange`，请按同样顺序应答。拒绝某个修改时保持 `value` 不变，并设置一个新的 `saveState` 对象（`kind: 'refused'`，附上 `message`；每个被拒绝的修改一个）；查看器会丢弃最早一个尚未确认的修改及其撤销步骤，并显示原因。没有 `onChange` 时文档只读。`canDelete(segment)` 可逐个分段隐藏删除，`newSegmentReview` 设置用户新建分段的审核状态（默认 `'confirmed'`）。不传 `annotation` 时，分段保存在查看器会话中，且需在可写数据集上进入 **编辑 Episode** 才能编辑。
-- `value` 和 `saveState` 按引用比较。内容不变时请保持同一个对象：每次渲染都重建 `value` 的宿主会让查看器每次都重放未确认的修改并重新检查撤销历史；每个新的、`kind: 'refused'` 的 `saveState` 对象会拒绝最早一个尚未确认的修改。比宿主应答更快的修改会保留，并叠加显示在每个新的 `value` 之上，直到宿主的 `value` 包含它们。
+- **`annotation`** 让分段由宿主控制。`value` 是 `AnnotationDocument`：按 `episode_index` 存放分段；没有条目或没有分段的 Episode 整段使用。查看器立即显示每次修改，并以每步一个带类型的 `AnnotationChange` 调用 `onChange`。宿主应用修改（导出的 `applyChange(doc, change, ctx)` 是参考 reducer）、持久化，然后把新的 `value` 传回以替换预览。修改按顺序传给 `onChange`，每个都带一个稳定的 `changeId`。拒绝修改时保持 `value` 不变，并把 `saveState` 设为 `{ kind: 'refused', message, changeIds }` 指明被拒绝的修改：查看器只丢弃这些修改（及其所属的撤销步骤）并显示原因。每个 id 只处理一次，因此重复渲染同一个拒绝不会有副作用。不传 `changeIds` 时，每个新的 `kind: 'refused'` 的 `saveState` 对象会拒绝最早一个尚未确认的修改；请传 id。当 `value` 覆盖了尚未确认的修改（其他人已保存、宿主重新加载）时，请同时把 `saveState.kind` 设为 `'reloaded'`：查看器按原样显示该 `value`，对它丢弃一次所有尚未确认的修改，只保留仍然适用的撤销历史。没有 `onChange` 时文档只读。`canDelete(segment)` 可逐个分段隐藏删除，`newSegmentReview` 设置用户新建分段的审核状态（默认 `'confirmed'`）。不传 `annotation` 时，分段保存在查看器会话中，且需在可写数据集上进入 **编辑 Episode** 才能编辑。
+- `value` 和 `saveState` 按引用比较。内容不变时请保持同一个对象：每次渲染都重建 `value` 的宿主会让查看器每次都重放未确认的修改并重新检查撤销历史。不带 `changeIds` 的拒绝必须每个被拒绝的修改只创建一次，否则每次重新渲染都会再拒绝一个修改；带 `changeIds` 的拒绝可以安全地重复渲染。比宿主应答更快的修改会保留，并叠加显示在每个新的 `value` 之上，直到宿主的 `value` 包含它们。
 - **`readOnly`** 始终优先：无论 `annotation` 内容如何，都不渲染编辑控件，编辑快捷键也不生效。分段、审核状态、字段值和宿主标记（`segment.status`）仍会显示，导航快捷键仍可用。`readOnly: true` 的单个分段也会拒绝编辑。
 - **`fields`** 按顺序声明用户可为分段设置的值：`select`（单选；选项的 `key` 为 `1` 到 `9` 时可用键盘设置）、`tags`（字符串列表，可带 `suggestions`）或 `text`。值存放在 `segment.values[field.id]`。reducer 会拒绝未知字段或类型不符的值。
 - **`messages`** 按键（`LeRobotMessageKey`，即所有 `segments.*` 键）替换当前语言的内置文案。值为 ICU 消息，也接受 `{{name}}` 占位符。

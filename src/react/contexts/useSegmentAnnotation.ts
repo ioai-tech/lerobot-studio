@@ -26,7 +26,7 @@ import {
   type AnnotationDocument,
   type AnnotationHistory,
   type AnnotationHistoryEntry,
-  type PendingBatch,
+  type PendingChange,
   type AnnotationRefusal,
   type EpisodeMetadata,
   type LeRobotVersionCapability,
@@ -61,6 +61,35 @@ type DispatchOptions = {
 };
 
 const COALESCE_MS = 1000;
+
+/** A change sent to the host and its undo step. */
+type InFlight = PendingChange<AnnotationHistoryEntry | null>;
+
+/** How many sent / refused change ids are remembered. */
+const REMEMBERED_CHANGES = 1000;
+
+/** Add to a bounded set or map (oldest entries go first). */
+function remember(set: Set<string>, id: string): void;
+function remember<V>(map: Map<string, V>, id: string, value: V): void;
+function remember<V>(store: Set<string> | Map<string, V>, id: string, value?: V): void {
+  if (store instanceof Set) store.add(id);
+  else store.set(id, value as V);
+  if (store.size > REMEMBERED_CHANGES) {
+    const oldest = store.keys().next().value;
+    if (oldest !== undefined) store.delete(oldest);
+  }
+}
+
+let changeSequence = 0;
+/** A stable, unique id for one emitted change. */
+function newChangeId(): string {
+  changeSequence += 1;
+  const random =
+    typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+      ? crypto.randomUUID()
+      : Math.random().toString(36).slice(2);
+  return `${random}:${changeSequence}`;
+}
 
 function defaultSegmentId(): string {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
@@ -98,12 +127,16 @@ export function useSegmentAnnotation({
    * Controlled mode: changes sent to the host that its `value` does not show
    * yet, oldest first. The viewer shows `value` with these replayed on top.
    */
-  const [pending, setPendingState] = useState<PendingBatch<AnnotationHistoryEntry | null>[]>([]);
+  const [pending, setPendingState] = useState<InFlight[]>([]);
   const pendingRef = useRef(pending);
-  const setPending = useCallback((next: PendingBatch<AnnotationHistoryEntry | null>[]) => {
+  const setPending = useCallback((next: InFlight[]) => {
     pendingRef.current = next;
     setPendingState(next);
   }, []);
+  /** Every change sent, by `changeId`, with its undo step (bounded): a refusal can name one later. */
+  const sentRef = useRef(new Map<string, AnnotationHistoryEntry | null>());
+  /** Refused `changeId`s already handled: re-rendering a refusal is harmless. */
+  const handledRefusalsRef = useRef(new Set<string>());
   const [history, setHistory] = useState<AnnotationHistory>(EMPTY_ANNOTATION_HISTORY);
   const [selectedSegmentId, setSelectedSegmentId] = useState<string | null>(null);
   const [filter, setFilter] = useState<SegmentFilter>('all');
@@ -169,29 +202,54 @@ export function useSegmentAnnotation({
 
   // The host answered (new value): forget the changes it now shows, then keep
   // the history that applies to what is shown (value + changes in flight).
+  // Rebase the live list: a change sent after this render is kept.
   const lastValueRef = useRef(value);
   useEffect(() => {
-    if (!controlled || !rebased || lastValueRef.current === value) return;
+    if (!controlled || lastValueRef.current === value) return;
     lastValueRef.current = value;
-    if (rebased.dropped || rebased.pending.length !== pendingRef.current.length) {
-      setPending(rebased.pending);
-    }
-    reconcileWith(rebased.doc);
-  }, [controlled, rebased, reconcileWith, setPending, value]);
+    const next = rebasePending(value ?? EMPTY_ANNOTATION_DOCUMENT, pendingRef.current, ctx);
+    if (next.dropped) setPending(next.pending);
+    reconcileWith(next.doc);
+  }, [controlled, ctx, reconcileWith, setPending, value]);
 
-  // Each new refused saveState refuses the oldest change in flight: forget it
-  // and its history step; the host's value stands.
+  // A refusal drops exactly the changes it names (or, without ids, the oldest
+  // change in flight) and their undo steps; the host's value stands.
   const lastRefusalRef = useRef(saveState);
   useEffect(() => {
     if (!controlled || saveState === lastRefusalRef.current) return;
     lastRefusalRef.current = saveState;
     if (saveState?.kind !== 'refused') return;
-    const [refused, ...rest] = pendingRef.current;
-    if (!refused) return;
-    setPending(rest);
-    if (refused.tag) setHistoryNow(removeHistoryEntry(historyRef.current, refused.tag));
+    const handled = handledRefusalsRef.current;
+    const named = saveState.changeIds ?? [];
+    const refused = new Set(
+      named.length > 0
+        ? named.filter((id) => !handled.has(id))
+        : pendingRef.current.slice(0, 1).map((item) => item.changeId),
+    );
+    if (refused.size === 0) return;
+    let history = historyRef.current;
+    for (const id of refused) {
+      remember(handled, id);
+      const entry = sentRef.current.get(id);
+      if (entry) history = removeHistoryEntry(history, entry);
+      sentRef.current.delete(id);
+    }
+    if (history !== historyRef.current) setHistoryNow(history);
+    const rest = pendingRef.current.filter((item) => !refused.has(item.changeId));
+    if (rest.length !== pendingRef.current.length) setPending(rest);
     reconcileWith(rebasePending(value ?? EMPTY_ANNOTATION_DOCUMENT, rest, ctx).doc);
   }, [controlled, ctx, reconcileWith, saveState, setHistoryNow, setPending, value]);
+
+  // `reloaded`: the host's value replaced the document (another writer, a
+  // reload). It is authoritative: changes still in flight are dropped once per
+  // value, and only the history that applies to it is kept.
+  const reloadedValueRef = useRef<AnnotationDocument | undefined>(undefined);
+  useEffect(() => {
+    if (!controlled || saveState?.kind !== 'reloaded' || reloadedValueRef.current === value) return;
+    reloadedValueRef.current = value;
+    if (pendingRef.current.length > 0) setPending([]);
+    reconcileWith(value ?? EMPTY_ANNOTATION_DOCUMENT);
+  }, [controlled, reconcileWith, saveState, setPending, value]);
 
   const docRef = useRef(doc);
   docRef.current = doc;
@@ -270,10 +328,11 @@ export function useSegmentAnnotation({
           // One step for a burst of nudges: the changes in flight that belonged
           // to the older step now belong to the folded one.
           setPending(
-            pendingRef.current.map((batch) =>
-              batch.tag === top ? { ...batch, tag: folded } : batch,
-            ),
+            pendingRef.current.map((item) => (item.tag === top ? { ...item, tag: folded } : item)),
           );
+          for (const [id, tagged] of sentRef.current) {
+            if (tagged === top) sentRef.current.set(id, folded);
+          }
           setHistoryNow({ undo: [...history.undo.slice(0, -1), folded], redo: [] });
           recorded = folded;
         } else {
@@ -286,8 +345,16 @@ export function useSegmentAnnotation({
         lastStepRef.current = null;
       }
       if (isControlled) {
-        setPending([...pendingRef.current, { changes, tag: recorded }]);
-        for (const change of changes) current.annotation!.onChange?.(change);
+        const sent = changes.map((change) => ({
+          change,
+          changeId: newChangeId(),
+          tag: recorded,
+        }));
+        for (const item of sent) remember(sentRef.current, item.changeId, item.tag);
+        setPending([...pendingRef.current, ...sent]);
+        for (const item of sent) {
+          current.annotation!.onChange?.(item.change, { changeId: item.changeId });
+        }
       } else {
         setLocalDoc(working);
       }

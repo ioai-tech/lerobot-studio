@@ -6,10 +6,12 @@ import type {
   SegmentPatch,
 } from './types';
 
-/** Changes sent to a host in one step, not yet reflected in its `value`. */
-export interface PendingBatch<Tag = unknown> {
-  changes: AnnotationChange[];
-  /** Caller data kept with the batch (e.g. its history step). */
+/** One change sent to a host, not yet reflected in its `value`. */
+export interface PendingChange<Tag = unknown> {
+  change: AnnotationChange;
+  /** The viewer's id for this change, passed to the host with it. */
+  changeId: string;
+  /** Caller data kept with the change (e.g. its history step). */
   tag: Tag;
 }
 
@@ -29,35 +31,23 @@ function alreadyApplied(doc: AnnotationDocument, change: AnnotationChange): bool
  * Replay changes still in flight on top of the host's latest `value`. A change
  * the host already applied, or one that no longer applies (refused or made
  * moot, e.g. a `create` whose id now exists or a `delete` of a missing
- * segment), is dropped; a batch with no change left is dropped.
+ * segment), is dropped.
  */
 export function rebasePending<Tag>(
   value: AnnotationDocument,
-  pending: readonly PendingBatch<Tag>[],
+  pending: readonly PendingChange<Tag>[],
   ctx: AnnotationContext,
-): { doc: AnnotationDocument; pending: PendingBatch<Tag>[]; dropped: boolean } {
+): { doc: AnnotationDocument; pending: PendingChange<Tag>[]; dropped: boolean } {
   let doc = value;
-  let dropped = false;
-  const kept: PendingBatch<Tag>[] = [];
-  for (const batch of pending) {
-    const changes: AnnotationChange[] = [];
-    for (const change of batch.changes) {
-      if (alreadyApplied(doc, change)) {
-        dropped = true;
-        continue;
-      }
-      const result = applyChange(doc, change, ctx);
-      if (!result.ok) {
-        dropped = true;
-        continue;
-      }
-      doc = result.doc;
-      changes.push(change);
-    }
-    if (changes.length === batch.changes.length) kept.push(batch);
-    else if (changes.length > 0) kept.push({ ...batch, changes });
+  const kept: PendingChange<Tag>[] = [];
+  for (const item of pending) {
+    if (alreadyApplied(doc, item.change)) continue;
+    const result = applyChange(doc, item.change, ctx);
+    if (!result.ok) continue;
+    doc = result.doc;
+    kept.push(item);
   }
-  return { doc, pending: kept, dropped };
+  return { doc, pending: kept, dropped: kept.length !== pending.length };
 }
 
 function mergePatch(older: SegmentPatch, newer: SegmentPatch): SegmentPatch {
