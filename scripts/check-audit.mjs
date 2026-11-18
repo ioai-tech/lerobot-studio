@@ -22,8 +22,9 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 export const WAIVER_SECTION = '## Dependency vulnerabilities';
 
-/** Severities that fail the gate. */
-const BLOCKING = new Set(['high', 'critical']);
+/** Severities that never fail the gate; anything else (high, critical, unknown, missing) blocks. */
+const NON_BLOCKING = new Set(['info', 'low', 'moderate']);
+const blocking = (severity) => !NON_BLOCKING.has(severity);
 
 const GHSA = /GHSA-[0-9a-z]{4}-[0-9a-z]{4}-[0-9a-z]{4}/i;
 
@@ -101,21 +102,20 @@ export function evaluateAudit(report, waivers) {
   const vulnerabilities = report.vulnerabilities ?? {};
   const names = Object.keys(vulnerabilities);
   const rows = names
-    .filter((name) => BLOCKING.has(vulnerabilities[name].severity))
+    .filter((name) => blocking(vulnerabilities[name].severity))
     .map((name) => {
       const node = vulnerabilities[name];
       const reachable = reachableAdvisories(vulnerabilities, name);
-      // Moderate / low advisories along the chain never block; every
-      // high / critical one must be waived.
+      // Moderate / low advisories along the chain never block. Waived means it
+      // reaches at least one blocking advisory and every one of them is waived.
+      const blockingAdvisories = (reachable ?? []).filter((entry) => blocking(entry.severity));
       const isWaived =
         reachable !== null &&
-        reachable.length > 0 &&
-        reachable
-          .filter((entry) => BLOCKING.has(entry.severity))
-          .every((entry) => {
-            const id = advisoryId(entry);
-            return id !== null && waived.has(id);
-          });
+        blockingAdvisories.length > 0 &&
+        blockingAdvisories.every((entry) => {
+          const id = advisoryId(entry);
+          return id !== null && waived.has(id);
+        });
       return {
         name,
         severity: node.severity,
@@ -142,27 +142,62 @@ export function evaluateAudit(report, waivers) {
   };
 }
 
-function runAudit() {
+/**
+ * Parse `npm audit --json` output and refuse anything that is not a complete
+ * report: npm prints `{ "error": … }` (registry unreachable, bad lockfile) and
+ * exits 1, which must fail the gate, never pass it.
+ * @param {string | undefined} stdout
+ */
+export function parseAuditReport(stdout) {
+  if (!stdout || !stdout.trim()) throw new Error('npm audit printed no report');
+  let report;
   try {
-    return JSON.parse(
-      execFileSync('npm', ['audit', '--json'], {
-        cwd: ROOT,
-        encoding: 'utf8',
-        maxBuffer: 64 * 1024 * 1024,
-      }),
-    );
-  } catch (error) {
-    // npm exits non-zero when it finds anything; the report is still on stdout.
-    if (error.stdout) return JSON.parse(error.stdout);
-    throw error;
+    report = JSON.parse(stdout);
+  } catch {
+    throw new Error('npm audit printed output that is not JSON');
   }
+  if (report?.error) {
+    const { code, summary } = report.error;
+    throw new Error(`npm audit failed: ${[code, summary].filter(Boolean).join(': ') || 'error'}`);
+  }
+  if (
+    !report?.vulnerabilities ||
+    typeof report.vulnerabilities !== 'object' ||
+    Array.isArray(report.vulnerabilities)
+  ) {
+    throw new Error('npm audit report has no vulnerability data');
+  }
+  return report;
+}
+
+function runAudit() {
+  let stdout;
+  try {
+    stdout = execFileSync('npm', ['audit', '--json'], {
+      cwd: ROOT,
+      encoding: 'utf8',
+      maxBuffer: 64 * 1024 * 1024,
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+  } catch (error) {
+    // npm exits non-zero when it finds anything, and when it fails; the
+    // report (or the error object) is on stdout either way.
+    stdout = error.stdout;
+  }
+  return parseAuditReport(stdout);
 }
 
 function main() {
-  const waivers = readWaivers(readFileSync(path.join(ROOT, 'SECURITY.md'), 'utf8'));
-  const result = evaluateAudit(runAudit(), waivers);
+  let result;
+  try {
+    const waivers = readWaivers(readFileSync(path.join(ROOT, 'SECURITY.md'), 'utf8'));
+    result = evaluateAudit(runAudit(), waivers);
+  } catch (error) {
+    console.error(`check:audit cannot judge the dependencies: ${error.message}`);
+    process.exit(1);
+  }
   console.log(
-    `npm audit: ${result.total} vulnerable packages, ${result.rows.length} at ${[...BLOCKING].join('/')} level`,
+    `npm audit: ${result.total} vulnerable packages, ${result.rows.length} at blocking level`,
   );
   for (const row of result.rows) {
     console.log(

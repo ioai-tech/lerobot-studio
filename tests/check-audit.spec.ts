@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 // @ts-expect-error: plain ESM script without type declarations
-import { evaluateAudit, readWaivers } from '../scripts/check-audit.mjs';
+import { evaluateAudit, parseAuditReport, readWaivers } from '../scripts/check-audit.mjs';
+import { spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 
@@ -107,4 +108,70 @@ describe('check-audit gate', () => {
     expect(result.failing).toHaveLength(1);
     expect(result.staleWaivers).toEqual([PICO]);
   });
+
+  it('an advisory with an unknown or missing severity blocks', () => {
+    const result = evaluateAudit(
+      {
+        vulnerabilities: {
+          a: node('unknown', [{ ...advisory(OTHER), severity: 'unknown' }]),
+          b: node(undefined as unknown as string, [{ url: advisory(OTHER).url, title: 't' }]),
+        },
+      },
+      new Set([PICO]),
+    );
+    expect(result.failing.map((row: { name: string }) => row.name).sort()).toEqual(['a', 'b']);
+  });
+
+  it('waived needs at least one waived blocking advisory and no unwaived one', () => {
+    // A high package that reaches only moderate advisories is not "waived".
+    const result = evaluateAudit(
+      {
+        vulnerabilities: {
+          mocker: node('moderate', [{ ...advisory(OTHER), severity: 'moderate' }]),
+          vitest: node('high', ['mocker']),
+        },
+      },
+      new Set([PICO]),
+    );
+    expect(result.failing.map((row: { name: string }) => row.name)).toEqual(['vitest']);
+  });
+
+  it('fails closed on anything that is not a complete report', () => {
+    expect(() => parseAuditReport(undefined)).toThrow(/no report/);
+    expect(() => parseAuditReport('  ')).toThrow(/no report/);
+    expect(() => parseAuditReport('not json')).toThrow(/not JSON/);
+    expect(() =>
+      parseAuditReport(
+        JSON.stringify({ error: { code: 'ECONNREFUSED', summary: 'request failed' } }),
+      ),
+    ).toThrow(/ECONNREFUSED/);
+    expect(() => parseAuditReport(JSON.stringify({ auditReportVersion: 2 }))).toThrow(
+      /no vulnerability data/,
+    );
+    expect(parseAuditReport(JSON.stringify({ vulnerabilities: {} }))).toEqual({
+      vulnerabilities: {},
+    });
+  });
+
+  it('exits 1 when the registry is unreachable', () => {
+    const run = spawnSync(
+      process.execPath,
+      [path.resolve(__dirname, '../scripts/check-audit.mjs')],
+      {
+        cwd: path.resolve(__dirname, '..'),
+        encoding: 'utf8',
+        env: {
+          ...process.env,
+          npm_config_registry: 'http://127.0.0.1:9/',
+          npm_config_fetch_retries: '0',
+          npm_config_fetch_timeout: '5000',
+          npm_config_audit_level: '',
+        },
+        timeout: 60_000,
+      },
+    );
+    expect(run.status).toBe(1);
+    expect(run.stderr).toMatch(/cannot judge the dependencies/);
+    expect(run.stdout).not.toMatch(/ok: no blocking advisories/);
+  }, 90_000);
 });

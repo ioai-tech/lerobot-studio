@@ -112,7 +112,7 @@ React 19.2.8，检查公开 API 类型，并构建 Vite 与 Next App Router
 
 ## UI 组件
 
-UI 基元位于 `src/ui`，从仓库根目录用 shadcn CLI 管理。将生成组件保留在 `src/ui/components`，使用本地 `@/ui` 或相对导入。不要重新引入 `@radix-ui/*`；优先通过 `render` 使用 Base UI 组合。CLI 的 Tailwind 主题层已内置于 `src/ui/shadcn-tailwind.css`，不再从 `shadcn` 包导入：该包依赖 `fast-glob` → `micromatch` → `braces`，而 `braces` 尚无修复版本，安装它会让 CI 的 `npm run check:audit` 失败（见 [SECURITY.md](../SECURITY.md#dependency-vulnerabilities)）。用 `npx shadcn@latest add <component>` 脚手架生成组件；`components.json` 保持不变，更新方式见内置文件头部注释。
+UI 基元位于 `src/ui`，从仓库根目录用 shadcn CLI 管理。将生成组件保留在 `src/ui/components`，使用本地 `@/ui` 或相对导入。不要重新引入 `@radix-ui/*`；优先通过 `render` 使用 Base UI 组合。CLI 的 Tailwind 主题层已内置于 `src/ui/shadcn-tailwind.css`，不再从 `shadcn` 包导入：该包依赖 `fast-glob` → `micromatch` → `braces`，而 `braces` 尚无修复版本，安装它会让 CI 的 `npm run check:audit` 失败（见 [SECURITY.zh-CN.md](https://github.com/ioai-tech/lerobot-studio/blob/main/SECURITY.zh-CN.md#依赖漏洞)）。用 `npx shadcn@latest add <component>` 脚手架生成组件；`components.json` 保持不变，更新方式见内置文件头部注释。
 
 ## 文档国际化
 
