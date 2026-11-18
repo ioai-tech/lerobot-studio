@@ -317,7 +317,15 @@ export class LeRobotDataLoader {
     };
     for (const path of present) {
       if (!path) continue;
-      const read = slot().then(() => this._dataSource.readBytes(path).finally(done));
+      const read = slot().then(async () => {
+        // The slot is released however the read ends, also when the host's
+        // readBytes throws instead of rejecting.
+        try {
+          return await this._dataSource.readBytes(path);
+        } finally {
+          done();
+        }
+      });
       read.catch(() => undefined);
       this.metadataBytes.set(path, read);
     }

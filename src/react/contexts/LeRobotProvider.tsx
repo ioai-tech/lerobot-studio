@@ -87,6 +87,17 @@ function normalizeInfoNames(info: LeRobotInfo): LeRobotInfo {
   };
 }
 
+/** A committed same-timeline swap that has not landed yet (see `committedSwapRef`). */
+interface CommittedSwap {
+  generation: number;
+  loader: LeRobotDataLoader;
+  landing: PendingSelection & { episodeIndex: number; requireLength: number };
+  /** A newer open failed with the view kept: this swap may land despite it. */
+  handedBack: boolean;
+  /** The shown episode's reload, once done. */
+  reload: { loaded: boolean; fps: number } | null;
+}
+
 export const LeRobotDataProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [dataLoader, setDataLoader] = useState<LeRobotDataLoader | null>(null);
   const imageServiceRef = useRef<ParquetImageServiceImpl | null>(null);
@@ -246,16 +257,16 @@ export const LeRobotDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
   const episodeLoadRef = useRef<object | null>(null);
 
   /**
-   * A committed same-timeline swap waiting for its loader to render: the
-   * swap's generation (the one owner of "is this swap current": only the
-   * current generation reloads, lands or retires), its loader, and where
-   * it lands, decided once at commit from what was shown then.
+   * The committed same-timeline swap that has not landed yet: its
+   * generation, its loader, and where it lands (decided once at commit,
+   * from what was shown then). It owns the landing from commit until it
+   * lands; a newer commit or a cleared view supersedes it. Its shown
+   * episode reloads once its loader renders; it lands when that reload is
+   * done and no newer open is pending. A newer open that fails with the
+   * view kept hands the landing back (`handedBack`): the swap then retires
+   * the previous loader, lands, and resumes, as it would have.
    */
-  const committedSwapRef = useRef<{
-    generation: number;
-    loader: LeRobotDataLoader;
-    landing: PendingSelection & { episodeIndex: number; requireLength: number };
-  } | null>(null);
+  const committedSwapRef = useRef<CommittedSwap | null>(null);
   /**
    * Whether playback resumes when the current swap lands: true when it was
    * playing as a swap began, also across a swap superseded before landing.
@@ -451,6 +462,7 @@ export const LeRobotDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
     // 清理旧资源，回到欢迎页；bump generation 使在途 initialize 失效
     initGenerationRef.current += 1;
     pendingSelectionRef.current = null;
+    committedSwapRef.current = null;
     episodeLoadRef.current = null;
     try {
       if (dataLoaderRef.current) {
@@ -536,8 +548,10 @@ export const LeRobotDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
         dataLoaderRef.current !== null &&
         viewRef.current.selectedEpisodeIndex !== null &&
         viewRef.current.frames > 0;
-      // A newer swap supersedes a committed one that has not landed yet.
-      committedSwapRef.current = null;
+      // A committed swap that has not landed waits for this open: this one
+      // supersedes it by committing or clearing the view, or hands the
+      // landing back if it fails with the view kept.
+      if (committedSwapRef.current) committedSwapRef.current.handedBack = false;
       // The selection carried by the host (the #117 rule) only lends the play
       // state: the landing itself is decided at commit, from what is shown.
       const carried = keepView ? pendingSelectionRef.current : null;
@@ -564,6 +578,7 @@ export const LeRobotDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
       /** Clear the shown dataset (loader, image service, selection, frames). */
       const clearView = async (source: DataSource) => {
         episodeLoadRef.current = null;
+        committedSwapRef.current = null;
         retire();
         if (dataLoaderRef.current) {
           await dataLoaderRef.current.dispose();
@@ -672,6 +687,8 @@ export const LeRobotDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
               generation,
               loader,
               landing: { ...landing, episodeIndex: shown, requireLength: landing.requireLength! },
+              handedBack: false,
+              reload: null,
             };
             setIsPlaying(false);
           } else {
@@ -711,8 +728,16 @@ export const LeRobotDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
         if (!viewCleared) {
           // The shown dataset stays, as it was; the error names what failed.
           await loader?.dispose().catch(() => {});
-          if (swapResumeRef.current) setPlayingRef.current(true);
-          swapResumeRef.current = false;
+          const waiting = committedSwapRef.current;
+          if (waiting) {
+            // An earlier committed swap still owns the screen: it finishes
+            // (retire, land, then resume once its data is in).
+            waiting.handedBack = true;
+            landSwapRef.current(waiting);
+          } else {
+            if (swapResumeRef.current) setPlayingRef.current(true);
+            swapResumeRef.current = false;
+          }
         } else {
           failTask(taskId, msg);
         }
@@ -939,24 +964,41 @@ export const LeRobotDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
   );
   selectEpisodeRef.current = selectEpisode;
 
+  // A committed swap lands once its reload is done and no newer open is
+  // pending (or one failed and handed the landing back): the previous loader
+  // goes, then the decided landing applies (frame, then the play state, the
+  // new data being in). A superseded swap does nothing more.
+  const landSwap = useCallback(
+    (swap: CommittedSwap) => {
+      if (committedSwapRef.current !== swap || !swap.reload) return;
+      if (swap.generation !== initGenerationRef.current && !swap.handedBack) return;
+      committedSwapRef.current = null;
+      retire();
+      swapResumeRef.current = false;
+      const { loaded, fps } = swap.reload;
+      if (!loaded) return;
+      const { landing } = swap;
+      applyLanding(landing, landing.episodeIndex, landing.requireLength, fps);
+    },
+    [retire, applyLanding],
+  );
+  const landSwapRef = useRef(landSwap);
+  landSwapRef.current = landSwap;
+
   // A committed swap, once its loader renders, reloads the shown episode in
-  // place; then, if it is still the current swap, the previous loader goes
-  // and the decided landing applies (frame, then play state once the new
-  // data is in). A superseded swap does nothing more.
+  // place, then lands (see landSwap).
+  const reloadingSwapRef = useRef<CommittedSwap | null>(null);
   useEffect(() => {
     const swap = committedSwapRef.current;
     if (!swap || swap.loader !== dataLoader || !info) return;
-    committedSwapRef.current = null;
-    const isCurrentSwap = () => swap.generation === initGenerationRef.current;
-    const { landing } = swap;
-    void selectEpisode(landing.episodeIndex, { keepView: true }).then((loaded) => {
-      if (!isCurrentSwap()) return;
-      retire();
-      swapResumeRef.current = false;
-      if (!loaded) return;
-      applyLanding(landing, landing.episodeIndex, landing.requireLength, info.fps || 30);
+    if (reloadingSwapRef.current === swap) return;
+    reloadingSwapRef.current = swap;
+    const fps = info.fps || 30;
+    void selectEpisode(swap.landing.episodeIndex, { keepView: true }).then((loaded) => {
+      swap.reload = { loaded, fps };
+      landSwap(swap);
     });
-  }, [dataLoader, info, selectEpisode, retire, applyLanding]);
+  }, [dataLoader, info, selectEpisode, landSwap]);
 
   const clearError = useCallback(() => {
     setError(null);

@@ -5,6 +5,7 @@ import { page, userEvent } from 'vitest/browser';
 import { LeRobotViewer } from '@/components/LeRobotViewer';
 import { FetchDataSource } from './fixtures';
 import { HOLD_CAP_MS } from '@/components/panels/VideoPanel/VideoPanel';
+import { LeRobotDataLoader } from '@/platform';
 import '../../src/react/index.css';
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = false;
@@ -264,6 +265,53 @@ it('releases a held frame when the new file fails, and names the failure', async
   expect(holding()).toBe(false);
 });
 
+it('releases a held frame when the new load is aborted, into the loading state', async () => {
+  await openAtFrame(30);
+  // Each element's latest load, as its loadstart saw it while a frame is held
+  // (a new URL's own emptied / abort come before its loadstart).
+  const loading = new Map<HTMLVideoElement, string | null>();
+  for (const video of videos()) {
+    video.addEventListener('loadstart', () => {
+      if (holding()) loading.set(video, video.getAttribute('src'));
+    });
+  }
+  root!.render(
+    <LeRobotViewer
+      dataSource={new Slow(FRAME_CODED, { infoMs: 300, video: 'stall' })}
+      language="en"
+    />,
+  );
+  await expect.poll(holding, { timeout: 15_000 }).toBe(true);
+  // Abort once every element is loading the URL it shows (no newer URL set
+  // whose loadstart is still to come); then the load ends without data.
+  const settled = () =>
+    videos().every(
+      (video) =>
+        loading.get(video) === video.getAttribute('src') &&
+        video.networkState === HTMLMediaElement.NETWORK_LOADING,
+    );
+  let aborted = 0;
+  const started = performance.now();
+  while (!aborted && performance.now() - started < 10_000) {
+    if (settled()) {
+      aborted = performance.now();
+      for (const video of videos()) {
+        video.removeAttribute('src');
+        video.load();
+      }
+    } else {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+  }
+  expect(aborted).toBeGreaterThan(0);
+  // Released by the abort itself, long before the cap.
+  await expect.poll(holding, { timeout: HOLD_CAP_MS / 2, interval: 50 }).toBe(false);
+  expect(performance.now() - aborted).toBeLessThan(HOLD_CAP_MS / 2);
+  await expect
+    .poll(() => host!.textContent, { timeout: 5_000 })
+    .toContain('Waiting for video file');
+});
+
 it('keeps an episode the person picks while the new source opens', async () => {
   await mount(
     <LeRobotViewer
@@ -335,6 +383,34 @@ it('a superseded swap whose reload finishes first neither lands nor resumes', as
   expect(b.dataReads.includes('end')).toBe(true);
   expect(early).toBe(false);
   await expect.poll(playing, { timeout: 10_000 }).toBe(true);
+});
+
+it('a newer swap that fails while an earlier one reloads lets that one finish: retire, land, then resume', async () => {
+  vi.spyOn(console, 'error').mockImplementation(() => undefined);
+  const dispose = vi.spyOn(LeRobotDataLoader.prototype, 'dispose');
+  await openAtFrame(30);
+  host!.querySelector<HTMLElement>('button[aria-label="Play/pause"]')!.click();
+  await expect.poll(playing, { timeout: 10_000 }).toBe(true);
+  const first = dispose.mock.contexts.length;
+  // B commits quickly, then its episode data is slow; C fails to open meanwhile.
+  const b = new Slow(FRAME_CODED, { infoMs: 200, dataMs: 3000 });
+  root!.render(<LeRobotViewer dataSource={b} language="en" />);
+  await expect.poll(() => b.dataReads.includes('start'), { timeout: 10_000 }).toBe(true);
+  const c = new Slow(FRAME_CODED, { infoMs: 300, failInfo: true });
+  root!.render(<LeRobotViewer dataSource={c} language="en" />);
+  let early = false;
+  const started = performance.now();
+  while (!b.dataReads.includes('end') && performance.now() - started < 15_000) {
+    if (playing()) early = true;
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+  expect(host!.textContent).toContain('503');
+  // Not before B's data is in, then on it.
+  expect(early).toBe(false);
+  await expect.poll(playing, { timeout: 10_000 }).toBe(true);
+  // C's own loader and, once B landed, the first one: both are disposed.
+  await expect.poll(() => dispose.mock.contexts.length - first, { timeout: 5_000 }).toBe(2);
+  expect(videos()).toHaveLength(2);
 });
 
 it('a swap during a pending swap lands on the newest source only', async () => {
