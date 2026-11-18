@@ -57,7 +57,7 @@ const VideoPanelContent: React.FC<VideoPanelProps> = ({ params }) => {
   );
   const [currentVideoPath, setCurrentVideoPath] = useState<string>('');
 
-  /** File currently set on the element, and whether its URL was already retried. */
+  /** File on the element, and whether its current URL generation was already retried. */
   const sourceRef = useRef<{ path: string; retried: boolean } | null>(null);
   /** Selected episode's span in the current file; read by the follower. */
   const rangeRef = useRef<{ start: number; end: number } | null>(null);
@@ -110,7 +110,9 @@ const VideoPanelContent: React.FC<VideoPanelProps> = ({ params }) => {
         if (retry) await dataLoader.invalidateFileUrl(current.path);
         const url = await dataLoader.getFileUrl(current.path);
         if (token !== requestTokenRef.current || sourceRef.current?.path !== current.path) return;
-        setSource(current.path, url, current.retried || retry);
+        // A retry marks this URL generation as retried; a refresh-driven swap
+        // starts a new generation that may be retried once again.
+        setSource(current.path, url, retry);
       } catch (error) {
         console.error('Failed to refresh video URL:', error);
         if (token === requestTokenRef.current) {
@@ -138,6 +140,8 @@ const VideoPanelContent: React.FC<VideoPanelProps> = ({ params }) => {
       setVideoDimensions({ width: video.videoWidth, height: video.videoHeight });
     };
     const onLoadedData = () => {
+      // A URL that loaded is good: a later failure (a later expiry) may retry again.
+      if (sourceRef.current) sourceRef.current.retried = false;
       setHasVideo(true);
       setLoadError(null);
       setIsInitialLoading(false);

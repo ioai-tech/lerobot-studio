@@ -35,10 +35,13 @@ function waitFor(predicate: () => boolean, timeoutMs = 30_000): Promise<void> {
 class SignedFixtureSource extends FetchDataSource {
   invalidations = 0;
   generation = 0;
+  /** While true, video URLs handed out are dead (an expired signature). */
+  expired: boolean;
   private listeners = new Set<(paths: readonly string[]) => void>();
 
   constructor(private readonly options: { deadFirstVideoUrl?: boolean; codec?: string } = {}) {
     super(DATASET);
+    this.expired = Boolean(options.deadFirstVideoUrl);
   }
 
   override async readText(path: string): Promise<string> {
@@ -51,16 +54,17 @@ class SignedFixtureSource extends FetchDataSource {
 
   override async getObjectUrl(path: string): Promise<string> {
     if (path === VIDEO) {
-      if (this.options.deadFirstVideoUrl && this.invalidations === 0) {
-        return `${location.origin}/expired/${VIDEO}`;
-      }
+      if (this.expired) return `${location.origin}/expired/${VIDEO}?gen=${this.generation}`;
       return `${location.origin}${DATASET}/${VIDEO}?gen=${this.generation}`;
     }
     return super.getObjectUrl(path);
   }
 
   invalidateObjectUrl(path: string): void {
-    if (path === VIDEO) this.invalidations++;
+    if (path !== VIDEO) return;
+    this.invalidations++;
+    this.expired = false;
+    this.generation++;
   }
 
   subscribeUrlChanges(listener: (paths: readonly string[]) => void): () => void {
@@ -145,10 +149,26 @@ describe('browser: data foundations', () => {
     const oldSrc = video()!.src;
     await act(async () => source.rotate());
     await waitFor(() => video()!.src !== oldSrc && video()!.readyState >= 2 && !video()!.seeking);
-    expect(video()!.src).toContain('gen=1');
+    expect(video()!.src).toContain(`gen=${source.generation}`);
     expect(Math.abs(video()!.currentTime - before)).toBeLessThan(0.05);
     expect(video()!.paused).toBe(true);
     expect(source.invalidations).toBe(1);
+  }, 60_000);
+
+  it('recovers from a second expiry later in the session (the retry is per URL generation)', async () => {
+    const source = new SignedFixtureSource({ deadFirstVideoUrl: true });
+    await render(<LeRobotViewer dataSource={source} language="en" showPlaybackBar={false} />);
+    await waitFor(() => (video()?.readyState ?? 0) >= 2);
+    expect(source.invalidations).toBe(1);
+
+    // An hour later the signature expires again and a refresh hands out a URL
+    // that fails on load: the viewer must retry once more, not give up.
+    source.expired = true;
+    await act(async () => source.rotate());
+    await waitFor(() => source.invalidations === 2);
+    await waitFor(() => !source.expired && (video()?.readyState ?? 0) >= 2);
+    expect(video()!.src).not.toContain('/expired/');
+    expect(host.textContent).not.toContain('Error loading data');
   }, 60_000);
 
   it('names the camera and codec when the browser cannot decode it', async () => {
