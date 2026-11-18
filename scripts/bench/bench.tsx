@@ -59,6 +59,8 @@ async function main() {
   const dataSource: DataSource = createRemoteManifestDataSource(await fetchManifest(), {
     refresh: fetchManifest,
   });
+  // The viewer's share starts here: measure-playback reports first frame from this mark.
+  performance.mark('bench:source-ready');
   createRoot(document.getElementById('root')!).render(
     <LeRobotStudioProvider theme="dark" language="en">
       <div style={{ height: '100vh' }}>

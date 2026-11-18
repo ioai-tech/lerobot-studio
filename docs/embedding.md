@@ -327,6 +327,10 @@ export function RecordingStudio({ view, url, navigate }: HostProps) {
 
 Switching `rendition` passes another `dataSource` with the same frames; the viewer keeps the episode, segment and time (see [Selection and deep links](#selection-and-deep-links)).
 
+Every message an embedded viewer can show can be replaced, not only segment copy. That covers the segment list, sidebar, panels, charts, playback, export, batch trim, health checks, dialogs and errors. `LEROBOT_MESSAGE_KEYS` lists the keys, and the TypeScript type `LeRobotMessageKey` checks them. The English catalog `src/react/locales/en.json` shows each key's default. Only copy that the standalone app alone shows is not a host key: its page metadata, and opening or restoring local folders.
+
+`messages` values are ICU message strings (`{{name}}` placeholders also work). The viewer keeps its built-in copy for an unknown key, or for a value that is not a string, such as a precompiled message array. It logs one `console.warn` per key, for example `lerobot-studio: messages["segments.row"] ignored: expected an ICU string, got array`.
+
 ### Markers and read-only suggestions
 
 - **`markers`** are ranges (or one-frame ticks) on the time axis, coloured by `severity`, with the `label` in a tooltip and in the accessible name. Clicking one seeks to its first frame; the lane is one tab stop and arrow keys move between markers. A segment that overlaps a `warn` or `fail` marker is in the **Issues** filter and shows an issue count. `checkId` is kept for the host and never shown.
@@ -345,7 +349,7 @@ Switching `rendition` passes another `dataSource` with the same frames; the view
 
 - `initialSelection` (`episodeIndex`, `segmentId`, `timeS`) applies once, after the first load. The viewer opens the episode (the segment's episode when only `segmentId` is given), selects the segment and lands **paused** on the frame that contains `timeS` (the segment's first frame without `timeS`).
 - `onSelectionChange` reports `{ episodeIndex, segmentId, timeS }` once an episode is open: at once when the episode or segment changes, and at most four times a second while time moves. Nothing is reported while a deep link is still on its way, so the first report is where the link landed.
-- Passing a new `dataSource` with the same timeline (the same episode with the same number of frames, for example another rendition of the same recording) keeps the episode, segment and frame, and keeps playing if it was playing. Another timeline opens as usual.
+- Passing a new `dataSource` with the same timeline (the same episode with the same number of frames, for example another rendition of the same recording) keeps the episode, segment and frame, and keeps playing if it was playing. The shown dataset stays on screen (paused) while the new source opens, then the view changes in one step, each camera holding its last frame until the new file shows the same one (at most 4 s, then the usual loading state). The view still responds meanwhile: an episode picked during the swap is where the swap lands. If the new source fails to open, the shown one stays and the error names what failed. Another timeline opens as usual.
 
 ### Theme tokens
 
@@ -441,7 +445,7 @@ Common props include:
 | `annotation`               | Host-controlled segments: `value`, `onChange`, `saveState`                             |
 | `readOnly`                 | Show segments and review without any edit control                                      |
 | `fields`                   | Values a person sets on each segment (`select`, `tags`, `text`)                        |
-| `messages`                 | Replace built-in segment copy by key                                                   |
+| `messages`                 | Replace any built-in copy by key                                                       |
 | `markers`                  | Ranges on the time axis by severity; see [Markers](#markers-and-read-only-suggestions) |
 | `overlaySegments`          | Read-only segments in a band above the segment track                                   |
 | `extensions`               | Host toolbar items and notices; see [Toolbar and notices](#toolbar-and-notices)        |

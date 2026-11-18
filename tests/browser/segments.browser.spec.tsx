@@ -134,8 +134,10 @@ function Host({
       messages={
         {
           'segments.progress': '{{confirmed}} of {{total}} reviewed',
-          // Not a public key: ignored.
-          'sidebar.episodesCount': 'INTERNAL COPY',
+          // Copy outside segments is the host's to rename too.
+          'sidebar.episodesCount': '{count, plural, one {# take} other {# takes}}',
+          // Standalone-app copy is not a host key: ignored.
+          'seo.title': 'INTERNAL COPY',
         } as LeRobotMessages
       }
     />
@@ -152,11 +154,24 @@ async function waitForSegments(host: HTMLElement) {
       'button.rounded-full:has(> svg.lucide-play, > svg.lucide-pause)',
     );
   await expect.poll(() => playButton()?.disabled, { timeout: 60_000 }).toBe(false);
+  // Pause the way a person does, so autoplay stays off for this episode. A
+  // Play icon alone is not "paused": autoplay may not have started yet, and
+  // would start after this returns. So play first if needed, then pause.
+  let pausedByClick = false;
   await expect
     .poll(
       () => {
-        if (playButton()?.querySelector('.lucide-pause')) playButton()!.click();
-        return playButton()?.querySelector('.lucide-play') != null;
+        const button = playButton();
+        if (button?.querySelector('.lucide-pause')) {
+          button.click();
+          pausedByClick = true;
+          return false;
+        }
+        if (!pausedByClick) {
+          button?.click();
+          return false;
+        }
+        return button?.querySelector('.lucide-play') != null;
       },
       { timeout: 30_000, interval: 200 },
     )
@@ -192,6 +207,8 @@ async function press(keys: string) {
 
 /** Axe on the segment UI this change adds (track, inspector, list). */
 async function expectSegmentUiAccessible(host: HTMLElement) {
+  // A closing dialog keeps the rest of the page aria-hidden until it is gone.
+  await expect.poll(() => document.querySelector('[data-aria-hidden="true"]')).toBeNull();
   for (const id of ['lerobot-segment-track', 'lerobot-segment-inspector', 'lerobot-segment-list']) {
     const element = host.querySelector(`[data-testid="${id}"]`);
     expect(element, id).not.toBeNull();
@@ -235,8 +252,9 @@ describe('browser: segments, review and change ops', () => {
       />,
     );
     await waitForSegments(host);
-    // Host copy replaces the built-in message; internal copy cannot be replaced.
+    // Host copy replaces built-in messages; standalone-app copy cannot be replaced.
     expect(host.textContent).toContain('0 of 2 reviewed');
+    expect(host.textContent).toContain('2 takes');
     expect(host.textContent).not.toContain('INTERNAL COPY');
     await selectWithKeys(host, 1);
     await press('a');

@@ -479,9 +479,13 @@ export function useSegmentAnnotation({
     [setFrameIndex],
   );
 
-  /** Select a segment and move the playhead to its first frame. */
+  /**
+   * Select a segment and move the playhead to its first frame. With
+   * `navigate: false` (a landing that sets the playhead itself) it only
+   * marks the segment selected: no seek, no episode change.
+   */
   const selectSegment = useCallback(
-    (id: string | null) => {
+    (id: string | null, options: { navigate?: boolean } = {}) => {
       if (id == null) {
         setSelectedSegmentId(null);
         return;
@@ -489,6 +493,7 @@ export function useSegmentAnnotation({
       const found = findSegment(docRef.current, id);
       if (!found) return;
       setSelectedSegmentId(id);
+      if (options.navigate === false) return;
       if (found.episodeIndex === selectedEpisodeIndex) {
         setFrameIndex(found.segment.startFrame);
       } else {

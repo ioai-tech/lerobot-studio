@@ -12,6 +12,7 @@
     "docs:build": "vitepress build docs",
     "check:audit": "node scripts/check-audit.mjs",
     "check:docs-i18n": "node scripts/check-docs-i18n.mjs",
+    "i18n:keys": "node scripts/generate-message-keys.mjs",
     "api:report": "api-extractor run --local",
     "api:report:check": "api-extractor run",
     "check:package": "npm run api:report:check && publint && attw --pack . --profile esm-only --exclude-entrypoints ./style.css ./index.css && npm run verify:npm-consumer",

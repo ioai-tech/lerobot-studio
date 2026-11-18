@@ -157,7 +157,42 @@ describe('browser: embedding — selection', () => {
     );
     // Reports start at the landing, never at frame 0 of the default opening.
     await expect.poll(() => reports.at(-1)).toEqual({ episodeIndex: 0, segmentId: 'b', timeS: 5 });
-    expect(reports.every((report) => report.timeS >= 4)).toBe(true);
+    // The first report is the landing itself: never the segment's start, or no segment.
+    expect(reports[0]).toEqual({ episodeIndex: 0, segmentId: 'b', timeS: 5 });
+  });
+
+  it('a deep link into a later episode lands on its time inside the segment, and reports it', async () => {
+    const reports: LeRobotSelection[] = [];
+    // Two three-frame episodes at 10 fps; the segment covers episode 1's frames 1-2.
+    const doc: AnnotationDocument = { episodes: { 1: { segments: [seg('x', 1, 2)] } } };
+    await mount(
+      1280,
+      800,
+      viewer({
+        dataSource: new FetchDataSource('/tests/fixtures/datasets/lerobotv3'),
+        annotation: { value: doc },
+        initialSelection: { segmentId: 'x', timeS: 0.2 },
+        onSelectionChange: (selection) => reports.push(selection),
+      }),
+    );
+    await expect
+      .poll(
+        () =>
+          host
+            .querySelector('[aria-current="true"][aria-label^="Select Episode"]')
+            ?.getAttribute('aria-label'),
+        { timeout: 30_000 },
+      )
+      .toBe('Select Episode 1');
+    await expect.poll(sliderFrame, { timeout: 30_000 }).toBe(2);
+    await new Promise((resolve) => setTimeout(resolve, 800));
+    expect(sliderFrame()).toBe(2);
+    expect(isPlaying()).toBe(false);
+    expect(host.querySelector('[data-testid="lerobot-segment-inspector"]')?.textContent).toContain(
+      '#1',
+    );
+    expect(reports.at(-1)).toEqual({ episodeIndex: 1, segmentId: 'x', timeS: 0.2 });
+    expect(reports[0]).toEqual({ episodeIndex: 1, segmentId: 'x', timeS: 0.2 });
   });
 
   it('reports time at most four times a second while playing', async () => {
@@ -234,11 +269,31 @@ describe('browser: embedding — selection', () => {
     await expect.poll(sliderFrame).toBe(240);
     await seekTo(277);
     const before = videos();
+    const beforeUrls = before.map((video) => video.src);
 
-    // Another rendition of the same frames (e.g. anonymized), as a new source.
+    // Another rendition of the same frames (e.g. anonymized), as a new source:
+    // the cameras stay mounted and load the new source's files in place.
+    const inspector = () =>
+      host.querySelector('[data-testid="lerobot-segment-inspector"]')?.textContent ?? '';
+    let segmentDropped = false;
+    const watch = window.setInterval(() => {
+      if (!inspector().includes('#3')) segmentDropped = true;
+    }, 10);
     root.render(view(new FetchDataSource(FRAME_CODED)));
-    await expect.poll(() => videos()[0] !== before[0], { timeout: 30_000 }).toBe(true);
+    // The swap ends when every camera shows the new source's file, nothing held.
+    const holding = () =>
+      host.querySelector('[data-testid="video-hold-frame"][style*="block"]') !== null;
+    await expect
+      .poll(() => videos().every((video, index) => video.src !== beforeUrls[index]), {
+        timeout: 30_000,
+      })
+      .toBe(true);
     await videosReady(2);
+    await expect.poll(holding, { timeout: 5_000 }).toBe(false);
+    window.clearInterval(watch);
+    // The selected segment stays selected throughout (the same timeline).
+    expect(segmentDropped).toBe(false);
+    expect(videos().every((video, index) => video === before[index])).toBe(true);
     await expect.poll(sliderFrame, { timeout: 30_000 }).toBe(277);
     await expect.poll(() => cameraFrames()).toEqual([277, 277]);
     expect(isPlaying()).toBe(false);
@@ -250,6 +305,33 @@ describe('browser: embedding — selection', () => {
 });
 
 describe('browser: embedding — host chrome', () => {
+  it('cameras that go away stop loading their files', async () => {
+    await mount(1280, 800, viewer({ dataSource: new FetchDataSource(FRAME_CODED) }));
+    await videosReady(2);
+    const cameras = videos();
+    root.unmount();
+    // Detached, they no longer hold a file (nor the connections reading it).
+    await expect
+      .poll(() =>
+        cameras.map((video) => `${video.getAttribute('src') ?? ''}:${video.networkState}`),
+      )
+      .toEqual([`:${HTMLMediaElement.NETWORK_EMPTY}`, `:${HTMLMediaElement.NETWORK_EMPTY}`]);
+    root = createRoot(host);
+  });
+
+  it('hiding and showing the viewer keeps its camera panels', async () => {
+    await mount(1280, 800, viewer({ dataSource: new FetchDataSource(FRAME_CODED) }));
+    await videosReady(2);
+    const before = videos();
+    host.style.display = 'none';
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    host.style.display = '';
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    expect(videos().every((video, index) => video === before[index] && video.isConnected)).toBe(
+      true,
+    );
+  });
+
   it('notices with progress update without re-mounting the camera panels', async () => {
     const extensions = (progress: number) => [
       {

@@ -71,6 +71,9 @@ interface FileBytesCache {
   bytes: Uint8Array;
 }
 
+/** Metadata files read at once while a dataset opens. */
+const METADATA_READS_IN_FLIGHT = 6;
+
 export class LeRobotDataLoader {
   private _dataSource: DataSource;
   private info?: LeRobotInfo;
@@ -92,6 +95,13 @@ export class LeRobotDataLoader {
   private parsedFileCache: ParsedFileCache | null = null;
   private fileBytesCache: FileBytesCache | null = null;
   private pendingParses: Map<string, Promise<Table>> = new Map();
+  /**
+   * While `initialize` runs: metadata files read concurrently (by path) and
+   * each metadata table parsed once (by path and columns), shared by the
+   * validator and the adapter. Cleared when `initialize` ends.
+   */
+  private metadataBytes: Map<string, Promise<Uint8Array>> | null = null;
+  private metadataTables: Map<string, Promise<Uint8Array>> | null = null;
   private fileUrlLoading: Map<string, Promise<string>> = new Map();
   private readonly urlChangeListeners = new Set<(paths: readonly string[]) => void>();
   private unsubscribeSourceUrls: (() => void) | null = null;
@@ -194,6 +204,12 @@ export class LeRobotDataLoader {
           this.readParquetByPath(path, columns),
       };
 
+      // No waterfall: every metadata file is requested now, together; the
+      // validator and the adapter then read them from these requests.
+      this.metadataBytes = new Map();
+      this.metadataTables = new Map();
+      await this.prefetchMetadata();
+      const adapter = this.adapter;
       const validator = getValidatorForVersion(this.info.codebase_version);
       const report = await validator.validate(this._dataSource, this.info, helpers);
       this.validationReport = report;
@@ -204,14 +220,17 @@ export class LeRobotDataLoader {
         throw new Error(`数据集格式校验未通过: ${messages.join('; ')}`);
       }
 
-      this.episodes = filterEpisodesToScope(
-        await this.adapter.loadEpisodes(this._dataSource, helpers, this.info),
-        this._dataSource.episodeScope,
-      );
-      this.tasks = await this.adapter.loadTasks(this._dataSource, helpers);
-      this.subtasks = this.adapter.loadSubtasks
-        ? await this.adapter.loadSubtasks(this._dataSource, helpers)
-        : {};
+      // A blocked dataset loads nothing more; otherwise episodes, tasks and
+      // subtasks parse side by side from the bytes already on their way (the
+      // validator's episodes table is reused).
+      const [episodes, tasks, subtasks] = await Promise.all([
+        adapter.loadEpisodes(this._dataSource, helpers, this.info),
+        adapter.loadTasks(this._dataSource, helpers),
+        adapter.loadSubtasks ? adapter.loadSubtasks(this._dataSource, helpers) : {},
+      ]);
+      this.episodes = filterEpisodesToScope(episodes, this._dataSource.episodeScope);
+      this.tasks = tasks;
+      this.subtasks = subtasks;
 
       // v3: when episode metadata includes a scalar task_index, resolve the label from
       // meta/tasks.parquet. Official Python writers store per-episode labels in the
@@ -244,9 +263,56 @@ export class LeRobotDataLoader {
         throw e;
       }
       throw new Error(`Failed to initialize: ${String(e)}`);
+    } finally {
+      this.metadataBytes = null;
+      this.metadataTables = null;
     }
 
     return this.info!;
+  }
+
+  /**
+   * Request the metadata files the adapter reads (v3: every
+   * `meta/episodes` shard, `meta/tasks.parquet`, `meta/subtasks.parquet`)
+   * at once. Only files the source has are requested; a failed read is
+   * reported where the adapter reads it, as before.
+   */
+  private async prefetchMetadata(): Promise<void> {
+    if (!this.metadataBytes || this.versionCapability?.adapterVersion !== 'v3.0') return;
+    const listed = this._dataSource.listPaths
+      ? await this._dataSource.listPaths().catch(() => null)
+      : null;
+    const candidates = listed
+      ? listed.filter(
+          (path) =>
+            /^meta\/episodes\/chunk-\d+\/file-\d+\.parquet$/.test(path) ||
+            path === 'meta/tasks.parquet' ||
+            path === 'meta/subtasks.parquet',
+        )
+      : ['meta/episodes/chunk-000/file-000.parquet', 'meta/tasks.parquet', 'meta/subtasks.parquet'];
+    const present = await Promise.all(
+      candidates.map(async (path) =>
+        listed ? path : (await this._dataSource.exists(path).catch(() => false)) ? path : null,
+      ),
+    );
+    // At most METADATA_READS_IN_FLIGHT at once: a dataset with hundreds of
+    // episode shards does not open hundreds of requests.
+    let inFlight = 0;
+    const waiting: Array<() => void> = [];
+    const slot = () =>
+      inFlight < METADATA_READS_IN_FLIGHT
+        ? (inFlight++, Promise.resolve())
+        : new Promise<void>((resolve) => waiting.push(resolve)).then(() => void inFlight++);
+    const done = () => {
+      inFlight--;
+      waiting.shift()?.();
+    };
+    for (const path of present) {
+      if (!path) continue;
+      const read = slot().then(() => this._dataSource.readBytes(path).finally(done));
+      read.catch(() => undefined);
+      this.metadataBytes.set(path, read);
+    }
   }
 
   /**
@@ -336,7 +402,19 @@ export class LeRobotDataLoader {
     return this.worker.readParquet(buffer, columns);
   }
 
-  private async readParquetByPath(path: string, columns?: string[]): Promise<Uint8Array> {
+  private readParquetByPath(path: string, columns?: string[]): Promise<Uint8Array> {
+    const tables = this.metadataTables;
+    if (!tables) return this.parseParquetByPath(path, columns);
+    const key = `${path}\u0000${columns?.join('\u0000') ?? '*'}`;
+    let table = tables.get(key);
+    if (!table) {
+      table = this.parseParquetByPath(path, columns);
+      tables.set(key, table);
+    }
+    return table;
+  }
+
+  private async parseParquetByPath(path: string, columns?: string[]): Promise<Uint8Array> {
     const bytes = await this.readFileBytesCached(path);
     // Metadata tables may also be Arrow IPC (sources that synthesize metadata,
     // such as episode sets, produce IPC directly); Arrow reads it as-is.
@@ -349,6 +427,8 @@ export class LeRobotDataLoader {
   }
 
   private async readFileBytesCached(path: string): Promise<Uint8Array> {
+    const prefetched = this.metadataBytes?.get(path);
+    if (prefetched) return prefetched;
     if (this.fileBytesCache?.path === path) {
       return this.fileBytesCache.bytes;
     }

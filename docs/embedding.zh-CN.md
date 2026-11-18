@@ -327,6 +327,10 @@ export function RecordingStudio({ view, url, navigate }: HostProps) {
 
 切换 `rendition` 会传入帧相同的另一个 `dataSource`；查看器保留所在的 episode、分段和时间（见[选择与深层链接](#selection-and-deep-links)）。
 
+嵌入的查看器能显示的每一条文案都可以替换，不只是分段文案。范围包括分段列表、侧栏、面板、图表、播放、导出、批量裁剪、健康检查、对话框和错误提示。`LEROBOT_MESSAGE_KEYS` 列出所有键，TypeScript 类型 `LeRobotMessageKey` 会检查键名。英文目录 `src/react/locales/en.json` 给出每个键的默认文案。只有独立应用自己才显示的文案不是宿主可用的键：它的页面元数据，以及打开或恢复本地文件夹的提示。
+
+`messages` 的值是 ICU 消息字符串（也支持 `{{name}}` 占位符）。对于未知的键，或值不是字符串（例如预编译的消息数组）的键，查看器保留内置文案，并为每个键输出一条 `console.warn`，例如 `lerobot-studio: messages["segments.row"] ignored: expected an ICU string, got array`。
+
 ### 标记与只读建议 {#markers-and-read-only-suggestions}
 
 - **`markers`** 是时间轴上的区间（或单帧刻度），按 `severity` 着色，`label` 显示在提示框和无障碍名称中。点击标记跳到它的第一帧；标记行只占一个 Tab 停靠点，用方向键在标记间移动。与 `warn` 或 `fail` 标记重叠的分段会进入 **有问题** 筛选并显示问题数。`checkId` 留给宿主使用，不会显示。
@@ -345,7 +349,7 @@ export function RecordingStudio({ view, url, navigate }: HostProps) {
 
 - `initialSelection`（`episodeIndex`、`segmentId`、`timeS`）在第一次加载后应用一次。查看器打开该 episode（只给 `segmentId` 时打开分段所在的 episode），选中分段，并**暂停**在包含 `timeS` 的那一帧（没有 `timeS` 时为分段的第一帧）。
 - `onSelectionChange` 在打开 episode 后报告 `{ episodeIndex, segmentId, timeS }`：episode 或分段变化时立即报告，时间变化时每秒最多四次。深层链接尚未落地时不会报告，因此第一次报告就是链接落地的位置。
-- 传入时间轴相同的新 `dataSource`（同一个 episode、帧数相同，例如同一录制的另一种版本）时，保留 episode、分段和帧；原本在播放就继续播放。时间轴不同时照常打开。
+- 传入时间轴相同的新 `dataSource`（同一个 episode、帧数相同，例如同一录制的另一种版本）时，保留 episode、分段和帧；原本在播放就继续播放。新数据源打开期间，当前数据集保持显示（暂停），打开后一次性切换，每个相机保留最后一帧，直到新文件显示同一帧（最多 4 秒，之后显示常规的加载状态）。切换期间查看器仍可操作：期间选中的 episode 就是切换后停留的位置。新数据源打开失败时，保留当前数据源，错误中写明失败原因。时间轴不同时照常打开。
 
 ### 主题变量 {#theme-tokens}
 
@@ -441,7 +445,7 @@ const LeRobotViewer = dynamic(
 | `annotation`               | 由宿主控制的分段：`value`、`onChange`、`saveState`                         |
 | `readOnly`                 | 只显示分段和审核，不显示任何编辑控件                                       |
 | `fields`                   | 每个分段上可设置的值（`select`、`tags`、`text`）                           |
-| `messages`                 | 按键替换内置的分段文案                                                     |
+| `messages`                 | 按键替换任意内置文案                                                       |
 | `markers`                  | 时间轴上按严重程度着色的区间，见[标记](#markers-and-read-only-suggestions) |
 | `overlaySegments`          | 分段轨道上方细条中的只读分段                                               |
 | `extensions`               | 宿主工具栏项和通知，见[工具栏与通知](#toolbar-and-notices)                 |

@@ -76,7 +76,7 @@ const fields: AnnotationField[] = [
 - `value` 和 `saveState` 按引用比较。内容不变时请保持同一个对象：每次渲染都重建 `value` 的宿主会让查看器每次都重放未确认的修改并重新检查撤销历史。不带 `changeIds` 的拒绝必须每个被拒绝的修改只创建一次，否则每次重新渲染都会再拒绝一个修改；带 `changeIds` 的拒绝可以安全地重复渲染。比宿主应答更快的修改会保留，并叠加显示在每个新的 `value` 之上，直到宿主的 `value` 包含它们。
 - **`readOnly`** 始终优先：无论 `annotation` 内容如何，都不渲染编辑控件，编辑快捷键也不生效。分段、审核状态、字段值和宿主标记（`segment.status`）仍会显示，导航快捷键仍可用。`readOnly: true` 的单个分段也会拒绝编辑。
 - **`fields`** 按顺序声明用户可为分段设置的值：`select`（单选；选项的 `key` 为 `1` 到 `9` 时可用键盘设置）、`tags`（字符串列表，可带 `suggestions`）或 `text`。值存放在 `segment.values[field.id]`。reducer 会拒绝未知字段或类型不符的值。
-- **`messages`** 按键（`LeRobotMessageKey`：所有 `segments.*`、`overlay.*` 和 `markers.*` 键，列在 `LEROBOT_MESSAGE_KEYS` 中）替换当前语言的内置文案。值为 ICU 消息，也接受 `{{name}}` 占位符。
+- **`messages`** 按键（`LeRobotMessageKey`：嵌入的查看器能显示的每一条文案，列在 `LEROBOT_MESSAGE_KEYS` 中）替换当前语言的内置文案。值为 ICU 消息，也接受 `{{name}}` 占位符。
 
 时间轴：共 `N` 帧的 episode 中，第 `k` 帧在每条轨道、标记行和图表上占 `[k / N, (k + 1) / N)`。播放到最后一帧时，进度条的填充止于 `(N − 1) / N`，显示的总时长是最后一帧的结束时刻（`N / fps`），与分段的出点时间一致。
 

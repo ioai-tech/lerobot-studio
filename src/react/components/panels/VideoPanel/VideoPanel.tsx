@@ -28,6 +28,9 @@ type EpisodeVideo = { path: string; start: number; end: number };
  * element swaps its source and the follower restores position and play state
  * from the clock.
  */
+/** The longest a camera holds its last frame while a new URL of the same file loads. */
+export const HOLD_CAP_MS = 4000;
+
 const VideoPanelContent: React.FC<VideoPanelProps> = ({ params }) => {
   const { t } = useTranslation();
   const { info, dataLoader, isLoading } = useLeRobotData();
@@ -57,8 +60,13 @@ const VideoPanelContent: React.FC<VideoPanelProps> = ({ params }) => {
   );
   const [currentVideoPath, setCurrentVideoPath] = useState<string>('');
 
-  /** File on the element, and whether its current URL generation was already retried. */
-  const sourceRef = useRef<{ path: string; retried: boolean } | null>(null);
+  /**
+   * File on the element, the loader its URL came from, and whether its
+   * current URL generation was already retried.
+   */
+  const sourceRef = useRef<{ path: string; loader: unknown; retried: boolean } | null>(null);
+  /** The last frame, held over the element while a new URL of the same file loads. */
+  const holdRef = useRef<HTMLCanvasElement>(null);
   /** Selected episode's span in the current file; read by the follower. */
   const rangeRef = useRef<{ start: number; end: number } | null>(null);
   const fpsRef = useRef(fps);
@@ -91,14 +99,83 @@ const VideoPanelContent: React.FC<VideoPanelProps> = ({ params }) => {
     };
   }, [clock, featureKey]);
 
-  const setSource = useCallback((path: string, url: string, retried: boolean) => {
-    const video = videoRef.current;
-    if (!video) return;
-    sourceRef.current = { path, retried };
-    video.preload = preloadRef.current;
-    video.src = url;
-    video.load();
+  /**
+   * The held frame's one owner. A hold starts when a new URL of the shown
+   * file replaces the old one, and ends on the first of: a painted frame of
+   * the new URL, an `error`, an `emptied` / `abort` of the new load, or the
+   * cap. After the cap the camera shows the normal loading state, and a
+   * later failure its named error.
+   */
+  const holdTimerRef = useRef<number | null>(null);
+  const holdLoadStartedRef = useRef(false);
+  const releaseHold = useCallback(() => {
+    if (holdTimerRef.current !== null) window.clearTimeout(holdTimerRef.current);
+    holdTimerRef.current = null;
+    holdLoadStartedRef.current = false;
+    if (holdRef.current) holdRef.current.style.display = 'none';
   }, []);
+  const isHolding = () => holdRef.current?.style.display === 'block';
+  /** Draw the shown frame over the element (or keep the one already held). */
+  const beginHold = useCallback(
+    (video: HTMLVideoElement) => {
+      const canvas = holdRef.current;
+      if (!canvas) return;
+      holdLoadStartedRef.current = false;
+      if (canvas.style.display === 'block') return; // a retry keeps the held frame and its cap
+      if (video.readyState < 2 || video.videoWidth <= 0) return;
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      canvas.getContext('2d')?.drawImage(video, 0, 0);
+      canvas.style.display = 'block';
+      holdTimerRef.current = window.setTimeout(() => {
+        holdTimerRef.current = null;
+        if (!isHolding()) return;
+        releaseHold();
+        if (video.readyState < 2) {
+          setHasVideo(false);
+          setIsInitialLoading(true);
+        }
+      }, HOLD_CAP_MS);
+    },
+    [releaseHold],
+  );
+  useEffect(() => releaseHold, [releaseHold]);
+  /**
+   * Release the held frame once the element has painted a frame of its own
+   * (data being ready is not yet a painted frame); a short fallback covers
+   * browsers without frame callbacks.
+   */
+  const releaseHoldWhenPainted = useCallback(() => {
+    const video = videoRef.current as
+      (HTMLVideoElement & { requestVideoFrameCallback?: (callback: () => void) => number }) | null;
+    if (!isHolding()) return;
+    // A paused element may present its frame without a frame callback; the
+    // data is in, so a short fallback ends the hold either way.
+    const fallback = window.setTimeout(releaseHold, 500);
+    video?.requestVideoFrameCallback?.(() => {
+      window.clearTimeout(fallback);
+      releaseHold();
+    });
+  }, [releaseHold]);
+
+  /**
+   * Point the element at `url`. `hold` (a new URL of the file already shown:
+   * a refresh or another source of the same recording) keeps the current
+   * frame on screen until the new one is ready, so the camera never blanks.
+   */
+  const setSource = useCallback(
+    (path: string, url: string, retried: boolean, loader: unknown, hold = false) => {
+      const video = videoRef.current;
+      if (!video) return;
+      if (hold) beginHold(video);
+      else releaseHold();
+      sourceRef.current = { path, loader, retried };
+      video.preload = preloadRef.current;
+      video.src = url;
+      video.load();
+    },
+    [beginHold, releaseHold],
+  );
 
   /** Swap in a new URL for the same file (refresh); the follower restores time and play state. */
   const swapSource = useCallback(
@@ -112,7 +189,7 @@ const VideoPanelContent: React.FC<VideoPanelProps> = ({ params }) => {
         if (token !== requestTokenRef.current || sourceRef.current?.path !== current.path) return;
         // A retry marks this URL generation as retried; a refresh-driven swap
         // starts a new generation that may be retried once again.
-        setSource(current.path, url, retry);
+        setSource(current.path, url, retry, current.loader, true);
       } catch (error) {
         console.error('Failed to refresh video URL:', error);
         if (token === requestTokenRef.current) {
@@ -145,10 +222,16 @@ const VideoPanelContent: React.FC<VideoPanelProps> = ({ params }) => {
       setHasVideo(true);
       setLoadError(null);
       setIsInitialLoading(false);
+      if (!video.seeking) releaseHoldWhenPainted();
+    };
+    // A held frame gives way once the new URL shows the clock's frame.
+    const onSeeked = () => {
+      if (video.readyState >= 2) releaseHoldWhenPainted();
     };
     const onError = () => {
       const current = sourceRef.current;
       if (!current || !video.getAttribute('src')) return;
+      releaseHold();
       if (!current.retried) {
         void swapSource(true);
         return;
@@ -160,13 +243,46 @@ const VideoPanelContent: React.FC<VideoPanelProps> = ({ params }) => {
     };
     video.addEventListener('loadedmetadata', onLoadedMetadata);
     video.addEventListener('loadeddata', onLoadedData);
+    // The new load has begun; an `emptied` or `abort` after this ends it
+    // without data (the ones the URL change itself fires come before).
+    const onLoadStart = () => {
+      if (isHolding()) holdLoadStartedRef.current = true;
+    };
+    const onLoadEnded = () => {
+      if (!holdLoadStartedRef.current) return;
+      releaseHold();
+      if (video.readyState < 2) {
+        setHasVideo(false);
+        setIsInitialLoading(true);
+      }
+    };
     video.addEventListener('error', onError);
+    video.addEventListener('seeked', onSeeked);
+    video.addEventListener('loadstart', onLoadStart);
+    video.addEventListener('emptied', onLoadEnded);
+    video.addEventListener('abort', onLoadEnded);
     return () => {
+      video.removeEventListener('loadstart', onLoadStart);
+      video.removeEventListener('emptied', onLoadEnded);
+      video.removeEventListener('abort', onLoadEnded);
+      video.removeEventListener('seeked', onSeeked);
       video.removeEventListener('loadedmetadata', onLoadedMetadata);
       video.removeEventListener('loadeddata', onLoadedData);
       video.removeEventListener('error', onError);
     };
-  }, [swapSource, t]);
+  }, [swapSource, releaseHold, releaseHoldWhenPainted, t]);
+
+  // A camera that goes away (unmount, a rebuilt layout) stops loading at once:
+  // a detached element would otherwise keep reading its file, holding the
+  // browser's connections to the storage host until it is collected.
+  useEffect(() => {
+    const video = videoRef.current;
+    return () => {
+      if (!video?.getAttribute('src')) return;
+      video.removeAttribute('src');
+      video.load();
+    };
+  }, []);
 
   // Episode or camera change: gate the codec, load the file if it changed,
   // then let the follower position the element from the clock.
@@ -205,14 +321,18 @@ const VideoPanelContent: React.FC<VideoPanelProps> = ({ params }) => {
       setCurrentVideoPath(episode.path);
       setVideoDimensions(null);
 
-      if (sourceRef.current?.path !== episode.path) {
-        rangeRef.current = null;
+      const sameFile = sourceRef.current?.path === episode.path;
+      // A swapped-in source shows the same moment of the same recording:
+      // its file replaces the shown one in place, holding the shown frame.
+      const swapped = sourceRef.current !== null && sourceRef.current.loader !== dataLoader;
+      if (!sameFile || swapped) {
+        if (!sameFile) rangeRef.current = null;
         if (!sourceRef.current) setIsInitialLoading(true);
         setLoadError(null);
         try {
           const url = await dataLoader.getFileUrl(episode.path);
           if (token !== requestTokenRef.current) return;
-          setSource(episode.path, url, false);
+          setSource(episode.path, url, false, dataLoader, swapped);
         } catch (error) {
           if (token !== requestTokenRef.current) return;
           console.error('Failed to load video:', error);
@@ -250,6 +370,13 @@ const VideoPanelContent: React.FC<VideoPanelProps> = ({ params }) => {
     <div className="group relative flex h-full w-full items-center justify-center overflow-hidden bg-black">
       <MediaDebugOverlay metadata={debugMetadata} translationPrefix="panels.video.debug" />
 
+      <canvas
+        ref={holdRef}
+        aria-hidden
+        data-testid="video-hold-frame"
+        className="pointer-events-none absolute inset-0 z-[1] h-full w-full object-contain"
+        style={{ display: 'none' }}
+      />
       <video
         ref={videoRef}
         className="h-full w-full object-contain"
