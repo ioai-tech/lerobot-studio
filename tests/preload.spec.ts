@@ -101,4 +101,28 @@ describe('preloadLeRobotViewer', () => {
     expect(load).toHaveBeenCalledTimes(2);
     vi.doUnmock('../src/platform/workers/workerManager');
   });
+
+  it('starts the layout and data loader chunks too, and not during server rendering', async () => {
+    const chunks = {
+      loadDockviewLayout: vi.fn(() => Promise.reject(new Error('chunk 404'))),
+      loadDataLoaderModule: vi.fn(() => Promise.resolve({})),
+    };
+    vi.doMock('../src/react/lazyChunks', () => chunks);
+    vi.doMock('../src/platform/workers/workerManager', () => ({
+      loadParquetWasmModule: vi.fn(() => Promise.resolve({})),
+    }));
+    const { preloadLeRobotViewer } = await import('../src/react/preload');
+    preloadLeRobotViewer();
+    expect(chunks.loadDockviewLayout).not.toHaveBeenCalled();
+    expect(chunks.loadDataLoaderModule).not.toHaveBeenCalled();
+    vi.stubGlobal('window', {});
+    vi.stubGlobal('document', {});
+    expect(() => preloadLeRobotViewer()).not.toThrow();
+    expect(chunks.loadDockviewLayout).toHaveBeenCalledTimes(1);
+    expect(chunks.loadDataLoaderModule).toHaveBeenCalledTimes(1);
+    // A chunk that fails is reported when the viewer opens, not here.
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    vi.doUnmock('../src/react/lazyChunks');
+    vi.doUnmock('../src/platform/workers/workerManager');
+  });
 });
