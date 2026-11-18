@@ -16,6 +16,16 @@ export interface ProgressInfo {
 /** Receives data-source progress updates. */
 export type ProgressHandler = (info: ProgressInfo) => void;
 
+/** Bytes returned by {@link DataSource.readRange}. */
+export interface ByteRangeResult {
+  /** The bytes read. */
+  bytes: Uint8Array;
+  /** File offset of `bytes[0]`. */
+  start: number;
+  /** Size of the whole file in bytes. */
+  size: number;
+}
+
 /** Browser-readable storage abstraction consumed by the viewer. */
 export interface DataSource {
   /** Return whether a logical dataset path exists. */
@@ -60,4 +70,14 @@ export interface DataSource {
    * prefetch what follows it.
    */
   focusEpisode?(episodeIndex: number): void;
+
+  /**
+   * Read part of a file, with `Blob.slice` semantics: bytes [start, end),
+   * `end` omitted means to the end, and a negative `start` reads that many
+   * bytes from the end. The viewer reads parquet footers and column chunks
+   * this way, so charts need only the selected episode's columns. A source
+   * whose server ignored the range returns the whole file (`start` 0,
+   * `bytes.length === size`); the viewer then reads that file whole.
+   */
+  readRange?(path: string, start: number, end?: number): Promise<ByteRangeResult>;
 }

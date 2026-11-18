@@ -164,3 +164,40 @@ export async function readFeatureData(
 
   return result;
 }
+
+/** The parquet worker's ranged reads, for worker mocks (same decode as the worker). */
+export async function readNumericColumnsRanged(
+  source: import('@/core').RangedParquetSource,
+  fetchRange: import('@/core').ParquetRangeFetcher,
+  read: import('@/core').RangedParquetRead,
+) {
+  const { extractNumeric, readRangedTable } =
+    await import('../../src/platform/workers/parquetDecode');
+  await ensureParquetWasm();
+  const { ParquetFile } = await import('parquet-wasm/esm');
+  const table = await readRangedTable(
+    (file) => ParquetFile.fromFile(file),
+    source,
+    fetchRange,
+    read,
+  );
+  return extractNumeric(table, read.columns, 0, table.numRows);
+}
+
+export async function readFeatureDataRanged(
+  source: import('@/core').RangedParquetSource,
+  fetchRange: import('@/core').ParquetRangeFetcher,
+  read: import('@/core').RangedParquetRead,
+) {
+  const { extractFeatures, readRangedTable } =
+    await import('../../src/platform/workers/parquetDecode');
+  await ensureParquetWasm();
+  const { ParquetFile } = await import('parquet-wasm/esm');
+  const table = await readRangedTable(
+    (file) => ParquetFile.fromFile(file),
+    source,
+    fetchRange,
+    read,
+  );
+  return extractFeatures(table, read.columns, 0, table.numRows);
+}

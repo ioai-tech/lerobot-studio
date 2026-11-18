@@ -8,7 +8,13 @@ export type {
 } from './types/lerobot';
 export { isV2Info, isV3Info, isV3Metadata } from './types/lerobot';
 
-export type { DataSource, ProgressHandler, ProgressInfo, LoadingPhase } from './datasource/types';
+export type {
+  ByteRangeResult,
+  DataSource,
+  ProgressHandler,
+  ProgressInfo,
+  LoadingPhase,
+} from './datasource/types';
 
 export type { NumericalColumnData, NumericalColumnMap, EpisodeTableLoader } from './loader/types';
 
@@ -41,6 +47,7 @@ export { aggregateEpisodeStats, computeDatasetStats } from './analysis/StatsServ
 
 export {
   getEagerEpisodeColumns,
+  getEpisodeColumnBatches,
   buildPlaybackFrames,
   getFirstAvailableEpisodeIndex,
 } from './playback/episodeLoadPlan';
@@ -71,7 +78,13 @@ export * from './panels/imagePanelLoadGuards';
 export * from './panels/imagePanelRequestUtils';
 export type { ChartSeriesKind, ChartDimensionMeta } from './panels/chartTypes';
 
-export type { ParquetWorkerAPI, ParquetImageWorkerAPI } from './workers/types';
+export type {
+  ParquetWorkerAPI,
+  ParquetImageWorkerAPI,
+  ParquetRangeFetcher,
+  RangedParquetRead,
+  RangedParquetSource,
+} from './workers/types';
 
 export * from './subtask';
 export * from './export/trim';

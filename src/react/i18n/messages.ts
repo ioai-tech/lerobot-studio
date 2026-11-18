@@ -1,6 +1,4 @@
-import zhRaw from '../locales/zh.json';
 import enRaw from '../locales/en.json';
-import jaRaw from '../locales/ja.json';
 
 export type SupportedLocale = 'en' | 'zh' | 'ja';
 export type MessageMap = Record<string, string>;
@@ -60,17 +58,44 @@ export function coerceLocale(value?: string | null): SupportedLocale {
 }
 
 const enMessages = flattenMessages(enRaw as Record<string, unknown>);
-const zhMessages = flattenMessages(zhRaw as Record<string, unknown>);
-const jaMessages = flattenMessages(jaRaw as Record<string, unknown>);
 
-export const messagesByLocale: Record<SupportedLocale, MessageMap> = {
-  en: enMessages,
-  zh: {
-    ...enMessages,
-    ...zhMessages,
-  },
-  ja: {
-    ...enMessages,
-    ...jaMessages,
-  },
+/**
+ * English ships with the viewer (it is every locale's fallback); the other
+ * locales are separate chunks, loaded when they become the active language.
+ */
+const LOCALE_LOADERS: Record<
+  Exclude<SupportedLocale, 'en'>,
+  () => Promise<{ default: unknown }>
+> = {
+  zh: () => import('../locales/zh.json'),
+  ja: () => import('../locales/ja.json'),
 };
+
+const loadedMessages = new Map<SupportedLocale, MessageMap>([['en', enMessages]]);
+const pendingMessages = new Map<SupportedLocale, Promise<MessageMap>>();
+
+/** Messages of `locale` when already loaded (English always is), else null. */
+export function getLoadedMessages(locale: SupportedLocale): MessageMap | null {
+  return loadedMessages.get(locale) ?? null;
+}
+
+/** Load the messages of `locale` (English fallback included); loads once. */
+export function loadMessages(locale: SupportedLocale): Promise<MessageMap> {
+  const loaded = loadedMessages.get(locale);
+  if (loaded) return Promise.resolve(loaded);
+  let pending = pendingMessages.get(locale);
+  if (!pending) {
+    pending = LOCALE_LOADERS[locale as Exclude<SupportedLocale, 'en'>]()
+      .then((module) => {
+        const messages = {
+          ...enMessages,
+          ...flattenMessages(module.default as Record<string, unknown>),
+        };
+        loadedMessages.set(locale, messages);
+        return messages;
+      })
+      .finally(() => pendingMessages.delete(locale));
+    pendingMessages.set(locale, pending);
+  }
+  return pending;
+}

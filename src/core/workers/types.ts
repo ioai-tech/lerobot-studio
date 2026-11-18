@@ -3,6 +3,28 @@
  * 所有 Worker 的 API 接口在这里统一定义
  */
 
+/** The prefetched bytes of a parquet file read by range (footer, column chunks …). */
+export interface RangedParquetSource {
+  /** Size of the whole file. */
+  size: number;
+  /** Prefetched parts; each starts at `start` in the file. */
+  parts: Array<{ start: number; bytes: ArrayBuffer }>;
+}
+
+/** Which rows and columns a ranged read decodes. */
+export interface RangedParquetRead {
+  columns: string[];
+  /** Row groups to read (ascending). */
+  rowGroups: number[];
+  /** First row to return, counted from the first selected row group. */
+  offset: number;
+  /** Rows to return. */
+  limit: number;
+}
+
+/** Fetches bytes [start, end) the worker needs beyond the prefetched parts. */
+export type ParquetRangeFetcher = (start: number, end: number) => Promise<Uint8Array>;
+
 /**
  * Parquet Worker API - 高性能 Parquet 文件解析
  */
@@ -44,6 +66,24 @@ export interface ParquetWorkerAPI {
     columns: string[],
     startRow: number,
     endRow: number,
+  ): Promise<Record<string, unknown[]>>;
+
+  /**
+   * Decode numeric columns of a partly fetched file (see `RangedParquetRead`);
+   * missing bytes are fetched through `fetchRange`. Same result shape as
+   * `readNumericColumns`.
+   */
+  readNumericColumnsRanged(
+    source: RangedParquetSource,
+    fetchRange: ParquetRangeFetcher,
+    read: RangedParquetRead,
+  ): Promise<Record<string, { values: ArrayBuffer; rows: number; width: number }>>;
+
+  /** Like `readFeatureData`, for a partly fetched file. */
+  readFeatureDataRanged(
+    source: RangedParquetSource,
+    fetchRange: ParquetRangeFetcher,
+    read: RangedParquetRead,
   ): Promise<Record<string, unknown[]>>;
 
   /**

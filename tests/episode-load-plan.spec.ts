@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { buildPlaybackFrames, getEagerEpisodeColumns, getFirstAvailableEpisodeIndex } from '@/core';
+import {
+  buildPlaybackFrames,
+  getEagerEpisodeColumns,
+  getEpisodeColumnBatches,
+  getFirstAvailableEpisodeIndex,
+} from '@/core';
 import type { NumericalColumnMap } from '@/platform';
 import type { EpisodeMetadata, LeRobotInfo } from '@/core';
 
@@ -25,6 +30,24 @@ const info = {
 describe('episode load plan helpers', () => {
   it('only preloads timeline and numerical columns', () => {
     expect(getEagerEpisodeColumns(info)).toEqual(['timestamp', 'observation.joint']);
+  });
+
+  it('reads the time axis with the top chart group first, then the other groups', () => {
+    const withGroups = {
+      ...info,
+      features: {
+        ...info.features,
+        'observation.state': { dtype: 'float32', shape: [3], names: null },
+        action: { dtype: 'float32', shape: [3], names: null },
+      },
+    } as unknown as LeRobotInfo;
+    expect(getEpisodeColumnBatches(withGroups)).toEqual([
+      ['timestamp', 'observation.joint'],
+      ['observation.state', 'action'],
+    ]);
+    expect(getEpisodeColumnBatches(info)).toEqual([['timestamp', 'observation.joint']]);
+    const noCharts = { ...info, features: { timestamp: info.features.timestamp } };
+    expect(getEpisodeColumnBatches(noCharts as LeRobotInfo)).toEqual([['timestamp']]);
   });
 
   it('builds lightweight playback frames from timestamp data', () => {

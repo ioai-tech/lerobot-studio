@@ -41,7 +41,8 @@ interface ChartPanelProps {
 
 const ChartPanelContent: React.FC<ChartPanelProps> = ({ params }) => {
   const { t } = useTranslation();
-  const { chartData, currentFrames, setFrameIndex, setPlaying } = useLeRobotPlayback();
+  const { chartData, pendingChartColumns, currentFrames, setFrameIndex, setPlaying } =
+    useLeRobotPlayback();
   const { subscribeFrameIndex, getFrameIndex, info, isLoading, error } = useLeRobotData();
   const { selectedEpisodeIndex } = useLeRobotSelection();
   const { resolvedTheme } = useTheme();
@@ -146,10 +147,13 @@ const ChartPanelContent: React.FC<ChartPanelProps> = ({ params }) => {
 
   const featureGroups = useMemo<ChartGroupData[]>(() => {
     if (frameTimes.length === 0) return [];
+    const pending = new Set(pendingChartColumns);
     return buildFeatureChartGroups(targetFeatures, info?.features, chartData)
-      .filter((group) => chartData[group.id])
+      .filter((group) => chartData[group.id] || pending.has(group.id))
       .map((group) => {
-        const column = chartData[group.id]!;
+        const column = chartData[group.id];
+        // Still being read: keep the group's place, draw when its columns arrive.
+        if (!column) return { group, x: frameTimes, values: () => undefined, pending: true };
         const cache = new Map<string, Float64Array>();
         const x =
           column.rows === frameTimes.length ? frameTimes : frameTimes.subarray(0, column.rows);
@@ -168,7 +172,7 @@ const ChartPanelContent: React.FC<ChartPanelProps> = ({ params }) => {
           },
         };
       });
-  }, [targetFeatures, info?.features, chartData, frameTimes]);
+  }, [targetFeatures, info?.features, chartData, pendingChartColumns, frameTimes]);
 
   /** The groups the charts will have, from the dataset's features alone (for the loading state). */
   const placeholderGroups = useMemo(

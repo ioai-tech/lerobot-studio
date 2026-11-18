@@ -1,4 +1,4 @@
-import type { DataSource, ProgressHandler } from '../../core/datasource/types';
+import type { ByteRangeResult, DataSource, ProgressHandler } from '../../core/datasource/types';
 import { formatLeRobotPath } from '../../core/versioning/pathTemplate';
 import {
   DataSourceSafetyError,
@@ -9,6 +9,7 @@ import {
 import { type RemoteFileEntry, validateManifestUrl } from './RemoteManifestDataSource';
 import {
   Coalescer,
+  fetchByteRange,
   fetchWithRefresh,
   normalizeLogicalPath,
   parseExpiresAt,
@@ -257,16 +258,38 @@ export class EpisodeSetDataSource implements DataSource {
         this.episodeTable ??= this.buildEpisodeTable();
         return this.episodeTable;
       default: {
-        const refresher: UrlRefresher | null = this.hasRefresher()
-          ? {
-              generation: () => this.refreshCoalescer.generation,
-              refreshSince: (seen) => this.refreshCoalescer.runSince(seen, () => this.refreshNow()),
-            }
-          : null;
-        const res = await fetchWithRefresh(normalized, () => this.getRecordingUrl(file), refresher);
+        const res = await fetchWithRefresh(
+          normalized,
+          () => this.getRecordingUrl(file),
+          this.recordingRefresher(),
+        );
         return readResponseBytes(res, normalized, this.limits, onProgress);
       }
     }
+  }
+
+  /** Read part of a recording's file with an HTTP Range request (see `DataSource.readRange`). */
+  async readRange(path: string, start: number, end?: number): Promise<ByteRangeResult> {
+    const normalized = normalizeLogicalPath(path);
+    const file = this.virtualFile(normalized);
+    if (file.kind !== 'data' && file.kind !== 'video') {
+      // Synthesized files live in memory; slice them like a Blob.
+      const bytes = await this.readBytes(normalized);
+      const from = start < 0 ? Math.max(0, bytes.length + start) : Math.min(start, bytes.length);
+      const to =
+        start < 0 || end === undefined ? bytes.length : Math.max(from, Math.min(end, bytes.length));
+      return { bytes: bytes.subarray(from, to), start: from, size: bytes.length };
+    }
+    await this.ensureResolved(file.recording);
+    return fetchByteRange(
+      normalized,
+      () => this.getRecordingUrl(file),
+      this.recordingRefresher(),
+      this.fileState(file).entry.sizeBytes ?? null,
+      start,
+      end,
+      this.limits,
+    );
   }
 
   async getObjectUrl(path: string): Promise<string> {
@@ -340,6 +363,14 @@ export class EpisodeSetDataSource implements DataSource {
 
   private hasRefresher(): boolean {
     return Boolean(this.options.refresh ?? this.options.resolve);
+  }
+
+  private recordingRefresher(): UrlRefresher | null {
+    if (!this.hasRefresher()) return null;
+    return {
+      generation: () => this.refreshCoalescer.generation,
+      refreshSince: (seen) => this.refreshCoalescer.runSince(seen, () => this.refreshNow()),
+    };
   }
 
   private virtualFile(path: string): VirtualFile {

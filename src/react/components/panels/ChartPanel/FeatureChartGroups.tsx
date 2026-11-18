@@ -18,6 +18,8 @@ export interface ChartGroupData {
   values: (seriesId: string) => Float64Array | undefined;
   /** Optional warning shown in the group header (for example a missing column). */
   warning?: string | null;
+  /** The group's columns are still being read: its header shows, the chart follows. */
+  pending?: boolean;
 }
 
 export interface FeatureChartGroupsProps {
@@ -58,7 +60,11 @@ export function FeatureChartGroups({
   resolvedTheme,
 }: FeatureChartGroupsProps) {
   return (
-    <div className="flex h-full min-h-0 flex-col overflow-y-auto" data-testid="chart-groups">
+    <div
+      className="flex h-full min-h-0 flex-col overflow-y-auto"
+      data-testid="chart-groups"
+      aria-busy={groups.some((data) => data.pending)}
+    >
       {groups.map((data) => (
         <FeatureChart
           key={data.group.id}
@@ -238,6 +244,7 @@ function FeatureChart({
     <section
       className="flex min-h-[96px] flex-1 flex-col border-b border-border/50 last:border-b-0"
       aria-label={group.title}
+      aria-busy={data.pending ? true : undefined}
       data-chart-group={group.id}
     >
       <header className="flex flex-wrap items-center gap-x-2 gap-y-1 px-2 pt-1">
@@ -294,7 +301,13 @@ function FeatureChart({
           })}
         </div>
       </header>
-      <div ref={plotHostRef} className="relative min-h-0 flex-1" />
+      {data.pending ? (
+        <div className="relative min-h-0 flex-1 px-2 pb-1">
+          <div className="h-full w-full animate-pulse rounded bg-muted/40" />
+        </div>
+      ) : (
+        <div ref={plotHostRef} className="relative min-h-0 flex-1" />
+      )}
     </section>
   );
 }

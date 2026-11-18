@@ -80,6 +80,11 @@ export interface LeRobotPlaybackContextType {
   clock: PlaybackClock;
   currentFrames: FrameData[];
   chartData: NumericalColumnMap;
+  /**
+   * Chart columns of the selected episode still being read (they arrive in
+   * batches, the top chart group first); empty when every column is in.
+   */
+  pendingChartColumns: readonly string[];
   currentFrameIndex: number;
   isPlaying: boolean;
   playbackMode: PlaybackMode;

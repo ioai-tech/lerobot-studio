@@ -1,11 +1,18 @@
 import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it } from 'vitest';
 import { I18nProvider } from '../src/react/i18n/core';
+import { loadMessages } from '../src/react/i18n/messages';
 import { EpisodeHeader } from '../src/react/components/Sidebar/episodes/EpisodeHeader';
 import { ChartLineStyleKey } from '../src/react/components/panels/ChartPanel/ChartLineStyleKey';
 
 const noop = () => {};
+
+// zh and ja are separate chunks; once loaded, a provider renders them on the
+// first (here: static) render.
+beforeAll(async () => {
+  await Promise.all([loadMessages('zh'), loadMessages('ja')]);
+});
 
 function header(lang: string, totalCount?: number) {
   return renderToStaticMarkup(

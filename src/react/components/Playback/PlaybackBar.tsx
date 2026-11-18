@@ -12,8 +12,8 @@ import { EpisodeTrimControls } from './EpisodeTrimControls';
 import { SegmentTrack } from '../Segments/SegmentTrack';
 import { MarkerLane } from '../Timeline/MarkerLane';
 import { OverlayBand } from '../Timeline/OverlayBand';
-import { SegmentInspector } from '../Segments/SegmentInspector';
-import { EditSubtaskDialog } from '../dialogs/EditSubtaskDialog';
+import { LazySegmentInspector } from '../Segments/lazySegments';
+import { LazyEditSubtaskDialog } from '../dialogs/lazyDialogs';
 import { useLoading } from '../../contexts/LoadingContext';
 import { episodeTimeDomain, overlaySegmentsOfEpisode, shouldStartAutoplay } from '@/core';
 import { PlaybackProgressSlider } from './PlaybackProgressSlider';
@@ -505,7 +505,7 @@ export const PlaybackBar: React.FC = () => {
             </span>
           </div>
         </div>
-        <EditSubtaskDialog
+        <LazyEditSubtaskDialog
           open={subtaskDialogOpen}
           onOpenChange={(open) => {
             setSubtaskDialogOpen(open);
@@ -544,7 +544,7 @@ export const PlaybackBar: React.FC = () => {
       </div>
       {showSegments ? (
         <div className="px-4 pb-2 @max-[640px]/viewer:px-2">
-          <SegmentInspector />
+          <LazySegmentInspector />
         </div>
       ) : null}
     </div>

@@ -12,7 +12,7 @@ import {
   useNarrowerThan,
   useStackedLayout,
 } from '../../hooks/useStackedLayout';
-import { SegmentDialogs } from '../../components/Segments/SegmentDialogs';
+import { LazySegmentDialogs } from '../../components/Segments/lazySegments';
 
 const loadDockviewLayout = () => import('../../components/DockviewLayout');
 const LazyDockviewLayout = React.lazy(async () => {
@@ -62,7 +62,7 @@ export function ViewerLayout({
   const stacked = useStackedLayout(layoutRef);
   // Segment editing needs room for its controls; narrower, the viewer plays and lists only.
   const narrow = useNarrowerThan(layoutRef, EDITING_MIN_WIDTH_PX);
-  const { setNarrow } = useLeRobotSegments();
+  const { setNarrow, active: segmentsActive } = useLeRobotSegments();
   useEffect(() => setNarrow(narrow), [narrow, setNarrow]);
 
   const hasData = info !== null && episodes.length > 0;
@@ -204,7 +204,7 @@ export function ViewerLayout({
         {stacked ? [mainElement, sidebarElement] : [sidebarElement, mainElement]}
       </div>
 
-      {hasData ? <SegmentDialogs /> : null}
+      {hasData && segmentsActive ? <LazySegmentDialogs /> : null}
       {showToaster ? <Toaster /> : null}
     </div>
   );

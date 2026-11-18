@@ -1,6 +1,7 @@
-import type { DataSource, ProgressHandler } from '../../core/datasource/types';
+import type { ByteRangeResult, DataSource, ProgressHandler } from '../../core/datasource/types';
 import {
   Coalescer,
+  fetchByteRange,
   fetchWithRefresh,
   normalizeLogicalPath,
   parseExpiresAt,
@@ -25,7 +26,11 @@ export interface RemoteFileEntry {
   presignedUrl: string;
   /** Optional MIME type for the file. */
   contentType?: string | null;
-  /** Optional size in bytes; used by safety limits when present. */
+  /**
+   * Optional size in bytes; used by safety limits and to read parquet footers
+   * and column chunks with plain `bytes=a-b` ranges (without it the viewer
+   * needs a readable `Content-Range` response header).
+   */
   sizeBytes?: number | null;
   /**
    * Optional ISO 8601 time at which `presignedUrl` stops working. The viewer
@@ -185,6 +190,20 @@ export class RemoteManifestDataSource implements DataSource {
     assertMaterializable(path, state.entry.sizeBytes ?? undefined, this.limits);
     const res = await fetchWithRefresh(path, () => this.getUrl(path), this.urlRefresher());
     return readResponseBytes(res, path, this.limits, onProgress);
+  }
+
+  /** Read part of a file with an HTTP Range request (see `DataSource.readRange`). */
+  async readRange(path: string, start: number, end?: number): Promise<ByteRangeResult> {
+    const state = this.getState(path);
+    return fetchByteRange(
+      path,
+      () => this.getUrl(path),
+      this.urlRefresher(),
+      state.entry.sizeBytes ?? null,
+      start,
+      end,
+      this.limits,
+    );
   }
 
   /**

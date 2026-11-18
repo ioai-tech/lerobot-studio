@@ -4,7 +4,11 @@
  * in headless Chromium against the bench page served by range-server.mjs.
  *
  *   node scripts/bench/measure-playback.mjs --url 'http://127.0.0.1:4877/?manifest=/manifest/x.json' \
- *     [--play-seconds 60] [--seeks 10] [--seed 7] [--label main]
+ *     [--play-seconds 60] [--seeks 10] [--seed 7] [--label main] \
+ *     [--executable /usr/bin/google-chrome] [--charts-only]
+ *
+ * `--charts-only` stops after the charts: first frame, first chart drawn,
+ * every chart drawn, and the parquet bytes read (with their Range headers).
  *
  * Reports: time to first frame (first / all cameras), charts visible, seek
  * latency (until every camera presents the target frame), camera disagreement
@@ -30,7 +34,13 @@ const rand = () => {
 };
 
 const instrument = () => {
-  const t = { firstFrame: new Map(), chartsAt: null, counts: new Map(), longTasks: [] };
+  const t = {
+    firstFrame: new Map(),
+    chartsAt: null,
+    chartsCompleteAt: null,
+    counts: new Map(),
+    longTasks: [],
+  };
   try {
     new PerformanceObserver((list) => {
       for (const entry of list.getEntries()) t.longTasks.push([entry.startTime, entry.duration]);
@@ -61,6 +71,16 @@ const instrument = () => {
     document.querySelectorAll('video').forEach(watch);
     if (t.chartsAt == null && document.querySelector('.uplot canvas, .u-wrap canvas')) {
       t.chartsAt = performance.now();
+    }
+    // Every chart group drawn: the groups container is no longer busy.
+    const groups = document.querySelector('[data-testid="chart-groups"]');
+    if (
+      t.chartsCompleteAt == null &&
+      t.chartsAt != null &&
+      groups &&
+      groups.getAttribute('aria-busy') !== 'true'
+    ) {
+      t.chartsCompleteAt = performance.now();
     }
   };
   new MutationObserver(scan).observe(document, { childList: true, subtree: true });
@@ -115,6 +135,7 @@ async function cpuSeconds(rootPid) {
 const browser = await chromium.launch({
   headless: true,
   channel: opt('channel', undefined),
+  executablePath: opt('executable', undefined),
   args: ['--autoplay-policy=no-user-gesture-required'],
 });
 const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
@@ -122,6 +143,8 @@ const page = await context.newPage();
 await page.addInitScript(instrument);
 const errors = [];
 page.on('pageerror', (error) => errors.push(String(error)));
+const origin = new URL(url).origin;
+await fetch(`${origin}/__reads?reset=1`).catch(() => null);
 await page.goto(url);
 
 const result = { label, url };
@@ -148,6 +171,29 @@ Object.assign(
     };
   }),
 );
+await page.waitForFunction(() => window.__probe.chartsCompleteAt != null, null, {
+  timeout: 120_000,
+});
+result.chartsCompleteMs = await page.evaluate(() => Math.round(window.__probe.chartsCompleteAt));
+result.chartsAfterFirstFrameMs = result.chartsVisibleMs - result.firstFrameMs;
+result.chartsCompleteAfterFirstFrameMs = result.chartsCompleteMs - result.firstFrameMs;
+if (argv.includes('--charts-only')) {
+  // Let late reads finish so the byte count is complete.
+  await page.waitForTimeout(500);
+  const served = await (await fetch(`${origin}/__reads`)).json();
+  const dataReads = served
+    .filter((read) => /\/data\/chunk-[^/]+\/[^/]+\.parquet$/.test(read.file))
+    .map((read) => ({ ...read, file: read.file.split('/').slice(-3).join('/') }));
+  result.parquet = {
+    requests: dataReads.length,
+    bytes: dataReads.reduce((sum, read) => sum + read.bytes, 0),
+    reads: dataReads,
+  };
+  result.pageErrors = errors;
+  console.log(JSON.stringify(result, null, 2));
+  await browser.close();
+  process.exit(0);
+}
 await page.waitForFunction(() => window.__bench?.ready, null, { timeout: 120_000 });
 const { frameCount } = await page.evaluate(() => ({ frameCount: window.__bench.frameCount }));
 result.frameCount = frameCount;

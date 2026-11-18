@@ -29,8 +29,14 @@ import {
 import { tableFromIPC, Table } from 'apache-arrow';
 import { LRUCache } from '../utils/MediaCache';
 import type { DataSource } from '../datasource/dataSources';
-import type { Remote } from 'comlink';
+import { proxy, type Remote } from 'comlink';
 import { createParquetWorker, terminateWorker } from '../workers/workerManager';
+import {
+  ParquetRangeReader,
+  RangeFallback,
+  type ParquetRangeFallbackReason,
+  type PreparedRangedRead,
+} from './parquetRangeReader';
 
 export type { NumericalColumnData, NumericalColumnMap };
 
@@ -89,9 +95,12 @@ export class LeRobotDataLoader {
   private fileUrlLoading: Map<string, Promise<string>> = new Map();
   private readonly urlChangeListeners = new Set<(paths: readonly string[]) => void>();
   private unsubscribeSourceUrls: (() => void) | null = null;
+  private readonly rangeReader: ParquetRangeReader;
+  private readonly reportedFallbacks = new Set<ParquetRangeFallbackReason>();
 
   constructor(dataSource: DataSource) {
     this._dataSource = dataSource;
+    this.rangeReader = new ParquetRangeReader(dataSource);
     // 使用 Vite ?worker&inline 自动处理 worker 和 WASM
     this.worker = createParquetWorker();
     // blob URL 由 DataSource 创建与 revoke；本层仅做 path→URL 查表，避免双层 LRU 互相 revoke 导致失效 URL
@@ -353,19 +362,44 @@ export class LeRobotDataLoader {
   }
 
   /**
-   * 一次性加载所有数值列 - 优化版本
+   * Numeric columns of one episode. When the source reads ranges, only the
+   * parquet footer and the selected columns' chunks of the row groups holding
+   * the episode are fetched; otherwise (or on a named fallback) the file whole.
+   * `onFetched` runs once the bytes are in, before decoding, so a caller can
+   * start the next read while this one decodes.
    */
-  async loadAllNumericalData(episodeIndex: number, columns: string[]): Promise<NumericalColumnMap> {
+  async loadAllNumericalData(
+    episodeIndex: number,
+    columns: string[],
+    options: { onFetched?: () => void } = {},
+  ): Promise<NumericalColumnMap> {
     if (!this.info) throw new Error('Not initialized');
-    if (columns.length === 0) return {};
+    if (columns.length === 0) {
+      options.onFetched?.();
+      return {};
+    }
 
     const { path, start, end } = this.getEpisodeRange(episodeIndex);
-    const bytes = await this.readFileBytesCached(path);
-    const buffer = (bytes.buffer as ArrayBuffer).slice(
-      bytes.byteOffset,
-      bytes.byteOffset + bytes.byteLength,
-    );
-    const result = await this.worker.readNumericColumns(buffer, columns, start, end);
+    const prepared = await this.prepareRangedRead(path, columns, start, end);
+    let result: Awaited<ReturnType<ParquetWorkerAPI['readNumericColumns']>>;
+    if (!prepared) {
+      result = await this.readWholeFile(path, (buffer) => {
+        options.onFetched?.();
+        return this.worker.readNumericColumns(buffer, columns, start, end);
+      });
+    } else if (prepared.read.limit === 0) {
+      options.onFetched?.();
+      result = Object.fromEntries(
+        columns.map((column) => [column, { values: new ArrayBuffer(0), rows: 0, width: 1 }]),
+      );
+    } else {
+      options.onFetched?.();
+      result = await this.worker.readNumericColumnsRanged(
+        prepared.source,
+        proxy(prepared.fetchRange),
+        prepared.read,
+      );
+    }
 
     return Object.fromEntries(
       Object.entries(result).map(([column, data]) => [
@@ -377,6 +411,52 @@ export class LeRobotDataLoader {
         },
       ]),
     );
+  }
+
+  /**
+   * How episode columns are read: `range` (footer and column chunks), or
+   * `whole-file` with the named reason when ranges were tried and refused.
+   */
+  getRangeReadStatus(): {
+    mode: 'range' | 'whole-file';
+    reason: ParquetRangeFallbackReason | null;
+  } {
+    if (typeof this._dataSource.readRange !== 'function')
+      return { mode: 'whole-file', reason: null };
+    const reason = this.rangeReader.refusal;
+    return reason ? { mode: 'whole-file', reason } : { mode: 'range', reason: null };
+  }
+
+  private async prepareRangedRead(
+    path: string,
+    columns: string[],
+    start: number,
+    end: number,
+  ): Promise<PreparedRangedRead | null> {
+    if (!this.rangeReader.available) return null;
+    try {
+      return await this.rangeReader.prepare(path, columns, start, end);
+    } catch (error) {
+      if (!(error instanceof RangeFallback)) throw error;
+      if (!this.reportedFallbacks.has(error.reason)) {
+        this.reportedFallbacks.add(error.reason);
+        console.warn(`[lerobot-studio] ${error.reason}: reading ${path} whole instead of by range`);
+      }
+      if (error.wholeFile) this.fileBytesCache = { path, bytes: error.wholeFile };
+      return null;
+    }
+  }
+
+  private async readWholeFile<T>(
+    path: string,
+    read: (buffer: ArrayBuffer) => Promise<T>,
+  ): Promise<T> {
+    const bytes = await this.readFileBytesCached(path);
+    const buffer = (bytes.buffer as ArrayBuffer).slice(
+      bytes.byteOffset,
+      bytes.byteOffset + bytes.byteLength,
+    );
+    return read(buffer);
   }
 
   private getEpisodeRange(episodeIndex: number): { path: string; start: number; end: number } {
@@ -421,12 +501,20 @@ export class LeRobotDataLoader {
     if (featureNames.length === 0) return {};
 
     const { path, start, end } = this.getEpisodeRange(episodeIndex);
-    const bytes = await this.readFileBytesCached(path);
-    const buffer = (bytes.buffer as ArrayBuffer).slice(
-      bytes.byteOffset,
-      bytes.byteOffset + bytes.byteLength,
+    const prepared = await this.prepareRangedRead(path, featureNames, start, end);
+    if (prepared) {
+      if (prepared.read.limit === 0) {
+        return Object.fromEntries(featureNames.map((name) => [name, []]));
+      }
+      return this.worker.readFeatureDataRanged(
+        prepared.source,
+        proxy(prepared.fetchRange),
+        prepared.read,
+      );
+    }
+    return this.readWholeFile(path, (buffer) =>
+      this.worker.readFeatureData(buffer, featureNames, start, end),
     );
-    return this.worker.readFeatureData(buffer, featureNames, start, end);
   }
 
   getEpisodes() {
@@ -643,6 +731,7 @@ export class LeRobotDataLoader {
   async releaseParsedCaches(): Promise<void> {
     this.parsedFileCache = null;
     this.fileBytesCache = null;
+    this.rangeReader.clear();
     this.pendingParses.clear();
     try {
       await this.worker.clearCache();
@@ -653,6 +742,6 @@ export class LeRobotDataLoader {
 
   /** 仅当需要强制重新解析指定路径时使用 */
   isFileBytesCached(path: string): boolean {
-    return this.fileBytesCache?.path === path;
+    return this.fileBytesCache?.path === path || this.rangeReader.cachedPath() === path;
   }
 }

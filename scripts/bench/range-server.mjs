@@ -4,9 +4,16 @@
  * (default 20 Mbit/s and 20 ms latency) for playback measurements.
  *
  *   node scripts/bench/range-server.mjs --page <built bench page dir> \
- *     --dataset name=<dir> [--dataset name2=<dir>] [--port 4877] [--mbps 20] [--latency-ms 20]
+ *     --dataset name=<dir> [--dataset name2=<dir>] [--port 4877] [--mbps 20] [--latency-ms 20] \
+ *     [--no-range]
  *
- * GET /manifest/<name>.json[?expiresIn=<s>] lists the dataset's files as
+ * GET /__reads lists the dataset reads served so far (file, Range header,
+ * status, bytes sent); `/__reads?reset=1` clears the list.
+ *
+ * `--no-range` ignores Range headers on parquet files (answers 200 with the
+ * whole file), like a server without range support; videos keep ranges so
+ * cameras still start.
+ * GET /manifest/<name>.json[?expiresIn=<s>][&sizes=0] lists the dataset's files as
  * RemoteFileEntry[] with signed-looking URLs; a URL whose `exp` has passed is
  * answered with 403, as an expired presigned URL would be.
  */
@@ -32,6 +39,8 @@ const pageDir = opt('page') ? path.resolve(opt('page')) : null;
 const port = Number(opt('port', 4877));
 const bytesPerSecond = (Number(opt('mbps', 20)) * 1e6) / 8;
 const latencyMs = Number(opt('latency-ms', 20));
+const ignoreRanges = argv.includes('--no-range');
+let reads = [];
 const CHUNK = 16 * 1024;
 const TYPES = {
   '.html': 'text/html; charset=utf-8',
@@ -82,7 +91,13 @@ async function sendThrottled(res, bytes) {
   res.end();
 }
 
-async function sendFile(req, res, file, extraHeaders = {}) {
+async function sendFile(
+  req,
+  res,
+  file,
+  extraHeaders = {},
+  { ranges = true, dataset = false } = {},
+) {
   const stat = await fs.stat(file).catch(() => null);
   if (!stat?.isFile()) {
     res.writeHead(404).end('not found');
@@ -115,7 +130,7 @@ async function sendFile(req, res, file, extraHeaders = {}) {
   let start = 0;
   let end = stat.size - 1;
   let status = 200;
-  const range = /^bytes=(\d*)-(\d*)$/.exec(req.headers.range ?? '');
+  const range = ranges ? /^bytes=(\d*)-(\d*)$/.exec(req.headers.range ?? '') : null;
   if (range) {
     if (range[1] === '') {
       start = Math.max(0, stat.size - Number(range[2]));
@@ -132,7 +147,7 @@ async function sendFile(req, res, file, extraHeaders = {}) {
   res.writeHead(status, {
     'Content-Type': type,
     'Content-Length': end - start + 1,
-    'Accept-Ranges': 'bytes',
+    ...(ranges ? { 'Accept-Ranges': 'bytes' } : {}),
     'Cache-Control': 'no-store',
     ...(status === 206 ? { 'Content-Range': `bytes ${start}-${end}/${stat.size}` } : {}),
     ...extraHeaders,
@@ -141,6 +156,8 @@ async function sendFile(req, res, file, extraHeaders = {}) {
     res.end();
     return;
   }
+  const read = { file, range: req.headers.range ?? null, status, bytes: 0 };
+  if (dataset) reads.push(read);
   let closed = false;
   res.on('close', () => {
     closed = true;
@@ -156,6 +173,7 @@ async function sendFile(req, res, file, extraHeaders = {}) {
       stream.destroy();
       return;
     }
+    read.bytes += chunk.length;
     if (!res.write(chunk)) await new Promise((resolve) => res.once('drain', resolve));
   }
   res.end();
@@ -165,11 +183,19 @@ let signature = 0;
 const server = http.createServer(async (req, res) => {
   try {
     const url = new URL(req.url ?? '/', `http://${req.headers.host}`);
+    if (url.pathname === '/__reads') {
+      const body = JSON.stringify(reads);
+      if (url.searchParams.get('reset')) reads = [];
+      res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
+      return res.end(body);
+    }
     const manifest = /^\/manifest\/([^/]+)\.json$/.exec(url.pathname);
     if (manifest) {
       const dir = datasets.get(manifest[1]);
       if (!dir) return res.writeHead(404).end();
       const expiresIn = Number(url.searchParams.get('expiresIn') ?? 3600);
+      // `?sizes=0` omits sizeBytes (the viewer then reads Content-Range).
+      const withSizes = url.searchParams.get('sizes') !== '0';
       const exp = Date.now() + expiresIn * 1000;
       signature += 1;
       const files = await listFiles(dir);
@@ -177,7 +203,7 @@ const server = http.createServer(async (req, res) => {
         files.map(async (rel) => ({
           logicalPath: rel,
           presignedUrl: `${url.origin}/data/${manifest[1]}/${rel}?sig=${signature}&exp=${exp}`,
-          sizeBytes: (await fs.stat(path.join(dir, rel))).size,
+          sizeBytes: withSizes ? (await fs.stat(path.join(dir, rel))).size : null,
           expiresAt: new Date(exp).toISOString(),
         })),
       );
@@ -192,7 +218,16 @@ const server = http.createServer(async (req, res) => {
       if (Date.now() > exp) return res.writeHead(403).end('expired');
       const file = path.resolve(dir, decodeURIComponent(data[2]));
       if (!file.startsWith(dir + path.sep)) return res.writeHead(403).end();
-      return await sendFile(req, res, file);
+      return await sendFile(
+        req,
+        res,
+        file,
+        {},
+        {
+          ranges: !(ignoreRanges && file.endsWith('.parquet')),
+          dataset: true,
+        },
+      );
     }
     if (!pageDir) return res.writeHead(404).end();
     const rel = url.pathname === '/' ? 'index.html' : decodeURIComponent(url.pathname.slice(1));

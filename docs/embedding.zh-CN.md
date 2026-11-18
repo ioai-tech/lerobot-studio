@@ -95,6 +95,17 @@ export function SignedManifestViewer({ files }: { files: RemoteFileEntry[] }) {
 
 每条记录需要逻辑路径和 HTTP(S) URL。可选的 `contentType` 与 `sizeBytes` 会帮助查看器和内置安全限额。
 
+### 图表只读取要显示的内容
+
+一个 episode 的图表只需要它的数值列，而不是整个数据文件。查看器用 HTTP Range 请求读取 parquet 数据文件：
+
+- 先读文件尾（最后 64 KB），再只读取包含该 episode 的行组中所选列的列块，相邻的列块合并为一次请求。切换到同一文件中的其他 episode 时，复用已读取的字节。
+- 时间轴和最上面的图表组先到，其余组随后：每个图表在自己的列到达后立即绘制，仍在加载的组显示占位（`aria-busy`）。原始数据面板需要的其他列在图表之后读取。
+- 有 `sizeBytes` 时，请求是普通的 `bytes=a-b` 范围，属于 CORS 安全请求头（不触发预检）。没有它时，文件尾请求是后缀范围，大小取自 `Content-Range`，跨域服务器必须暴露该响应头（`Access-Control-Expose-Headers: Content-Range`）。
+- 服务器忽略 `Range`（返回 `200`）时，代价是下载一次整个文件，所有列都复用它；查看器记录一次 `RANGE_UNSUPPORTED`，此后整文件读取该数据源的文件。`RANGE_SIZE_UNKNOWN`（大小未知）和不是 parquet 的文件同样按名称回退。
+
+行组是最小单位：写入方把许多 episode 放进同一个行组时（pyarrow 对小文件的默认做法），读取一个 episode 的列仍要读取整个行组的这些列。
+
 ### 刷新会过期的 URL
 
 签名 URL 会过期。传入 `refresh` 后，查看器会重新签名，而不是直接失败：
@@ -115,7 +126,7 @@ const dataSource = createRemoteManifestDataSource(files, {
 - 刷新会替换过期时间。每个刷新后的条目按自己的 `expiresAt` 过期，否则按随文件一起返回的 `expiresAt`，否则视为未知；此时只有 401 或 403 才会触发下一次刷新。`refresh` 也可以只返回条目数组。
 - 因临近过期触发的刷新每 30 秒最多一次。后台刷新失败，或返回的 URL 仍在 60 秒内过期时，下次等待时间逐次加倍（从 5 秒到最多 5 分钟）。
 - 新 URL 按路径替换旧 URL，失败的读取重试一次。正在播放的视频在同一时间点切换到新 URL，播放或暂停状态保持不变。
-- 重试仍然失败时，读取以 `RemoteSourceError` 失败（`code` 为 `HTTP_STATUS`、`NETWORK` 或 `REFRESH_FAILED`，并带有 `path` 和 `status`）。
+- 重试仍然失败时，读取以 `RemoteSourceError` 失败（`code` 为 `HTTP_STATUS`、`NETWORK` 或 `REFRESH_FAILED`，并带有 `path` 和 `status`）。范围读取在刷新后保持原来的范围。
 - 不传 `refresh` 时，失败的读取不会重试。
 
 ### 只显示部分 episode
@@ -414,7 +425,7 @@ const LeRobotViewer = dynamic(
 | -------------------------- | -------------------------------------------------------------------------- |
 | `dataSource`               | 远程归档 URL、远程文件清单或自定义 `DataSource`                            |
 | `theme`                    | `light`、`dark` 或 `system`                                                |
-| `language`                 | `en`、`zh` 或 `ja`                                                         |
+| `language`                 | `en`、`zh` 或 `ja`（`zh` 与 `ja` 在首次渲染前按需加载）                    |
 | `showSidebar`              | 显示或隐藏 Episode 侧栏                                                    |
 | `showPlaybackBar`          | 显示或隐藏播放控制栏                                                       |
 | `enableKeyboardShortcuts`  | 启用或关闭查看器快捷键                                                     |

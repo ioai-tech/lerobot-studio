@@ -1,6 +1,7 @@
 import { spawnSync } from 'node:child_process';
 import { readdir, readFile } from 'node:fs/promises';
 import path from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { gzipSync } from 'node:zlib';
 
 const ROOT = process.cwd();
@@ -13,19 +14,17 @@ if (!Number.isFinite(scale) || scale <= 0 || scale > 1) {
   process.exit(2);
 }
 
-// Round integer ceilings above the current artifacts. Raising one requires
-// an explicit review of the generated output.
+// Round integer ceilings about 3% above the current artifacts. Raising one
+// requires an explicit review of the generated output.
 //
-// 2026-10-03 review (raised libEntry raw/gzip and largestWebJs gzip): the
-// breaches were introduced by the dependabot npm group that landed on main
-// before this branch (react-intl 10.2.2, parquet-wasm 0.8.0 and the
-// npm-minor-and-patch transitive updates). Building `75c4972` in a clean
-// worktree produced byte-identical artifacts to this tree —
-// `dist-lib/lerobot.es.js` 396,971 raw / 122,831 gzip and
-// `dist/assets/vendor-CTRz_hBz.js` 1,149,541 raw / 321,899 gzip — so the
-// dependency-security work in this release changes no bundle at all and the
-// ceilings only move to cover upstream's growth. Heads are ~1-3% (web initial
-// JS gzip is the tightest at ~0.2% and will need the next review).
+// 2026-11-18 review (every ceiling reset to ~3% headroom): the web initial JS
+// had counted the entry chunk twice (module script and modulepreload); main
+// at 6ac7f68 measured 2.36 MiB raw / 682.4 KiB gzip counted once (762.6 KiB
+// counted twice). This change loads the segment inspector, list and dialogs,
+// the edit dialogs and the zh/ja locales on demand (web initial JS
+// 2,382,578 raw / 674,770 gzip; library entry 417,765 / 129,985, from
+// 445.4 KiB / 134.9 KiB) and adds parquet range reads to the lazy DataLoader
+// (web 49,061 / 14,406, from 37.5 KiB / 10.5 KiB).
 const budgets = {
   // +5 KB raw head for the splitter ARIA values and Space-on-button handling
   // (measured ~400.1 KB raw, just over the old 400,000-byte ceiling).
@@ -160,7 +159,7 @@ async function checkLargestChunk(label, key, files) {
   }
 }
 
-function htmlAssetPaths(html, relation) {
+export function htmlAssetPaths(html, relation) {
   const matches = [];
   const tagPattern = relation === 'script' ? /<script\b[^>]*>/gi : /<link\b[^>]*>/gi;
   for (const tag of html.match(tagPattern) ?? []) {
@@ -179,6 +178,17 @@ function htmlAssetPaths(html, relation) {
     if (value) matches.push(value);
   }
   return matches;
+}
+
+/**
+ * Every JS file the page loads before it runs: entry scripts and module
+ * preloads, each once (Vite also modulepreloads the entry it loads as a
+ * script, which must not count twice).
+ */
+export function initialScriptReferences(html) {
+  return [
+    ...new Set([...htmlAssetPaths(html, 'script'), ...htmlAssetPaths(html, 'modulepreload')]),
+  ];
 }
 
 function resolveWebAssets(references, description) {
@@ -206,104 +216,110 @@ function readPackMetadata() {
   }
 }
 
-const [libFiles, webFiles] = await Promise.all([walkFiles(LIB_DIR), walkFiles(WEB_DIR)]);
-const libEntry = oneFile(libFiles, /^lerobot\.es\.js$/, 'stable library entry');
-const libCss = oneFile(libFiles, /^lerobot-studio\.css$/, 'library CSS artifact');
-const libDataLoader = oneFile(
-  libFiles,
-  /^LeRobotDataLoader-[\w-]+\.js$/,
-  'library DataLoader chunk',
-);
-const libDockview = oneFile(libFiles, /^DockviewLayout-[\w-]+\.js$/, 'library Dockview chunk');
-const libWorkers = libFiles.filter((file) => /\.worker-[\w-]+\.js$/i.test(path.basename(file)));
-const libWorkerWasm = libFiles.filter(
-  (file) => /wasm/i.test(path.basename(file)) && !libWorkers.includes(file),
-);
-
-if (libWorkerWasm.length === 0) failures.push('No library Worker/WASM artifacts found.');
-if (libWorkers.length !== 2)
-  failures.push(`Expected two library Workers; found ${libWorkers.length}.`);
-
-let webInitialJs = [];
-let webInitialCss = [];
-try {
-  const html = await readFile(path.join(WEB_DIR, 'index.html'), 'utf8');
-  webInitialJs = resolveWebAssets(
-    [...htmlAssetPaths(html, 'script'), ...htmlAssetPaths(html, 'modulepreload')],
-    'initial JS',
+async function main() {
+  const [libFiles, webFiles] = await Promise.all([walkFiles(LIB_DIR), walkFiles(WEB_DIR)]);
+  const libEntry = oneFile(libFiles, /^lerobot\.es\.js$/, 'stable library entry');
+  const libCss = oneFile(libFiles, /^lerobot-studio\.css$/, 'library CSS artifact');
+  const libDataLoader = oneFile(
+    libFiles,
+    /^LeRobotDataLoader-[\w-]+\.js$/,
+    'library DataLoader chunk',
   );
-  webInitialCss = resolveWebAssets(htmlAssetPaths(html, 'stylesheet'), 'initial CSS');
-} catch (error) {
-  failures.push(`Missing or unreadable dist/index.html: ${error.message}`);
-}
+  const libDockview = oneFile(libFiles, /^DockviewLayout-[\w-]+\.js$/, 'library Dockview chunk');
+  const libWorkers = libFiles.filter((file) => /\.worker-[\w-]+\.js$/i.test(path.basename(file)));
+  const libWorkerWasm = libFiles.filter(
+    (file) => /wasm/i.test(path.basename(file)) && !libWorkers.includes(file),
+  );
 
-const webDataLoader = oneFile(webFiles, /^LeRobotDataLoader-[\w-]+\.js$/, 'web DataLoader chunk');
-const webDockview = oneFile(webFiles, /^DockviewLayout-[\w-]+\.js$/, 'web Dockview chunk');
-const webWorkers = webFiles.filter((file) => /\.worker-[\w-]+\.js$/i.test(path.basename(file)));
-const webWorkerWasm = webFiles.filter(
-  (file) => /wasm/i.test(path.basename(file)) && !webWorkers.includes(file),
-);
+  if (libWorkerWasm.length === 0) failures.push('No library Worker/WASM artifacts found.');
+  if (libWorkers.length !== 2)
+    failures.push(`Expected two library Workers; found ${libWorkers.length}.`);
 
-if (webWorkerWasm.length === 0) failures.push('No web Worker/WASM artifacts found.');
-if (webWorkers.length !== 2) failures.push(`Expected two web Workers; found ${webWorkers.length}.`);
-
-await checkGroup('Library stable entry', 'libEntry', libEntry);
-await checkGroup('Library CSS', 'libCss', libCss);
-await checkGroup('Web initial synchronous JS', 'webInitialJs', webInitialJs);
-await checkGroup('Web initial CSS', 'webInitialCss', webInitialCss);
-await checkGroup('Library lazy DataLoader', 'libDataLoader', libDataLoader);
-await checkGroup('Web lazy DataLoader', 'webDataLoader', webDataLoader);
-await checkGroup('Library lazy Dockview', 'libDockview', libDockview);
-await checkGroup('Web lazy Dockview', 'webDockview', webDockview);
-await checkGroup('Library Worker/WASM', 'libWorkerWasm', libWorkerWasm);
-await checkGroup('Library external Workers', 'libWorkers', libWorkers);
-await checkGroup('Web Worker/WASM', 'webWorkerWasm', webWorkerWasm);
-await checkGroup('Web external Workers', 'webWorkers', webWorkers);
-await checkLargestChunk(
-  'Largest library JS chunk',
-  'largestLibJs',
-  libFiles.filter((file) => file.endsWith('.js') && !libWorkerWasm.includes(file)),
-);
-await checkLargestChunk(
-  'Largest web JS chunk',
-  'largestWebJs',
-  webFiles.filter((file) => file.endsWith('.js') && !webWorkerWasm.includes(file)),
-);
-
-const pack = readPackMetadata();
-if (pack) {
-  const actual = { raw: pack.unpackedSize, gzip: pack.size };
-  const limit = budgetFor('npmTarball');
-  rows.push({ label: 'npm tarball (unpacked / .tgz)', actual, limit });
-  if (actual.raw > limit.raw) {
-    failures.push(
-      `npm tarball unpacked size is ${formatBytes(actual.raw)}; limit is ${formatBytes(limit.raw)}.`,
-    );
+  let webInitialJs = [];
+  let webInitialCss = [];
+  try {
+    const html = await readFile(path.join(WEB_DIR, 'index.html'), 'utf8');
+    webInitialJs = resolveWebAssets(initialScriptReferences(html), 'initial JS');
+    webInitialCss = resolveWebAssets(htmlAssetPaths(html, 'stylesheet'), 'initial CSS');
+  } catch (error) {
+    failures.push(`Missing or unreadable dist/index.html: ${error.message}`);
   }
-  if (actual.gzip > limit.gzip) {
-    failures.push(
-      `npm tarball .tgz size is ${formatBytes(actual.gzip)}; limit is ${formatBytes(limit.gzip)}.`,
-    );
+
+  const webDataLoader = oneFile(webFiles, /^LeRobotDataLoader-[\w-]+\.js$/, 'web DataLoader chunk');
+  const webDockview = oneFile(webFiles, /^DockviewLayout-[\w-]+\.js$/, 'web Dockview chunk');
+  const webWorkers = webFiles.filter((file) => /\.worker-[\w-]+\.js$/i.test(path.basename(file)));
+  const webWorkerWasm = webFiles.filter(
+    (file) => /wasm/i.test(path.basename(file)) && !webWorkers.includes(file),
+  );
+
+  if (webWorkerWasm.length === 0) failures.push('No web Worker/WASM artifacts found.');
+  if (webWorkers.length !== 2)
+    failures.push(`Expected two web Workers; found ${webWorkers.length}.`);
+
+  await checkGroup('Library stable entry', 'libEntry', libEntry);
+  await checkGroup('Library CSS', 'libCss', libCss);
+  await checkGroup('Web initial synchronous JS', 'webInitialJs', webInitialJs);
+  await checkGroup('Web initial CSS', 'webInitialCss', webInitialCss);
+  await checkGroup('Library lazy DataLoader', 'libDataLoader', libDataLoader);
+  await checkGroup('Web lazy DataLoader', 'webDataLoader', webDataLoader);
+  await checkGroup('Library lazy Dockview', 'libDockview', libDockview);
+  await checkGroup('Web lazy Dockview', 'webDockview', webDockview);
+  await checkGroup('Library Worker/WASM', 'libWorkerWasm', libWorkerWasm);
+  await checkGroup('Library external Workers', 'libWorkers', libWorkers);
+  await checkGroup('Web Worker/WASM', 'webWorkerWasm', webWorkerWasm);
+  await checkGroup('Web external Workers', 'webWorkers', webWorkers);
+  await checkLargestChunk(
+    'Largest library JS chunk',
+    'largestLibJs',
+    libFiles.filter((file) => file.endsWith('.js') && !libWorkerWasm.includes(file)),
+  );
+  await checkLargestChunk(
+    'Largest web JS chunk',
+    'largestWebJs',
+    webFiles.filter((file) => file.endsWith('.js') && !webWorkerWasm.includes(file)),
+  );
+
+  const pack = readPackMetadata();
+  if (pack) {
+    const actual = { raw: pack.unpackedSize, gzip: pack.size };
+    const limit = budgetFor('npmTarball');
+    rows.push({ label: 'npm tarball (unpacked / .tgz)', actual, limit });
+    if (actual.raw > limit.raw) {
+      failures.push(
+        `npm tarball unpacked size is ${formatBytes(actual.raw)}; limit is ${formatBytes(limit.raw)}.`,
+      );
+    }
+    if (actual.gzip > limit.gzip) {
+      failures.push(
+        `npm tarball .tgz size is ${formatBytes(actual.gzip)}; limit is ${formatBytes(limit.gzip)}.`,
+      );
+    }
   }
+
+  const labelWidth = Math.max(...rows.map((row) => row.label.length), 24);
+  console.log('\nBundle size report (raw and gzip):');
+  console.log(
+    `${'Artifact'.padEnd(labelWidth)}  ${'Raw / limit'.padEnd(25)}  ${'Gzip / limit'.padEnd(25)}`,
+  );
+  for (const row of rows) {
+    const raw = `${formatBytes(row.actual.raw)} / ${formatBytes(row.limit.raw)}`;
+    const gzip = `${formatBytes(row.actual.gzip)} / ${formatBytes(row.limit.gzip)}`;
+    console.log(`${row.label.padEnd(labelWidth)}  ${raw.padEnd(25)}  ${gzip.padEnd(25)}`);
+  }
+
+  console.log(
+    '\nNote: library Workers are external and share one lazy package-local WASM payload.',
+  );
+
+  if (failures.length > 0) {
+    console.error(`\nBundle size gate failed with ${failures.length} problem(s):`);
+    for (const failure of failures) console.error(`- ${failure}`);
+    process.exit(1);
+  }
+
+  console.log('\nBundle size gate passed.');
 }
 
-const labelWidth = Math.max(...rows.map((row) => row.label.length), 24);
-console.log('\nBundle size report (raw and gzip):');
-console.log(
-  `${'Artifact'.padEnd(labelWidth)}  ${'Raw / limit'.padEnd(25)}  ${'Gzip / limit'.padEnd(25)}`,
-);
-for (const row of rows) {
-  const raw = `${formatBytes(row.actual.raw)} / ${formatBytes(row.limit.raw)}`;
-  const gzip = `${formatBytes(row.actual.gzip)} / ${formatBytes(row.limit.gzip)}`;
-  console.log(`${row.label.padEnd(labelWidth)}  ${raw.padEnd(25)}  ${gzip.padEnd(25)}`);
+if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href) {
+  await main();
 }
-
-console.log('\nNote: library Workers are external and share one lazy package-local WASM payload.');
-
-if (failures.length > 0) {
-  console.error(`\nBundle size gate failed with ${failures.length} problem(s):`);
-  for (const failure of failures) console.error(`- ${failure}`);
-  process.exit(1);
-}
-
-console.log('\nBundle size gate passed.');

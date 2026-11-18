@@ -32,6 +32,7 @@ import {
   buildPlaybackFrames,
   findSegment,
   getEagerEpisodeColumns,
+  getEpisodeColumnBatches,
   getFirstAvailableEpisodeIndex,
   lastUnlabeledGap,
   pendingSelectionEpisode,
@@ -123,6 +124,7 @@ export const LeRobotDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
   const [selectedEpisodeIndex, setSelectedEpisodeIndex] = useState<number | null>(null);
   const [currentFrames, setCurrentFrames] = useState<FrameData[]>([]);
   const [chartData, setChartData] = useState<NumericalColumnMap>({});
+  const [pendingChartColumns, setPendingChartColumns] = useState<readonly string[]>([]);
   const [featureData, setFeatureData] = useState<Record<string, unknown[]>>({});
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -286,6 +288,7 @@ export const LeRobotDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
     dataLoader,
     info,
     chartData,
+    chartColumnsPending: pendingChartColumns.length > 0,
     featureData,
     setFeatureData,
   });
@@ -417,6 +420,7 @@ export const LeRobotDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
     setSelectedEpisodeIndices(new Set());
     setCurrentFrames([]);
     setChartData({});
+    setPendingChartColumns([]);
     setFeatureData({});
     setCurrentFrameIndex(0);
     frameIndexRef.current = 0;
@@ -490,6 +494,7 @@ export const LeRobotDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
         setSelectedEpisodeIndex(null);
         setCurrentFrames([]);
         setChartData({});
+        setPendingChartColumns([]);
         setFeatureData({});
         setCurrentFrameIndex(0);
         frameIndexRef.current = 0;
@@ -590,6 +595,7 @@ export const LeRobotDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
       frameIndexRef.current = 0;
       notifyFrameSubscribers(0);
       setChartData({});
+      setPendingChartColumns(getEagerEpisodeColumns(info));
       setFeatureData({});
       setSourceSubtaskIndices([]);
       loadingEpisodeRef.current = index;
@@ -608,15 +614,33 @@ export const LeRobotDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
       }
 
       try {
-        const eagerColumns = getEagerEpisodeColumns(info);
+        // The time axis and the top chart group first (playback frames and the
+        // first chart), then the other groups; each read fetches only its
+        // columns of this episode when the source reads ranges.
+        const [firstColumns, ...laterBatches] = getEpisodeColumnBatches(info);
+        const laterColumns = laterBatches.flat();
+        setPendingChartColumns([...firstColumns!, ...laterColumns]);
 
-        // 只预取播放和图表所需的时间轴/数值列，其他特征继续按需加载。
         upsertTask({
           id: taskId,
           phase: 'read',
           message: tRef.current('loading.message.fetchFrames', { index }),
         });
-        const numericalData = await dataLoader.loadAllNumericalData(index, eagerColumns);
+        // The later batch starts downloading once the first one's bytes are
+        // in, while the first decodes; the link serves one batch at a time.
+        let firstFetched: () => void = () => {};
+        const fetched = new Promise<void>((resolve) => {
+          firstFetched = resolve;
+        });
+        const laterRead =
+          laterColumns.length > 0
+            ? fetched.then(() => dataLoader.loadAllNumericalData(index, laterColumns))
+            : null;
+        // Settled below; never an unhandled rejection when the first batch fails.
+        laterRead?.catch(() => {});
+        let numericalData = await dataLoader.loadAllNumericalData(index, firstColumns!, {
+          onFetched: firstFetched,
+        });
 
         if (loadingEpisodeRef.current !== index) return false;
 
@@ -627,14 +651,21 @@ export const LeRobotDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
         });
         const frames = buildPlaybackFrames(numericalData, info.fps ?? 30);
         setCurrentFrames(frames);
+        setChartData(numericalData);
+        setPendingChartColumns(laterColumns);
+
+        if (laterRead) {
+          const later = await laterRead;
+          if (loadingEpisodeRef.current !== index) return false;
+          numericalData = { ...numericalData, ...later };
+          setChartData(numericalData);
+          setPendingChartColumns([]);
+        }
+
         const subtaskSource = await dataLoader.loadEpisodeSubtaskSource(index);
         if (loadingEpisodeRef.current === index) {
           setSourceSubtaskIndices(subtaskSource.indices);
           setSourceSubtasks((previous) => ({ ...previous, ...subtaskSource.table }));
-        }
-
-        if (loadingEpisodeRef.current === index) {
-          setChartData(numericalData);
         }
 
         // 已订阅特征优先复用已加载的数值列，剩余列再按需补读。
@@ -691,6 +722,7 @@ export const LeRobotDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
         return loadingEpisodeRef.current === index;
       } catch (e) {
         if (loadingEpisodeRef.current === index) {
+          setPendingChartColumns([]);
           console.error('Failed to load episode data', e);
           const msg = e instanceof Error ? e.message : 'Unknown error while loading episode';
           setError(msg);
@@ -739,6 +771,7 @@ export const LeRobotDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
         setSelectedEpisodeIndex(null);
         setCurrentFrames([]);
         setChartData({});
+        setPendingChartColumns([]);
         setFeatureData({});
       }
     }
@@ -887,6 +920,7 @@ export const LeRobotDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
       clock,
       currentFrames,
       chartData,
+      pendingChartColumns,
       currentFrameIndex,
       isPlaying,
       playbackMode,
@@ -902,6 +936,7 @@ export const LeRobotDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
       clock,
       currentFrames,
       chartData,
+      pendingChartColumns,
       currentFrameIndex,
       isPlaying,
       playbackMode,

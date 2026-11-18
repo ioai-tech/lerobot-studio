@@ -7,9 +7,9 @@ import {
   useLeRobotSubtask,
   useLeRobotUi,
 } from '../../contexts/LeRobotContext';
-import { SegmentList } from '../Segments/SegmentList';
+import { LazySegmentList } from '../Segments/lazySegments';
 import type { EpisodeMetadata } from '@/core';
-import { EditTaskDialog } from '../dialogs/EditTaskDialog';
+import { LazyEditTaskDialog } from '../dialogs/lazyDialogs';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/ui';
 import { Button } from '@/ui';
 import { Textarea } from '@/ui';
@@ -225,7 +225,7 @@ export const EpisodeSidebar: React.FC = () => {
           </div>
         ) : null}
         <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-          <SegmentList episodeIndex={episodes[0].episode_index} />
+          <LazySegmentList episodeIndex={episodes[0].episode_index} />
         </div>
       </div>
     );
@@ -307,7 +307,9 @@ export const EpisodeSidebar: React.FC = () => {
           onRestore={(episodeIndex, event) => handleRestore(event, episodeIndex)}
           renderSelectedExpansion={
             segments.active
-              ? (episode) => <SegmentList episodeIndex={episode.episode_index} showTitle={false} />
+              ? (episode) => (
+                  <LazySegmentList episodeIndex={episode.episode_index} showTitle={false} />
+                )
               : undefined
           }
           expansionHeight={(episode) => {
@@ -326,7 +328,7 @@ export const EpisodeSidebar: React.FC = () => {
         </Suspense>
       )}
       {!mutationDisabled && (
-        <EditTaskDialog
+        <LazyEditTaskDialog
           key={episodeToEdit?.episode_index ?? 'edit-dialog'}
           open={editDialogOpen}
           onOpenChange={setEditDialogOpen}
