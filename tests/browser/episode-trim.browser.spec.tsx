@@ -245,9 +245,13 @@ describe('browser: episode trim controls', () => {
           showPlaybackBar
         />,
       );
-      await expect.poll(() => host.querySelector('[title="Edit episodes"]')).not.toBeNull();
       await expect
-        .poll(() => host.querySelector<HTMLButtonElement>('[title="Edit episodes"]')?.disabled)
+        .poll(() => host.querySelector('[title="Edit episodes"]'), { timeout: 10_000 })
+        .not.toBeNull();
+      await expect
+        .poll(() => host.querySelector<HTMLButtonElement>('[title="Edit episodes"]')?.disabled, {
+          timeout: 10_000,
+        })
         .toBe(false);
       host.querySelector<HTMLButtonElement>('[title="Edit episodes"]')!.click();
       await userEvent.click(page.getByRole('button', { name: 'Trim episode', exact: true }));

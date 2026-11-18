@@ -329,10 +329,13 @@ describe('browser: data foundations', () => {
     const videos = () => Array.from(host.querySelectorAll('video'));
     const slider = () => host.querySelector<HTMLElement>('[role="slider"]')!;
     const button = () => host.querySelector<HTMLButtonElement>('button[aria-label="Play/pause"]')!;
-    const playing = () => videos().some((v) => !v.paused);
+    // The play state as the UI shows it (autoplay may start at any moment).
+    const uiPlaying = () => button()?.querySelector('.lucide-pause') != null;
+    const playing = () => uiPlaying() && videos().some((v) => !v.paused);
     await waitFor(() => videos().length === 2 && videos().every((v) => v.readyState >= 2));
     await waitFor(() => button() !== null && !button().disabled);
-    if (!playing()) await act(async () => button().click());
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    if (!uiPlaying()) await act(async () => button().click());
 
     for (let cycle = 0; cycle < 5; cycle++) {
       await waitFor(() => playing());
