@@ -151,6 +151,17 @@ describe('browser: data foundations', () => {
       over.dispatchEvent(new MouseEvent('click', { ...at, bubbles: true, button: 0 }));
     });
     await waitFor(() => (video()?.currentTime ?? 0) > 0.1 && !video()!.seeking);
+    // The camera may still be converging on the clicked frame: take the time
+    // once it has held still for 300 ms.
+    let settled = { time: -1, since: performance.now() };
+    await waitFor(() => {
+      const time = video()!.currentTime;
+      if (video()!.seeking || time !== settled.time) {
+        settled = { time, since: performance.now() };
+        return false;
+      }
+      return performance.now() - settled.since >= 300;
+    });
     const before = video()!.currentTime;
 
     const oldSrc = video()!.src;
