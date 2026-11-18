@@ -76,6 +76,25 @@ not prove that those settings are active. Report a suspected compromised
 dependency, action, package, release artifact, or maintainer credential through
 the private vulnerability channel above.
 
+## Dependency vulnerabilities
+
+CI runs `npm run check:audit` (`scripts/check-audit.mjs`) instead of a bare
+`npm audit`. It fails on high and critical advisories. It skips an advisory
+only when that advisory's GHSA id is listed in the waiver table below, with
+its scope and reason. A vulnerable package counts as waived only when every
+advisory it reaches through npm's dependency chain is waived, so a dependency
+cycle counts as waived only when every advisory in it is waived.
+
+Fix a finding first: upgrade the package when the parent range allows it, or
+add a narrow override when it does not. Waive an advisory only when no
+non-breaking fix exists and the affected code ships in no published artifact.
+Remove the waiver as soon as a fix ships. The gate warns about waivers that
+match no advisory.
+
+| Advisory                                    | Scope                                                                                                                                                                                                            | Reason                                                                                                                                                                                                 | Remove when                                                               |
+| ------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------- |
+| GHSA-fc5q-39xc-vjpf (picomatch ReDoS, high) | Toolchain only: reached through vite, vitest, eslint, changesets and vitepress (via tinyglobby / fdir). Nothing in the published package or the built app depends on picomatch; `npm audit --omit=dev` is clean. | Every published picomatch version (`<= 4.0.7`) is affected and no patched release exists, so no upgrade or override can fix it. Patterns come from repository configuration, not from untrusted input. | A patched picomatch is released: update the lockfile and delete this row. |
+
 ## Scope
 
 In scope are vulnerabilities in this repository’s distributed web application

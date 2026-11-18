@@ -10,6 +10,7 @@
     "build:lib": "tsc -p tsconfig.lib.json --emitDeclarationOnly --outDir temp/types && vite build --config vite.lib.config.ts && api-extractor run",
     "docs:dev": "vitepress dev docs",
     "docs:build": "vitepress build docs",
+    "check:audit": "node scripts/check-audit.mjs",
     "check:docs-i18n": "node scripts/check-docs-i18n.mjs",
     "api:report": "api-extractor run --local",
     "api:report:check": "api-extractor run",

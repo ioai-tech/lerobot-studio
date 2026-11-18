@@ -27,8 +27,8 @@ jobs:
           cache: npm
       - name: Install
         run: npm ci
-      - name: Audit lockfile vulnerabilities
-        run: npm audit --audit-level=high
+      - name: Audit lockfile vulnerabilities (waivers in SECURITY.md)
+        run: npm run check:audit
       - name: Generate test fixtures
         run: npm run fixtures:generate
       - name: Format check
