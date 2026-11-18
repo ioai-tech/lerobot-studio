@@ -2,6 +2,8 @@ import { frameAtTime, type PlaybackClock } from './PlaybackClock';
 
 /** Drift beyond this (seconds) is corrected with one seek instead of a rate trim. */
 export const HARD_SEEK_DRIFT_S = 0.5;
+/** While held, a camera further than this many frames from the clock seeks to it. */
+export const HELD_SEEK_FRAMES = 2;
 /** Rate trim per second of smoothed drift (0.033 s ahead → 6.6 % slower until aligned). */
 const RATE_GAIN = 1;
 const MAX_RATE_TRIM = 0.1;
@@ -128,11 +130,13 @@ export class CameraFollower {
       }
       if (video.paused) void video.play().catch(() => undefined);
     } else {
-      // Held (another camera buffers): wait on the clock's time, so every
-      // camera resumes from the same frame instead of where it happened to stop.
+      // Held (another camera buffers): pause. A camera more than a couple of
+      // frames from the clock's time seeks to it so cameras resume together;
+      // smaller offsets are left to the rate trim, because a seek per hold
+      // makes a slow decoder buffer again and holds every camera once more.
       if (!video.paused) video.pause();
       const heldAt = this.clampTime(range.start + this.clock.now(), range, fps);
-      if (Math.abs(video.currentTime - heldAt) > 0.5 / fps) this.seekTo(heldAt);
+      if (Math.abs(video.currentTime - heldAt) > HELD_SEEK_FRAMES / fps) this.seekTo(heldAt);
     }
   }
 
