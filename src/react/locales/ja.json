@@ -988,9 +988,28 @@
       "frameStep": "前 / 次のフレーム",
       "frameStep10": "10 フレーム戻る / 進む",
       "firstLast": "最初 / 最後のフレーム"
-    }
+    },
+    "narrowEditing": "編集にはより広いウィンドウが必要です。再生とセグメント一覧は引き続き使えます。"
   },
   "viewer": {
     "regionLabel": "データセットビューアー"
+  },
+  "markers": {
+    "label": "マーカー",
+    "item": "{{label}}、{{severity}}、{{time}}",
+    "severity": {
+      "info": "情報",
+      "warn": "警告",
+      "fail": "失敗"
+    },
+    "issueCount": "問題 {count} 件"
+  },
+  "overlay": {
+    "legend": "提案（読み取り専用）",
+    "item": "提案 {{n}}、{{time}}"
+  },
+  "host": {
+    "toolbar": "操作",
+    "opensInNewTab": "（新しいタブで開きます）"
   }
 }

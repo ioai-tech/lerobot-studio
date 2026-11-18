@@ -1,6 +1,13 @@
 import React, { memo, useCallback, useEffect, useMemo, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
-import type { FrameData, SubtaskSegment, EpisodeTrimRange } from '@/core';
+import {
+  frameAtFraction,
+  frameRangeStyle,
+  frameStartFraction,
+  type FrameData,
+  type SubtaskSegment,
+  type EpisodeTrimRange,
+} from '@/core';
 import type { PendingSubtaskRange } from '../../contexts/useSubtaskAnnotation';
 import { SubtaskRangeTrack } from './SubtaskRangeTrack';
 
@@ -32,6 +39,8 @@ export interface PlaybackProgressSliderProps {
   subscribeFrameIndex: (callback: (frameIndex: number) => void) => () => void;
   /** Rendered above the subtask lane on the same x-scale (e.g. the segment band). */
   aboveTrack?: React.ReactNode;
+  /** Rendered right above the progress track on the same x-scale (e.g. host markers). */
+  besideTrack?: React.ReactNode;
   segments?: SubtaskSegment[];
   pendingRange?: PendingSubtaskRange | null;
   editRanges?: boolean;
@@ -54,6 +63,7 @@ const PlaybackProgressSliderComponent: React.FC<PlaybackProgressSliderProps> = (
   getFrameIndex,
   subscribeFrameIndex,
   aboveTrack,
+  besideTrack,
   segments = [],
   pendingRange = null,
   editRanges = false,
@@ -129,7 +139,7 @@ const PlaybackProgressSliderComponent: React.FC<PlaybackProgressSliderProps> = (
       }
 
       if (totalFrames > 0) {
-        updateProgressVisual(frameIndex / Math.max(1, totalFrames - 1));
+        updateProgressVisual(frameStartFraction(frameIndex, totalFrames));
       } else {
         updateProgressVisual(0);
       }
@@ -153,9 +163,7 @@ const PlaybackProgressSliderComponent: React.FC<PlaybackProgressSliderProps> = (
   const seekToPercent = useCallback(
     (percent: number) => {
       if (totalFrames === 0) return;
-      const clamped = Math.max(0, Math.min(1, percent));
-      const nextIndex = Math.round(clamped * (totalFrames - 1));
-      commitFrameIndex(nextIndex);
+      commitFrameIndex(frameAtFraction(percent, totalFrames));
     },
     [commitFrameIndex, totalFrames],
   );
@@ -330,6 +338,7 @@ const PlaybackProgressSliderComponent: React.FC<PlaybackProgressSliderProps> = (
           onRename={editRanges ? onRenameSegment : undefined}
         />
       ) : null}
+      {besideTrack}
 
       <div
         ref={trackRef}
@@ -359,14 +368,8 @@ const PlaybackProgressSliderComponent: React.FC<PlaybackProgressSliderProps> = (
         ) : null}
         {totalFrames > 1 && pendingRange ? (
           <div
-            className="absolute top-0 h-full rounded-full pointer-events-none bg-primary/30"
-            style={{
-              left: `${(pendingRange.startFrame / (totalFrames - 1)) * 100}%`,
-              width: `${Math.max(
-                ((pendingRange.endFrame - pendingRange.startFrame + 1) / totalFrames) * 100,
-                0.5,
-              )}%`,
-            }}
+            className="absolute top-0 h-full min-w-1 rounded-full pointer-events-none bg-primary/30"
+            style={frameRangeStyle(pendingRange.startFrame, pendingRange.endFrame, totalFrames)}
           />
         ) : null}
         <div
@@ -374,7 +377,7 @@ const PlaybackProgressSliderComponent: React.FC<PlaybackProgressSliderProps> = (
           className="absolute h-full rounded-full bg-primary/70 pointer-events-none"
           style={{
             width: '100%',
-            transform: `scaleX(${totalFrames > 1 ? initialFrameIndex / (totalFrames - 1) : 0})`,
+            transform: `scaleX(${frameStartFraction(initialFrameIndex, totalFrames)})`,
             transformOrigin: 'left center',
           }}
         />
@@ -382,7 +385,7 @@ const PlaybackProgressSliderComponent: React.FC<PlaybackProgressSliderProps> = (
           ref={thumbRef}
           className="absolute left-0 top-1/2 h-4 w-4 rounded-full border border-primary/50 bg-background transition-shadow will-change-transform hover:shadow-md"
           style={{
-            left: getThumbLeft(totalFrames > 1 ? initialFrameIndex / (totalFrames - 1) : 0),
+            left: getThumbLeft(frameStartFraction(initialFrameIndex, totalFrames)),
             transform: 'translateY(-50%)',
           }}
         />

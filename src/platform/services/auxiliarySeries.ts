@@ -14,8 +14,12 @@ export interface AuxiliarySeries {
   label: string;
   /** One or more parquet files, read in order and concatenated. */
   files: RemoteFileEntry[];
-  /** Column holding each sample's time. */
-  timeColumn: string;
+  /**
+   * Column holding each sample's time. `null` means the row index is the time:
+   * row `i` (counted across `files` in order) is dataset frame `i`. `null`
+   * needs `timeUnit: 'frame'` (otherwise `ROW_TIME_NEEDS_FRAME_UNIT`).
+   */
+  timeColumn: string | null;
   /**
    * `s` seconds, `ns` nanoseconds, or `frame` (dataset frame index, divided by
    * fps). An Arrow/parquet timestamp column is read exactly as nanoseconds and
@@ -40,6 +44,7 @@ export type AuxiliarySeriesWarningCode =
   | 'COLUMN_MISSING'
   | 'TIME_COLUMN_MISSING'
   | 'TIME_UNIT_MISMATCH'
+  | 'ROW_TIME_NEEDS_FRAME_UNIT'
   | 'READ_FAILED'
   | 'EPISODE_SET_UNSUPPORTED';
 
@@ -159,35 +164,51 @@ export async function readAuxiliarySeries(
     warnings: [warning],
   });
 
+  const timeColumn = series.timeColumn;
+  if (timeColumn === null && series.timeUnit !== 'frame') {
+    return refuse({
+      code: 'ROW_TIME_NEEDS_FRAME_UNIT',
+      seriesId: series.id,
+      message: `timeColumn null (row index as time) needs timeUnit 'frame', not '${series.timeUnit}'`,
+    });
+  }
+  let rowOffset = 0;
   for (const file of series.files) {
     const ipc = await parse(await source.readBytes(file.logicalPath));
     const table = tableFromIPC(ipc);
     const rows = table.numRows;
-    const timeVector = table.getChild(series.timeColumn);
-    if (!timeVector) {
-      return refuse({
-        code: 'TIME_COLUMN_MISSING',
-        seriesId: series.id,
-        column: series.timeColumn,
-        message: `Time column ${series.timeColumn} is missing in ${file.logicalPath}`,
-      });
+    if (timeColumn === null) {
+      const rowIndex = new Array<number>(rows);
+      for (let i = 0; i < rows; i++) rowIndex[i] = rowOffset + i;
+      times.push(convertAuxiliaryTime(rowIndex, 'frame', fps, series.timeOffsetNs));
+    } else {
+      const timeVector = table.getChild(timeColumn);
+      if (!timeVector) {
+        return refuse({
+          code: 'TIME_COLUMN_MISSING',
+          seriesId: series.id,
+          column: timeColumn,
+          message: `Time column ${timeColumn} is missing in ${file.logicalPath}`,
+        });
+      }
+      const rawTime = readTimeColumn(timeVector);
+      if (rawTime.timestamp && series.timeUnit !== 'ns') {
+        return refuse({
+          code: 'TIME_UNIT_MISMATCH',
+          seriesId: series.id,
+          column: timeColumn,
+          message: `Time column ${timeColumn} is a timestamp; use timeUnit 'ns'`,
+        });
+      }
+      times.push(convertAuxiliaryTime(rawTime.values, series.timeUnit, fps, series.timeOffsetNs));
     }
-    const rawTime = readTimeColumn(timeVector);
-    if (rawTime.timestamp && series.timeUnit !== 'ns') {
-      return refuse({
-        code: 'TIME_UNIT_MISMATCH',
-        seriesId: series.id,
-        column: series.timeColumn,
-        message: `Time column ${series.timeColumn} is a timestamp; use timeUnit 'ns'`,
-      });
-    }
-    times.push(convertAuxiliaryTime(rawTime.values, series.timeUnit, fps, series.timeOffsetNs));
+    rowOffset += rows;
 
     const names =
       wanted ??
       table.schema.fields
         .map((field) => field.name)
-        .filter((name) => name !== series.timeColumn && isNumericVector(table.getChild(name)!));
+        .filter((name) => name !== timeColumn && isNumericVector(table.getChild(name)!));
     const columns = new Map<string, { width: number; values: Float64Array }>();
     for (const name of names) {
       if (!order.includes(name)) order.push(name);

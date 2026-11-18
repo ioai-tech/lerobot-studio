@@ -1,4 +1,12 @@
-import React, { useRef, createContext, useContext, useEffect, useState } from 'react';
+import React, {
+  useRef,
+  createContext,
+  useContext,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useState,
+} from 'react';
 import { DockviewReact } from 'dockview-react';
 import type { DockviewReadyEvent, IDockviewPanelProps, DockviewApi } from 'dockview-react';
 import { useTranslation } from 'react-i18next';
@@ -8,18 +16,34 @@ import type { LeRobotFeature } from '@/core';
 import 'dockview-react/dist/styles/dockview.css';
 import { VideoPanel, ImagePanel, ChartPanel, RawPanel, PanelErrorBoundary } from './panels';
 import { PanelTitle } from './PanelTitle';
-import { getAutoLayoutVisualRows, getVisualMaxPerRow, isStackedPanelsWidth } from '@/core';
+import {
+  cameraAreaHeight,
+  chooseCamerasPerRow,
+  getAutoLayoutVisualRows,
+  isStackedPanelsWidth,
+  visualAspectRatio,
+} from '@/core';
 import { safeAddPanel } from '../utils/dockviewPanelId';
 
 type DockviewSerializedGrid = {
   grid?: {
     root?: GridNode;
+    width?: number;
+    height?: number;
+    orientation?: 'HORIZONTAL' | 'VERTICAL';
   };
 };
 
+/** Narrowest camera tile worth showing in a row. */
+const MIN_CAMERA_TILE_PX = 160;
+
 type GridNode =
-  | { type: 'leaf'; data: { id: string; activePanel: string; panels: string[] }; size: number }
+  | { type: 'leaf'; data: { id: string; activeView?: string; views: string[] }; size: number }
   | { type: 'branch'; data: GridNode[]; size: number };
+
+/** Panel ids of a serialized leaf (`views` in dockview's grid JSON). */
+const leafPanels = (node: Extract<GridNode, { type: 'leaf' }>): string[] =>
+  Array.isArray(node.data.views) ? node.data.views : [];
 
 /** Minimum height of each panel in the stacked (narrow) column; the column scrolls. */
 const STACKED_PANEL_MIN_HEIGHT_PX = 220;
@@ -78,25 +102,57 @@ export const DockviewLayout: React.FC = () => {
   const { resolvedTheme } = useTheme();
   const { info } = useLeRobotData();
   const dockviewRef = useRef<HTMLDivElement>(null);
-  const [maxPerRow, setMaxPerRow] = useState(4);
+  const [box, setBox] = useState({ width: 0, height: 0 });
   // Narrow containers (embedded viewers on phones) get a single stacked column.
-  const [stacked, setStacked] = useState(false);
+  const stacked = isStackedPanelsWidth(box.width);
   const [panelCount, setPanelCount] = useState(0);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const el = dockviewRef.current;
     if (!el) return;
-    const update = (width: number) => {
-      setMaxPerRow(getVisualMaxPerRow(width));
-      setStacked(isStackedPanelsWidth(width));
-    };
-    update(el.clientWidth);
+    const update = (width: number, height: number) =>
+      setBox((prev) =>
+        prev.width === Math.round(width) && prev.height === Math.round(height)
+          ? prev
+          : { width: Math.round(width), height: Math.round(height) },
+      );
+    update(el.clientWidth, el.clientHeight);
     const observer = new ResizeObserver((entries) => {
-      update(entries[0]?.contentRect.width ?? el.clientWidth);
+      const rect = entries[0]?.contentRect;
+      update(rect?.width ?? el.clientWidth, rect?.height ?? el.clientHeight);
     });
     observer.observe(el);
     return () => observer.disconnect();
   }, []);
+
+  /** Camera features and their frame shape (the first camera's). */
+  const visualKeys = useMemo(
+    () =>
+      info
+        ? Object.entries(info.features)
+            .filter(([, feature]) => feature?.dtype === 'video' || feature?.dtype === 'image')
+            .map(([key]) => key)
+        : [],
+    [info],
+  );
+  const aspect = useMemo(
+    () => visualAspectRatio(visualKeys[0] ? info?.features[visualKeys[0]] : undefined),
+    [info, visualKeys],
+  );
+  // Cameras per row: the arrangement that shows the biggest frames.
+  const maxPerRow = useMemo(() => {
+    if (box.width <= 0) return 4;
+    const cap = Math.max(1, Math.min(4, Math.floor(box.width / MIN_CAMERA_TILE_PX)));
+    return chooseCamerasPerRow({
+      count: Math.min(visualKeys.length, 6),
+      width: box.width,
+      height: box.height,
+      aspect,
+      maxPerRow: cap,
+    });
+  }, [aspect, box.height, box.width, visualKeys.length]);
+  const layoutInputRef = useRef({ box, aspect });
+  layoutInputRef.current = { box, aspect };
 
   /**
    * 将当前布局 split size 重新均分，保证三层布局稳定：
@@ -105,17 +161,22 @@ export const DockviewLayout: React.FC = () => {
    * - 每一行视觉面板宽度均分
    * - 底部 chart/raw 宽度均分
    */
-  const rebalanceLayout = (api: DockviewApi, row1PanelIds: string[], row2PanelIds: string[]) => {
+  const rebalanceLayout = (
+    api: DockviewApi,
+    row1PanelIds: string[],
+    row2PanelIds: string[],
+    perRow: number,
+  ) => {
     const visualPanelIds = [...row1PanelIds, ...row2PanelIds];
     if (visualPanelIds.length === 0) return;
 
     const containsAnyPanel = (node: GridNode, panelIds: Set<string>): boolean => {
-      if (node.type === 'leaf') return node.data.panels.some((p) => panelIds.has(p));
+      if (node.type === 'leaf') return leafPanels(node).some((p) => panelIds.has(p));
       return node.data.some((c) => containsAnyPanel(c, panelIds));
     };
 
     const countVisualLeaves = (node: GridNode, panelIds: Set<string>): number => {
-      if (node.type === 'leaf') return node.data.panels.some((p) => panelIds.has(p)) ? 1 : 0;
+      if (node.type === 'leaf') return leafPanels(node).some((p) => panelIds.has(p)) ? 1 : 0;
       return node.data.reduce((acc, c) => acc + countVisualLeaves(c, panelIds), 0);
     };
 
@@ -196,16 +257,26 @@ export const DockviewLayout: React.FC = () => {
       const bottomSet = new Set(['chart-panel', 'raw-panel']);
 
       const children: GridNode[] = root.data;
-      if (children.length >= 2) {
+      // The root of this layout stacks rows top to bottom; its own `size` is
+      // the width, so the heights come from the grid height.
+      const gridHeight = state.grid?.height ?? 0;
+      const gridWidth = state.grid?.width ?? root.size;
+      if (children.length >= 2 && state.grid?.orientation === 'VERTICAL' && gridHeight > 0) {
         const bottomIdx = children.findIndex((c) => containsAnyPanel(c, bottomSet));
         const topIdx = children.findIndex((c) => containsAnyPanel(c, visualSet));
         if (bottomIdx !== -1 && topIdx !== -1 && bottomIdx !== topIdx) {
-          const topWeight = 2;
-          const bottomWeight = 1;
-          const total = topWeight + bottomWeight;
-          const topSize = Math.max(1, Math.round((root.size * topWeight) / total));
+          const topSize = Math.max(
+            1,
+            cameraAreaHeight({
+              height: gridHeight,
+              width: gridWidth,
+              rows: row2PanelIds.length > 0 ? 2 : 1,
+              perRow: Math.max(1, perRow),
+              aspect: layoutInputRef.current.aspect,
+            }),
+          );
           children[topIdx].size = topSize;
-          children[bottomIdx].size = Math.max(1, root.size - topSize);
+          children[bottomIdx].size = Math.max(1, gridHeight - topSize);
         }
       }
 
@@ -409,6 +480,7 @@ export const DockviewLayout: React.FC = () => {
       api,
       row1Visual.map((v) => v.id),
       row2Visual.map((v) => v.id),
+      Math.max(row1Visual.length, row2Visual.length),
     );
   }, [info, t, maxPerRow, stacked]);
 

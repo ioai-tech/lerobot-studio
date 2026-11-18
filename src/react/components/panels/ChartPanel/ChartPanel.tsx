@@ -10,10 +10,10 @@ import {
 import { useTheme } from '../../../contexts/ThemeContext';
 import { Button } from '@/ui';
 import { PanelRight } from 'lucide-react';
-import { PanelEmptyState, PanelLoadingState } from '../Common/PanelState';
+import { PanelEmptyState } from '../Common/PanelState';
 import { ChartJointFilterDropdown } from './ChartJointFilterDropdown';
 import { buildFeatureFilterTree, getVisibleJointNamesFromSelected } from '@/core';
-import { applyGroupSelection } from '@/core';
+import { applyGroupSelection, episodeTimeDomain } from '@/core';
 import { getChartSeriesKind, getDefaultChartFeatureKeys } from '@/core';
 import {
   buildJointColorMap,
@@ -23,6 +23,7 @@ import {
 } from './chartPanelModel';
 import { SplitChartsSheet } from './Split/SplitChartsSheet';
 import { FeatureChartGroups, type ChartGroupData } from './FeatureChartGroups';
+import { ChartGroupsPlaceholder } from './ChartGroupsPlaceholder';
 import {
   buildFeatureChartGroups,
   columnDimension,
@@ -169,15 +170,21 @@ const ChartPanelContent: React.FC<ChartPanelProps> = ({ params }) => {
       });
   }, [targetFeatures, info?.features, chartData, frameTimes]);
 
+  /** The groups the charts will have, from the dataset's features alone (for the loading state). */
+  const placeholderGroups = useMemo(
+    () => buildFeatureChartGroups(targetFeatures, info?.features, {}),
+    [targetFeatures, info?.features],
+  );
+
   const groups = useMemo(
     () => [...featureGroups, ...(frameTimes.length > 0 ? auxiliaryGroups : [])],
     [featureGroups, auxiliaryGroups, frameTimes.length],
   );
 
+  // The episode's one time axis: the same fractions as the slider and tracks.
   const xRange = useMemo<[number, number]>(() => {
     if (frameTimes.length === 0) return [0, 1];
-    const fps = info?.fps || 30;
-    return [frameTimes[0]!, Math.max(frameTimes[0]! + 1 / fps, frameTimes[frameTimes.length - 1]!)];
+    return episodeTimeDomain(frameTimes[0]!, frameTimes.length, info?.fps || 30);
   }, [frameTimes, info?.fps]);
 
   const getPlayheadTime = useCallback(() => {
@@ -365,7 +372,7 @@ const ChartPanelContent: React.FC<ChartPanelProps> = ({ params }) => {
             ) : selectedEpisodeIndex === null && !isLoading ? (
               <PanelEmptyState message={t('playback.noData')} />
             ) : (
-              <PanelLoadingState message={t('common.loading')} />
+              <ChartGroupsPlaceholder groups={placeholderGroups} />
             )}
           </div>
         )}

@@ -30,10 +30,14 @@ import { useSubtaskAnnotation } from './useSubtaskAnnotation';
 import { useSegmentAnnotation } from './useSegmentAnnotation';
 import {
   buildPlaybackFrames,
+  findSegment,
   getEagerEpisodeColumns,
   getFirstAvailableEpisodeIndex,
   lastUnlabeledGap,
+  pendingSelectionEpisode,
+  pendingSelectionFrame,
   segmentsFromFrameIndices,
+  type PendingSelection,
 } from '@/core';
 import { createParquetImageService, type ParquetImageServiceImpl } from '@/platform';
 import { getImageFeatureNames } from '@/core';
@@ -322,9 +326,61 @@ export const LeRobotDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
     flushPendingSeek(selectedEpisodeIndex, currentFrames.length);
   }, [currentFrames.length, flushPendingSeek, selectedEpisodeIndex]);
 
+  /**
+   * A deep link or a selection carried across a data-source swap, applied
+   * once its episode's frames are in. While one waits, autoplay holds, so the
+   * playhead lands on the asked frame instead of running past it.
+   */
+  const pendingSelectionRef = useRef<PendingSelection | null>(null);
+  const setPendingSelection = useCallback((selection: PendingSelection | null) => {
+    pendingSelectionRef.current = selection;
+  }, []);
+  const hasPendingSelection = useCallback(() => pendingSelectionRef.current !== null, []);
+  const segmentsRef = useRef(segments);
+  segmentsRef.current = segments;
+  useEffect(() => {
+    const pending = pendingSelectionRef.current;
+    if (!pending || pending.episodeIndex == null || isLoading) return;
+    if (selectedEpisodeIndex != null && selectedEpisodeIndex !== pending.episodeIndex) {
+      // The person (or a failed load) went elsewhere first: the link no longer applies.
+      pendingSelectionRef.current = null;
+      return;
+    }
+    if (selectedEpisodeIndex !== pending.episodeIndex) return;
+    if (currentFrames.length === 0) {
+      // The episode failed to load: nothing to land on.
+      if (error) pendingSelectionRef.current = null;
+      return;
+    }
+    pendingSelectionRef.current = null;
+    const found = pending.segmentId
+      ? findSegment(segmentsRef.current.doc, pending.segmentId)
+      : null;
+    const segment = found && found.episodeIndex === selectedEpisodeIndex ? found.segment : null;
+    if (segment) segmentsRef.current.selectSegment(segment.id);
+    setFrameIndex(
+      pendingSelectionFrame(
+        pending,
+        segment?.startFrame ?? null,
+        info?.fps || 30,
+        currentFrames.length,
+      ),
+    );
+    if (pending.resume) setPlaying(true);
+  }, [
+    currentFrames.length,
+    error,
+    info?.fps,
+    isLoading,
+    selectedEpisodeIndex,
+    setFrameIndex,
+    setPlaying,
+  ]);
+
   const reset = useCallback(async () => {
     // 清理旧资源，回到欢迎页；bump generation 使在途 initialize 失效
     initGenerationRef.current += 1;
+    pendingSelectionRef.current = null;
     try {
       if (dataLoaderRef.current) {
         await dataLoaderRef.current.dispose();
@@ -699,7 +755,24 @@ export const LeRobotDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
       return;
     }
 
-    const firstEpisodeIndex = getFirstAvailableEpisodeIndex(episodes, deletedEpisodes);
+    let firstEpisodeIndex = getFirstAvailableEpisodeIndex(episodes, deletedEpisodes);
+    const pending = pendingSelectionRef.current;
+    if (pending) {
+      const found = pending.segmentId ? findSegment(segments.doc, pending.segmentId) : null;
+      const target = pendingSelectionEpisode(
+        pending,
+        episodes,
+        deletedEpisodes,
+        found?.episodeIndex ?? null,
+      );
+      if (target == null) {
+        // Another timeline (or a link to something gone): open as usual.
+        pendingSelectionRef.current = null;
+      } else {
+        pendingSelectionRef.current = { ...pending, episodeIndex: target };
+        firstEpisodeIndex = target;
+      }
+    }
     if (firstEpisodeIndex === null) {
       return;
     }
@@ -709,7 +782,16 @@ export const LeRobotDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
     }, 0);
 
     return () => window.clearTimeout(timer);
-  }, [selectedEpisodeIndex, dataLoader, info, isLoading, episodes, deletedEpisodes, selectEpisode]);
+  }, [
+    selectedEpisodeIndex,
+    dataLoader,
+    info,
+    isLoading,
+    episodes,
+    deletedEpisodes,
+    selectEpisode,
+    segments.doc,
+  ]);
 
   const dataValue = useMemo(
     () => ({
@@ -732,6 +814,8 @@ export const LeRobotDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
       clearError,
       error,
       isLoading,
+      setPendingSelection,
+      hasPendingSelection,
     }),
     [
       info,
@@ -753,6 +837,8 @@ export const LeRobotDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
       clearError,
       error,
       isLoading,
+      setPendingSelection,
+      hasPendingSelection,
     ],
   );
 

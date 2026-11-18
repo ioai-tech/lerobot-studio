@@ -67,6 +67,24 @@ export type {
   LeRobotAnnotationProps,
   LeRobotAnnotationSaveState,
 } from './contexts/annotationTypes';
+export type {
+  LeRobotExtension,
+  LeRobotInitialSelection,
+  LeRobotNotice,
+  LeRobotSelection,
+  LeRobotThemeColors,
+  LeRobotThemeTokens,
+  LeRobotToolbarButton,
+  LeRobotToolbarIcon,
+  LeRobotToolbarItem,
+  LeRobotToolbarLink,
+  LeRobotToolbarToggle,
+} from './contexts/hostTypes';
+export type {
+  OverlaySegment,
+  OverlaySegmentGroup,
+  TimelineMarker,
+} from '../core/annotation/markers';
 export { LEROBOT_MESSAGE_KEYS } from './i18n/messageKeys';
 export type { LeRobotMessageKey, LeRobotMessages } from './i18n/messageKeys';
 export type {

@@ -15,18 +15,30 @@ const useIsomorphicLayoutEffect = typeof window === 'undefined' ? useEffect : us
  * sync with a ResizeObserver (disconnected on unmount).
  */
 export function useStackedLayout(ref: RefObject<HTMLElement | null>): boolean {
-  const [stacked, setStacked] = useState(false);
+  return useNarrowerThan(ref, STACKED_LAYOUT_MAX_WIDTH_PX);
+}
+
+/** Container width (px) below which segment editing is replaced by one line asking for room. */
+export const EDITING_MIN_WIDTH_PX = 768;
+
+/**
+ * True while the observed container is narrower than `px` (and measured).
+ * First measured in a layout effect, then kept in sync with a ResizeObserver.
+ */
+export function useNarrowerThan(ref: RefObject<HTMLElement | null>, px: number): boolean {
+  const [narrow, setNarrow] = useState(false);
   useIsomorphicLayoutEffect(() => {
     const el = ref.current;
     if (!el) return;
-    setStacked(isStackedLayoutWidth(el.getBoundingClientRect().width));
+    const below = (width: number) => Number.isFinite(width) && width > 0 && width < px;
+    setNarrow(below(el.getBoundingClientRect().width));
     if (typeof ResizeObserver === 'undefined') return;
     const observer = new ResizeObserver((entries) => {
       const entry = entries[0];
-      if (entry) setStacked(isStackedLayoutWidth(entry.contentRect.width));
+      if (entry) setNarrow(below(entry.contentRect.width));
     });
     observer.observe(el);
     return () => observer.disconnect();
-  }, [ref]);
-  return stacked;
+  }, [ref, px]);
+  return narrow;
 }

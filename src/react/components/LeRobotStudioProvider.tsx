@@ -8,6 +8,22 @@ import { I18nProvider } from '../i18n/core';
 import { Toaster } from './ui/toaster';
 import type { LeRobotMessages } from '../i18n/messageKeys';
 import { useTranslation } from '../i18n/reactI18nextCompat';
+import { useTheme } from '../contexts/ThemeContext';
+import { useThemeTokens } from '../contexts/themeTokens';
+import type { LeRobotThemeTokens } from '../contexts/hostTypes';
+
+/** Applies host theme tokens for the resolved light / dark scheme. */
+function ThemeTokens({
+  root,
+  tokens,
+}: {
+  root: HTMLElement | null;
+  tokens: LeRobotThemeTokens | undefined;
+}) {
+  const { resolvedTheme } = useTheme();
+  useThemeTokens(root, tokens, resolvedTheme);
+  return null;
+}
 
 /**
  * The scoped root: a labelled `region` landmark, never `main` (the host page
@@ -36,6 +52,8 @@ export interface LeRobotStudioProviderProps {
   language?: string;
   /** Host copy for built-in messages, e.g. to call segments "Episodes". */
   messages?: LeRobotMessages;
+  /** Host design tokens on the viewer root; light / dark still follows `theme`. */
+  themeTokens?: LeRobotThemeTokens;
   className?: string;
   children: React.ReactNode;
   /** When true, render the shared Sonner toaster inside the studio root. @defaultValue true */
@@ -49,11 +67,13 @@ export interface LeRobotStudioProviderProps {
 
 function StudioTree({
   theme,
+  themeTokens,
   children,
   showToaster,
   portalContainer,
 }: {
   theme?: 'light' | 'dark' | 'system';
+  themeTokens?: LeRobotThemeTokens;
   children: React.ReactNode;
   showToaster: boolean;
   portalContainer: HTMLElement | null;
@@ -61,6 +81,7 @@ function StudioTree({
   return (
     <PortalContainerProvider container={portalContainer}>
       <ThemeProvider controlledTheme={theme} rootElement={portalContainer}>
+        <ThemeTokens root={portalContainer} tokens={themeTokens} />
         <LoadingProvider>
           <LeRobotDataProvider>
             <ToastProvider>
@@ -83,6 +104,7 @@ export const LeRobotStudioProvider: React.FC<LeRobotStudioProviderProps> = ({
   theme,
   language,
   messages,
+  themeTokens,
   className,
   children,
   showToaster = true,
@@ -100,7 +122,12 @@ export const LeRobotStudioProvider: React.FC<LeRobotStudioProviderProps> = ({
           className,
         )}
       >
-        <StudioTree theme={theme} showToaster={showToaster} portalContainer={rootEl}>
+        <StudioTree
+          theme={theme}
+          themeTokens={themeTokens}
+          showToaster={showToaster}
+          portalContainer={rootEl}
+        >
           {children}
         </StudioTree>
       </ScopedRoot>

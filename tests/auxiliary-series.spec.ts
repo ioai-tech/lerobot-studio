@@ -235,4 +235,55 @@ describe('auxiliary series', () => {
       expect.objectContaining({ code: 'COLUMN_MISSING', column: 'b' }),
     ]);
   });
+
+  it('timeColumn null: row i is frame i, counted across files in order, every column plotted', async () => {
+    const first = await parquet({
+      score: vectorFromArray(Float64Array.from([0.5, 0.6, 0.7])),
+      frame_index: vectorFromArray([0n, 1n, 2n], new Int64()),
+    });
+    const second = await parquet({
+      score: vectorFromArray(Float64Array.from([0.8, 0.9])),
+      frame_index: vectorFromArray([3n, 4n], new Int64()),
+    });
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(
+        async (input: RequestInfo | URL) =>
+          new Response(String(input).includes('second') ? second : first),
+      ),
+    );
+    const loaded = await readAuxiliarySeries(
+      series({
+        timeColumn: null,
+        timeUnit: 'frame',
+        timeOffsetNs: undefined,
+        files: [
+          { logicalPath: 'first.parquet', presignedUrl: 'https://store.test/first.parquet' },
+          { logicalPath: 'second.parquet', presignedUrl: 'https://store.test/second.parquet' },
+        ],
+      }),
+      10,
+      parse,
+    );
+    expect(loaded.warnings).toEqual([]);
+    expect(Array.from(loaded.time)).toEqual([0, 0.1, 0.2, 0.3, 0.4]);
+    // No column is the time column, so every numeric column is a series.
+    expect(loaded.columns.map((column) => column.name)).toEqual(['score', 'frame_index']);
+    expect(Array.from(loaded.columns[0]!.values)).toEqual([0.5, 0.6, 0.7, 0.8, 0.9]);
+  });
+
+  it.each(['s', 'ns'] as const)(
+    'timeColumn null with timeUnit %s is refused with ROW_TIME_NEEDS_FRAME_UNIT, before any read',
+    async (timeUnit) => {
+      const fetchSpy = vi.fn(async () => new Response(imuBytes));
+      vi.stubGlobal('fetch', fetchSpy);
+      const loaded = await readAuxiliarySeries(series({ timeColumn: null, timeUnit }), 30, parse);
+      expect(loaded.columns).toEqual([]);
+      expect(loaded.time).toHaveLength(0);
+      expect(loaded.warnings).toEqual([
+        expect.objectContaining({ code: 'ROW_TIME_NEEDS_FRAME_UNIT', seriesId: 'imu' }),
+      ]);
+      expect(fetchSpy).not.toHaveBeenCalled();
+    },
+  );
 });

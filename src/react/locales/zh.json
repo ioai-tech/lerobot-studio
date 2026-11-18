@@ -986,9 +986,28 @@
       "frameStep": "上一帧 / 下一帧",
       "frameStep10": "后退 / 前进 10 帧",
       "firstLast": "第一帧 / 最后一帧"
-    }
+    },
+    "narrowEditing": "编辑需要更宽的窗口。播放和分段列表仍可使用。"
   },
   "viewer": {
     "regionLabel": "数据集查看器"
+  },
+  "markers": {
+    "label": "标记",
+    "item": "{{label}}，{{severity}}，{{time}}",
+    "severity": {
+      "info": "提示",
+      "warn": "警告",
+      "fail": "失败"
+    },
+    "issueCount": "{count} 个问题"
+  },
+  "overlay": {
+    "legend": "建议（只读）",
+    "item": "建议 {{n}}，{{time}}"
+  },
+  "host": {
+    "toolbar": "操作",
+    "opensInNewTab": "（在新标签页中打开）"
   }
 }

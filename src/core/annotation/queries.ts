@@ -1,3 +1,4 @@
+import { segmentIssueMarkers, type TimelineMarker } from './markers';
 import { getEpisodeSegments } from './reducer';
 import type {
   AnnotationDocument,
@@ -60,16 +61,27 @@ export function nextUncoveredFrame(
   return (after ?? gaps[0]).startFrame;
 }
 
-/** Segments with a warning or failure badge. */
-export function hasSegmentIssue(segment: Segment): boolean {
-  return segment.status?.severity === 'warn' || segment.status?.severity === 'fail';
+/**
+ * Segments with a warning or failure: a `warn` / `fail` badge, or an overlap
+ * with a `warn` / `fail` marker of the same episode (`episodeMarkers`).
+ */
+export function hasSegmentIssue(
+  segment: Segment,
+  episodeMarkers: readonly TimelineMarker[] = [],
+): boolean {
+  if (segment.status?.severity === 'warn' || segment.status?.severity === 'fail') return true;
+  return segmentIssueMarkers(segment, episodeMarkers).length > 0;
 }
 
 export type SegmentFilter = 'all' | 'to_review' | 'issues';
 
-export function matchesSegmentFilter(segment: Segment, filter: SegmentFilter): boolean {
+export function matchesSegmentFilter(
+  segment: Segment,
+  filter: SegmentFilter,
+  episodeMarkers: readonly TimelineMarker[] = [],
+): boolean {
   if (filter === 'to_review') return segment.review === 'to_review';
-  if (filter === 'issues') return hasSegmentIssue(segment);
+  if (filter === 'issues') return hasSegmentIssue(segment, episodeMarkers);
   return true;
 }
 

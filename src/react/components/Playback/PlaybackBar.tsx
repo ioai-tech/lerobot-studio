@@ -10,10 +10,12 @@ import {
 } from '../../contexts/LeRobotContext';
 import { EpisodeTrimControls } from './EpisodeTrimControls';
 import { SegmentTrack } from '../Segments/SegmentTrack';
+import { MarkerLane } from '../Timeline/MarkerLane';
+import { OverlayBand } from '../Timeline/OverlayBand';
 import { SegmentInspector } from '../Segments/SegmentInspector';
 import { EditSubtaskDialog } from '../dialogs/EditSubtaskDialog';
 import { useLoading } from '../../contexts/LoadingContext';
-import { shouldStartAutoplay } from '@/core';
+import { episodeTimeDomain, overlaySegmentsOfEpisode, shouldStartAutoplay } from '@/core';
 import { PlaybackProgressSlider } from './PlaybackProgressSlider';
 import { Button } from '@/ui';
 import { Badge } from '@/ui';
@@ -39,7 +41,8 @@ export const PlaybackBar: React.FC = () => {
     playbackSpeed,
     setPlaybackSpeed,
   } = useLeRobotPlayback();
-  const { info, subscribeFrameIndex, getFrameIndex, isLoading } = useLeRobotData();
+  const { info, subscribeFrameIndex, getFrameIndex, isLoading, hasPendingSelection } =
+    useLeRobotData();
   const { selectedEpisodeIndex } = useLeRobotSelection();
   const segments = useLeRobotSegments();
   const {
@@ -70,6 +73,10 @@ export const PlaybackBar: React.FC = () => {
   const pauseToLabel = annotationEnabled && !segments.controlled;
   const trimRange = suggestion?.range;
   const showSegments = !trimming && segments.active;
+  const overlaySegments = useMemo(
+    () => overlaySegmentsOfEpisode(segments.config.overlaySegments, selectedEpisodeIndex),
+    [segments.config.overlaySegments, selectedEpisodeIndex],
+  );
   const [renameIndex, setRenameIndex] = useState<number | null>(null);
 
   const { tasks } = useLoading();
@@ -85,6 +92,12 @@ export const PlaybackBar: React.FC = () => {
   const userPausedRef = useRef(false);
   useEffect(() => {
     const currentId = `${selectedEpisodeIndex}-${totalFrames}`;
+    // A deep link (or a carried selection) lands paused on its frame; it
+    // resumes playback itself when it should.
+    if (totalFrames > 0 && !isLoading && hasPendingSelection()) {
+      didAutoPlayRef.current = currentId;
+      return;
+    }
     if (
       shouldStartAutoplay({
         totalFrames,
@@ -98,7 +111,7 @@ export const PlaybackBar: React.FC = () => {
       didAutoPlayRef.current = currentId;
       setPlaying(true);
     }
-  }, [totalFrames, isLoading, isPlaying, setPlaying, selectedEpisodeIndex]);
+  }, [totalFrames, isLoading, isPlaying, setPlaying, selectedEpisodeIndex, hasPendingSelection]);
 
   useEffect(() => {
     userPausedRef.current = false;
@@ -162,12 +175,11 @@ export const PlaybackBar: React.FC = () => {
     }
   };
 
+  // The end of the time axis: the end of the last frame (segment Out times use the same rule).
   const totalTime = useMemo(() => {
     if (totalFrames === 0) return 0;
-    if (currentFrames[totalFrames - 1]?.timestamp !== undefined) {
-      return currentFrames[totalFrames - 1].timestamp;
-    }
-    return totalFrames / fps;
+    const first = currentFrames[0]?.timestamp;
+    return episodeTimeDomain(typeof first === 'number' ? first : 0, totalFrames, fps)[1];
   }, [totalFrames, currentFrames, fps]);
 
   const handlePlayPauseClick = useCallback(() => {
@@ -406,16 +418,34 @@ export const PlaybackBar: React.FC = () => {
             getFrameIndex={getFrameIndex}
             subscribeFrameIndex={subscribeFrameIndex}
             aboveTrack={
-              showSegments ? (
-                <SegmentTrack
-                  segments={segments.episodeSegments}
-                  totalFrames={totalFrames}
-                  selectedId={segments.selectedSegmentId}
-                  editable={segments.canEdit}
-                  onSelect={segments.selectSegment}
-                  onCommitRange={segments.setRange}
-                />
-              ) : null
+              <>
+                {!trimming ? (
+                  <OverlayBand
+                    segments={overlaySegments}
+                    totalFrames={totalFrames}
+                    fps={fps}
+                    onSeek={setFrameIndex}
+                  />
+                ) : null}
+                {showSegments ? (
+                  <SegmentTrack
+                    segments={segments.episodeSegments}
+                    totalFrames={totalFrames}
+                    selectedId={segments.selectedSegmentId}
+                    editable={segments.canEdit}
+                    onSelect={segments.selectSegment}
+                    onCommitRange={segments.setRange}
+                  />
+                ) : null}
+              </>
+            }
+            besideTrack={
+              <MarkerLane
+                markers={segments.episodeMarkers}
+                totalFrames={totalFrames}
+                fps={fps}
+                onSeek={setFrameIndex}
+              />
             }
             segments={currentSegments}
             pendingRange={annotationEnabled ? pendingRange : null}

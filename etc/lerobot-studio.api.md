@@ -128,7 +128,7 @@ export interface AuxiliarySeries {
     files: RemoteFileEntry[];
     id: string;
     label: string;
-    timeColumn: string;
+    timeColumn: string | null;
     timeOffsetNs?: string;
     timeUnit: 's' | 'ns' | 'frame';
 }
@@ -145,7 +145,7 @@ export interface AuxiliarySeriesWarning {
 }
 
 // @public
-export type AuxiliarySeriesWarningCode = 'COLUMN_MISSING' | 'TIME_COLUMN_MISSING' | 'TIME_UNIT_MISMATCH' | 'READ_FAILED' | 'EPISODE_SET_UNSUPPORTED';
+export type AuxiliarySeriesWarningCode = 'COLUMN_MISSING' | 'TIME_COLUMN_MISSING' | 'TIME_UNIT_MISMATCH' | 'ROW_TIME_NEEDS_FRAME_UNIT' | 'READ_FAILED' | 'EPISODE_SET_UNSUPPORTED';
 
 // @public
 export function createArchiveDataSourceFromFile(file: File): DataSource;
@@ -279,7 +279,7 @@ export interface EpisodeSetResolvedRecording {
 }
 
 // @public
-export const LEROBOT_MESSAGE_KEYS: readonly ["segments.title", "segments.track", "segments.trackSegment", "segments.progress", "segments.progressLabel", "segments.filter.label", "segments.filter.all", "segments.filter.toReview", "segments.filter.issues", "segments.empty", "segments.emptyReadOnly", "segments.emptyFilter", "segments.row", "segments.review.toReview", "segments.review.confirmed", "segments.origin.suggested", "segments.origin.suggestedConfidence", "segments.readOnly", "segments.inheritTask", "segments.inspector.label", "segments.inspector.none", "segments.inspector.noneEditable", "segments.inspector.in", "segments.inspector.out", "segments.inspector.task", "segments.inspector.taskPlaceholder", "segments.inspector.timePlaceholder", "segments.inspector.timeInvalid", "segments.inspector.addTag", "segments.inspector.addTagPlaceholder", "segments.inspector.removeTag", "segments.actions.new", "segments.actions.split", "segments.actions.merge", "segments.actions.delete", "segments.actions.confirm", "segments.actions.confirmAll", "segments.actions.setIn", "segments.actions.setOut", "segments.actions.nudge", "segments.actions.nudgeBack", "segments.actions.nudgeForward", "segments.actions.nudgeBackSecond", "segments.actions.nudgeForwardSecond", "segments.actions.nextUncovered", "segments.actions.next", "segments.actions.previous", "segments.actions.loop", "segments.actions.subtaskStart", "segments.actions.subtaskEnd", "segments.actions.undo", "segments.actions.redo", "segments.actions.help", "segments.confirmAll.title", "segments.confirmAll.description", "segments.confirmAll.confirm", "segments.save.idle", "segments.save.saving", "segments.save.saved", "segments.save.offline", "segments.save.reloaded", "segments.save.refused", "segments.notice.created", "segments.notice.split", "segments.notice.merged", "segments.notice.deleted", "segments.notice.confirmed", "segments.notice.undone", "segments.notice.redone", "segments.notice.nothingToUndo", "segments.notice.nothingToRedo", "segments.notice.selectFirst", "segments.notice.insideSegment", "segments.notice.splitOutside", "segments.notice.splitAtStart", "segments.notice.nothingToMerge", "segments.notice.cannotDelete", "segments.notice.allCovered", "segments.notice.none", "segments.notice.first", "segments.notice.last", "segments.notice.noneToReview", "segments.notice.subtaskStartSet", "segments.notice.subtaskStartFirst", "segments.notice.subtaskInvalid", "segments.notice.subtaskOutside", "segments.notice.subtaskNeedsSegment", "segments.notice.suggestionsApplied", "segments.refusal.EPISODE_UNKNOWN", "segments.refusal.SEGMENT_NOT_FOUND", "segments.refusal.SEGMENT_ID_TAKEN", "segments.refusal.SEGMENT_ID_INVALID", "segments.refusal.SEGMENT_READ_ONLY", "segments.refusal.RANGE_INVALID", "segments.refusal.RANGE_OUTSIDE_EPISODE", "segments.refusal.SEGMENT_OVERLAP", "segments.refusal.SUBTASK_INVALID", "segments.refusal.SUBTASK_OUTSIDE_SEGMENT", "segments.refusal.SUBTASK_OVERLAP", "segments.refusal.FIELD_UNKNOWN", "segments.refusal.FIELD_INVALID", "segments.refusal.PATCH_INVALID", "segments.refusal.SPLIT_OUTSIDE_SEGMENT", "segments.refusal.MERGE_NOT_ADJACENT", "segments.refusal.UNMERGE_MISMATCH", "segments.shortcuts.title", "segments.shortcuts.description", "segments.shortcuts.key", "segments.shortcuts.action", "segments.shortcuts.playPause", "segments.shortcuts.frameStep", "segments.shortcuts.frameStep10", "segments.shortcuts.firstLast"];
+export const LEROBOT_MESSAGE_KEYS: readonly ["segments.title", "segments.track", "segments.trackSegment", "segments.progress", "segments.progressLabel", "segments.filter.label", "segments.filter.all", "segments.filter.toReview", "segments.filter.issues", "segments.empty", "segments.emptyReadOnly", "segments.emptyFilter", "segments.row", "segments.review.toReview", "segments.review.confirmed", "segments.origin.suggested", "segments.origin.suggestedConfidence", "segments.readOnly", "segments.inheritTask", "segments.inspector.label", "segments.inspector.none", "segments.inspector.noneEditable", "segments.inspector.in", "segments.inspector.out", "segments.inspector.task", "segments.inspector.taskPlaceholder", "segments.inspector.timePlaceholder", "segments.inspector.timeInvalid", "segments.inspector.addTag", "segments.inspector.addTagPlaceholder", "segments.inspector.removeTag", "segments.actions.new", "segments.actions.split", "segments.actions.merge", "segments.actions.delete", "segments.actions.confirm", "segments.actions.confirmAll", "segments.actions.setIn", "segments.actions.setOut", "segments.actions.nudge", "segments.actions.nudgeBack", "segments.actions.nudgeForward", "segments.actions.nudgeBackSecond", "segments.actions.nudgeForwardSecond", "segments.actions.nextUncovered", "segments.actions.next", "segments.actions.previous", "segments.actions.loop", "segments.actions.subtaskStart", "segments.actions.subtaskEnd", "segments.actions.undo", "segments.actions.redo", "segments.actions.help", "segments.confirmAll.title", "segments.confirmAll.description", "segments.confirmAll.confirm", "segments.save.idle", "segments.save.saving", "segments.save.saved", "segments.save.offline", "segments.save.reloaded", "segments.save.refused", "segments.notice.created", "segments.notice.split", "segments.notice.merged", "segments.notice.deleted", "segments.notice.confirmed", "segments.notice.undone", "segments.notice.redone", "segments.notice.nothingToUndo", "segments.notice.nothingToRedo", "segments.notice.selectFirst", "segments.notice.insideSegment", "segments.notice.splitOutside", "segments.notice.splitAtStart", "segments.notice.nothingToMerge", "segments.notice.cannotDelete", "segments.notice.allCovered", "segments.notice.none", "segments.notice.first", "segments.notice.last", "segments.notice.noneToReview", "segments.notice.subtaskStartSet", "segments.notice.subtaskStartFirst", "segments.notice.subtaskInvalid", "segments.notice.subtaskOutside", "segments.notice.subtaskNeedsSegment", "segments.notice.suggestionsApplied", "segments.refusal.EPISODE_UNKNOWN", "segments.refusal.SEGMENT_NOT_FOUND", "segments.refusal.SEGMENT_ID_TAKEN", "segments.refusal.SEGMENT_ID_INVALID", "segments.refusal.SEGMENT_READ_ONLY", "segments.refusal.RANGE_INVALID", "segments.refusal.RANGE_OUTSIDE_EPISODE", "segments.refusal.SEGMENT_OVERLAP", "segments.refusal.SUBTASK_INVALID", "segments.refusal.SUBTASK_OUTSIDE_SEGMENT", "segments.refusal.SUBTASK_OVERLAP", "segments.refusal.FIELD_UNKNOWN", "segments.refusal.FIELD_INVALID", "segments.refusal.PATCH_INVALID", "segments.refusal.SPLIT_OUTSIDE_SEGMENT", "segments.refusal.MERGE_NOT_ADJACENT", "segments.refusal.UNMERGE_MISMATCH", "segments.shortcuts.title", "segments.shortcuts.description", "segments.shortcuts.key", "segments.shortcuts.action", "segments.shortcuts.playPause", "segments.shortcuts.frameStep", "segments.shortcuts.frameStep10", "segments.shortcuts.firstLast", "segments.narrowEditing", "overlay.legend", "overlay.item", "markers.label", "markers.item", "markers.severity.info", "markers.severity.warn", "markers.severity.fail", "markers.issueCount"];
 
 // @public
 export interface LeRobotAnnotationProps {
@@ -304,13 +304,47 @@ export interface LeRobotAnnotationSaveState {
 }
 
 // @public
+export interface LeRobotExtension {
+    id: string;
+    notices?: LeRobotNotice[];
+    toolbar?: LeRobotToolbarItem[];
+}
+
+// @public
+export interface LeRobotInitialSelection {
+    episodeIndex?: number;
+    segmentId?: string;
+    timeS?: number;
+}
+
+// @public
 export type LeRobotMessageKey = (typeof LEROBOT_MESSAGE_KEYS)[number];
 
 // @public
 export type LeRobotMessages = Partial<Record<LeRobotMessageKey, string>>;
 
+// @public
+export interface LeRobotNotice {
+    action?: {
+        label: string;
+        href?: string;
+        onSelect?: () => void;
+    };
+    id: string;
+    progress?: 'indeterminate' | number;
+    severity: 'info' | 'warn' | 'error';
+    text: string;
+}
+
 // @public @deprecated (undocumented)
 export const LeRobotProvider: React_2.FC<LeRobotStudioProviderProps>;
+
+// @public
+export interface LeRobotSelection {
+    episodeIndex: number | null;
+    segmentId: string | null;
+    timeS: number;
+}
 
 // @public
 export const LeRobotStudioProvider: React_2.FC<LeRobotStudioProviderProps>;
@@ -327,14 +361,70 @@ export interface LeRobotStudioProviderProps {
     showToaster?: boolean;
     // (undocumented)
     theme?: 'light' | 'dark' | 'system';
+    themeTokens?: LeRobotThemeTokens;
     wrapRoot?: boolean;
+}
+
+// @public
+export interface LeRobotThemeColors {
+    fontFamily?: string;
+    primary?: string;
+    primaryForeground?: string;
+    radius?: string;
+}
+
+// @public
+export interface LeRobotThemeTokens extends LeRobotThemeColors {
+    dark?: LeRobotThemeColors;
+}
+
+// @public
+export interface LeRobotToolbarButton {
+    busy?: boolean;
+    disabled?: boolean;
+    disabledReason?: string;
+    icon?: LeRobotToolbarIcon;
+    id: string;
+    kind: 'button';
+    label: string;
+    onSelect: () => void;
+    variant?: 'primary' | 'default';
+}
+
+// @public
+export type LeRobotToolbarIcon = 'sparkles' | 'refresh' | 'external' | 'download' | 'none';
+
+// @public
+export type LeRobotToolbarItem = LeRobotToolbarButton | LeRobotToolbarToggle | LeRobotToolbarLink;
+
+// @public
+export interface LeRobotToolbarLink {
+    external?: boolean;
+    href: string;
+    id: string;
+    kind: 'link';
+    label: string;
+}
+
+// @public
+export interface LeRobotToolbarToggle {
+    disabled?: boolean;
+    id: string;
+    kind: 'toggle';
+    label: string;
+    onChange: (value: string) => void;
+    options: Array<{
+        value: string;
+        label: string;
+    }>;
+    value: string;
 }
 
 // @public (undocumented)
 export const LeRobotViewer: React_2.FC<LeRobotViewerProps>;
 
 // @public
-export function LeRobotViewerContent(input: Omit<LeRobotViewerProps, 'theme' | 'language' | 'className' | 'messages'> & {
+export function LeRobotViewerContent(input: Omit<LeRobotViewerProps, 'theme' | 'language' | 'className' | 'messages' | 'themeTokens'> & {
     showSidebar: boolean;
     showPlaybackBar: boolean;
 }): React_2.JSX.Element | null;
@@ -357,21 +447,36 @@ export interface LeRobotViewerProps {
     className?: string;
     dataSource: string | DataSource;
     enableKeyboardShortcuts?: boolean;
+    extensions?: LeRobotExtension[];
     fields?: AnnotationField[];
+    initialSelection?: LeRobotInitialSelection;
     language?: string;
+    markers?: TimelineMarker[];
     messages?: LeRobotMessages;
     onAuxiliarySeriesWarning?: (warning: AuxiliarySeriesWarning) => void;
     onBack?: () => void;
     onExport?: () => void;
     onFatalError?: (error: LeRobotViewerError) => void;
+    onSelectionChange?: (selection: LeRobotSelection) => void;
+    overlaySegments?: OverlaySegmentGroup[];
     readOnly?: boolean;
     showPlaybackBar?: boolean;
     showSidebar?: boolean;
     theme?: 'light' | 'dark' | 'system';
+    themeTokens?: LeRobotThemeTokens;
 }
 
 // @public
 export type LoadingPhase = 'download' | 'index' | 'gunzip' | 'read';
+
+// @public
+export type OverlaySegment = Pick<Segment, 'id' | 'startFrame' | 'endFrame' | 'task' | 'origin'>;
+
+// @public
+export interface OverlaySegmentGroup {
+    episodeIndex: number;
+    segments: OverlaySegment[];
+}
 
 // @public
 export function Pagination(input: PaginationProps): React_3.JSX.Element;
@@ -537,6 +642,17 @@ export interface SegmentSubtask {
 
 // @public (undocumented)
 export type SourceKind = 'remoteArchive' | 'localArchive' | 'directory' | 'sample' | 'unknown';
+
+// @public
+export interface TimelineMarker {
+    checkId?: string;
+    endFrame: number;
+    episodeIndex: number;
+    id: string;
+    label: string;
+    severity: 'info' | 'warn' | 'fail';
+    startFrame: number;
+}
 
 // @public
 export function useDragAndDrop(callbacks: DragAndDropCallbacks): {

@@ -76,7 +76,9 @@ const fields: AnnotationField[] = [
 - `value` and `saveState` are compared by identity. Keep the same object until something changes: a host that rebuilds `value` every render replays the changes in flight and re-checks the undo history each time. A refusal without `changeIds` must be created exactly once per refused change, or every re-render refuses another change; refusals with `changeIds` are safe to re-render. Changes made faster than the host answers are kept and shown on top of each new `value` until the host's `value` contains them.
 - **`readOnly`** always wins: no edit control is rendered and no edit key acts, whatever `annotation` contains. Segments, review states, field values and host badges (`segment.status`) are still shown, and navigation keys still work. A segment with `readOnly: true` refuses edits on its own.
 - **`fields`** declares the values a person sets on a segment, in order: `select` (one option; an option's `key` from `1` to `9` sets it from the keyboard), `tags` (a string list, with optional `suggestions`), or `text`. Values are stored in `segment.values[field.id]`. The reducer refuses an unknown field or a value that does not fit its kind.
-- **`messages`** replaces built-in copy by key (`LeRobotMessageKey`, all `segments.*` keys) in the current language. Values are ICU messages; `{{name}}` placeholders are accepted too.
+- **`messages`** replaces built-in copy by key (`LeRobotMessageKey`: every `segments.*`, `overlay.*` and `markers.*` key, listed in `LEROBOT_MESSAGE_KEYS`) in the current language. Values are ICU messages; `{{name}}` placeholders are accepted too.
+
+Markers (`markers`, which feed the **Issues** filter), read-only suggestions (`overlaySegments`), host toolbar items and notices (`extensions`), deep links (`initialSelection`, `onSelectionChange`) and `themeTokens` are covered in [Build a complete host](./embedding.md#build-a-complete-host).
 
 ### Changes and their inverses
 

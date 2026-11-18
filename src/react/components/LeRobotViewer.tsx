@@ -17,6 +17,15 @@ import { useLeRobotData, useLeRobotSegments } from '../contexts/LeRobotContext';
 import type { LeRobotAnnotationProps } from '../contexts/annotationTypes';
 import type { LeRobotMessages } from '../i18n/messageKeys';
 import type { AnnotationField } from '../../core/annotation/types';
+import type { OverlaySegmentGroup, TimelineMarker } from '../../core/annotation/markers';
+import type {
+  LeRobotExtension,
+  LeRobotInitialSelection,
+  LeRobotSelection,
+  LeRobotThemeTokens,
+} from '../contexts/hostTypes';
+import { HostChrome } from './Host/HostChrome';
+import { SelectionBridge, type SelectionCarry } from './Host/SelectionBridge';
 import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts';
 import { ViewerLayout } from '../features/viewer/ViewerLayout';
 import { ErrorState } from './Commons/ErrorState';
@@ -95,6 +104,30 @@ export interface LeRobotViewerProps {
   fields?: AnnotationField[];
   /** Host copy for built-in messages, e.g. to call segments "Episodes". */
   messages?: LeRobotMessages;
+  /**
+   * Ranges or ticks on the time axis by severity, with a tooltip. A segment
+   * that overlaps a `warn` or `fail` marker is in the Issues filter.
+   */
+  markers?: TimelineMarker[];
+  /**
+   * Read-only segments in a thin band above the segment track (for example
+   * another process's proposals); its legend is the `overlay.legend` message.
+   */
+  overlaySegments?: OverlaySegmentGroup[];
+  /** Host toolbar items and notices, rendered in the viewer's style. */
+  extensions?: LeRobotExtension[];
+  /**
+   * Where to open, applied once after the first load (a deep link). The
+   * playhead lands paused on the frame that contains `timeS`.
+   */
+  initialSelection?: LeRobotInitialSelection;
+  /**
+   * Episode, segment and playhead time. Episode and segment changes are
+   * reported at once; time at most four times a second.
+   */
+  onSelectionChange?: (selection: LeRobotSelection) => void;
+  /** Host design tokens on the viewer root; light / dark still follows `theme`. */
+  themeTokens?: LeRobotThemeTokens;
 }
 
 /** Viewer without the provider wrapper; render inside `LeRobotStudioProvider`. */
@@ -111,18 +144,29 @@ export function LeRobotViewerContent({
   annotation,
   readOnly,
   fields,
-}: Omit<LeRobotViewerProps, 'theme' | 'language' | 'className' | 'messages'> & {
+  markers,
+  overlaySegments,
+  extensions,
+  initialSelection,
+  onSelectionChange,
+}: Omit<LeRobotViewerProps, 'theme' | 'language' | 'className' | 'messages' | 'themeTokens'> & {
   showSidebar: boolean;
   showPlaybackBar: boolean;
 }) {
   const { t } = useTranslation();
-  const { initialize, error, isLoading, clearError } = useLeRobotData();
+  const { initialize, error, isLoading, clearError, setPendingSelection } = useLeRobotData();
+  const hostChrome = useMemo(() => <HostChrome extensions={extensions} />, [extensions]);
   const { configure } = useLeRobotSegments();
 
   // Segment configuration lives in the data provider; push the props before paint.
   useLayoutEffect(() => {
-    configure({ annotation, readOnly, fields });
-  }, [annotation, configure, fields, readOnly]);
+    configure({ annotation, readOnly, fields, markers, overlaySegments });
+  }, [annotation, configure, fields, markers, overlaySegments, readOnly]);
+
+  /** Captures the current selection so a swap to the same timeline keeps it. */
+  const captureSelectionRef = useRef<() => SelectionCarry | null>(() => null);
+  const initialSelectionRef = useRef(initialSelection);
+  initialSelectionRef.current = initialSelection;
 
   useKeyboardShortcuts(enableKeyboardShortcuts);
 
@@ -229,10 +273,19 @@ export function LeRobotViewerContent({
 
   useEffect(() => {
     if (resolvedSource && lastSourceRef.current !== resolvedSource) {
+      const previous = lastSourceRef.current;
       lastSourceRef.current = resolvedSource;
+      if (previous === null) {
+        // First load: the host's deep link, once.
+        const initial = initialSelectionRef.current;
+        setPendingSelection(initial ? { ...initial } : null);
+      } else {
+        // Another source: keep episode, segment and time when the timeline is the same.
+        setPendingSelection(captureSelectionRef.current());
+      }
       void initialize(resolvedSource);
     }
-  }, [resolvedSource, initialize]);
+  }, [resolvedSource, initialize, setPendingSelection]);
 
   useEffect(() => {
     if (!fatalError) {
@@ -339,9 +392,11 @@ export function LeRobotViewerContent({
         showToaster={false}
         sidebar={<EpisodeSidebar />}
         sidebarHeader={sidebarHeader}
+        hostChrome={extensions && extensions.length > 0 ? hostChrome : null}
         emptyState={emptyState}
         onRetry={handleRetry}
       />
+      <SelectionBridge captureRef={captureSelectionRef} onSelectionChange={onSelectionChange} />
     </AuxiliarySeriesProvider>
   );
 }
@@ -363,12 +418,19 @@ export const LeRobotViewer: React.FC<LeRobotViewerProps> = ({
   readOnly,
   fields,
   messages,
+  markers,
+  overlaySegments,
+  extensions,
+  initialSelection,
+  onSelectionChange,
+  themeTokens,
 }) => {
   return (
     <LeRobotStudioProvider
       theme={theme}
       language={language}
       messages={messages}
+      themeTokens={themeTokens}
       className={className}
       showToaster
     >
@@ -385,6 +447,11 @@ export const LeRobotViewer: React.FC<LeRobotViewerProps> = ({
         annotation={annotation}
         readOnly={readOnly}
         fields={fields}
+        markers={markers}
+        overlaySegments={overlaySegments}
+        extensions={extensions}
+        initialSelection={initialSelection}
+        onSelectionChange={onSelectionChange}
       />
     </LeRobotStudioProvider>
   );

@@ -986,9 +986,28 @@
       "frameStep": "Previous / next frame",
       "frameStep10": "10 frames back / forward",
       "firstLast": "First / last frame"
-    }
+    },
+    "narrowEditing": "Editing needs a wider window. Playback and the segment list still work."
   },
   "viewer": {
     "regionLabel": "Dataset viewer"
+  },
+  "markers": {
+    "label": "Markers",
+    "item": "{{label}}, {{severity}}, {{time}}",
+    "severity": {
+      "info": "Info",
+      "warn": "Warning",
+      "fail": "Failure"
+    },
+    "issueCount": "{count, plural, one {# issue} other {# issues}}"
+  },
+  "overlay": {
+    "legend": "Suggestions (read-only)",
+    "item": "Suggestion {{n}}, {{time}}"
+  },
+  "host": {
+    "toolbar": "Actions",
+    "opensInNewTab": "(opens in a new tab)"
   }
 }

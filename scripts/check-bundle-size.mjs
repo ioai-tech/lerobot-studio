@@ -33,7 +33,11 @@ const budgets = {
   // en/zh/ja copy): main at 9ea1108 measured 385.9 KiB raw / 120.3 KiB gzip,
   // main plus this change 445.4 KiB / 134.9 KiB (+15.4% / +12.1%). Heads
   // about 3.0% raw / 2.1% gzip.
-  libEntry: { raw: 470_000, gzip: 141_000 },
+  // Embedding for hosts (markers, overlay band, toolbar and notices, selection,
+  // theme tokens, camera-first layout, en/zh/ja copy): main at 6ac7f68
+  // measured 445.4 KiB raw / 134.9 KiB gzip, main plus this change
+  // 462.2 KiB / 139.1 KiB (+3.8% / +3.1%). Heads about 1.6% raw / 1.8% gzip.
+  libEntry: { raw: 481_000, gzip: 145_000 },
   libCss: { raw: 360_000, gzip: 110_000 },
   // +5 KB gzip head for the embed layout hook, resizable stacked sidebar and
   // phone navbar (measured 722.7 KiB gzip, level with the old 740,000-byte ceiling).
