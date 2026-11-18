@@ -10,12 +10,12 @@ import { type RemoteFileEntry, validateManifestUrl } from './RemoteManifestDataS
 import {
   Coalescer,
   fetchWithRefresh,
-  isNearExpiry,
   normalizeLogicalPath,
   parseExpiresAt,
   ProactiveRefreshTimer,
   readResponseBytes,
   UrlChangeEmitter,
+  type UrlRefresher,
 } from './signedUrls';
 
 /** One source recording of an episode set: a one-episode LeRobot v3 tree. */
@@ -253,11 +253,13 @@ export class EpisodeSetDataSource implements DataSource {
         this.episodeTable ??= this.buildEpisodeTable();
         return this.episodeTable;
       default: {
-        const res = await fetchWithRefresh(
-          normalized,
-          () => this.getRecordingUrl(file),
-          this.hasRefresher() ? () => this.refresh() : null,
-        );
+        const refresher: UrlRefresher | null = this.hasRefresher()
+          ? {
+              generation: () => this.refreshCoalescer.generation,
+              refreshSince: (seen) => this.refreshCoalescer.runSince(seen, () => this.refreshNow()),
+            }
+          : null;
+        const res = await fetchWithRefresh(normalized, () => this.getRecordingUrl(file), refresher);
         return readResponseBytes(res, normalized, this.limits, onProgress);
       }
     }
@@ -296,37 +298,40 @@ export class EpisodeSetDataSource implements DataSource {
    * notify URL subscribers of the paths whose URL changed.
    */
   refresh(): Promise<void> {
+    if (!this.hasRefresher()) return Promise.resolve();
+    return this.refreshCoalescer.run(() => this.refreshNow());
+  }
+
+  private async refreshNow(): Promise<void> {
     const refresher = this.options.refresh ?? this.options.resolve;
-    if (!refresher) return Promise.resolve();
-    return this.refreshCoalescer.run(async () => {
-      const indices = [...this.resolved.keys()];
-      const changed: string[] = [];
-      for (let start = 0; start < indices.length; start += EPISODE_SET_RESOLVE_BATCH) {
-        const batch = indices.slice(start, start + EPISODE_SET_RESOLVE_BATCH);
-        const ids = batch.map((r) => this.manifest.recordings[r]!.id);
-        const results = await refresher(ids);
-        for (const result of results ?? []) {
-          const r = this.recordingIndexById.get(result?.id);
-          if (r === undefined || !this.resolved.has(r)) continue;
-          const previous = this.resolved.get(r)!;
-          const next = this.checkLayout(r, result.files);
-          if (previous.data.entry.presignedUrl !== next.data.entry.presignedUrl) {
-            changed.push(formatLeRobotPath(DATA_PATH, chunkOf(r)));
-          }
-          for (const videoKey of this.videoKeys) {
-            if (
-              previous.videos.get(videoKey)?.entry.presignedUrl !==
-              next.videos.get(videoKey)?.entry.presignedUrl
-            ) {
-              changed.push(formatLeRobotPath(VIDEO_PATH, { ...chunkOf(r), video_key: videoKey }));
-            }
-          }
-          this.resolved.set(r, next);
+    if (!refresher) return;
+    const indices = [...this.resolved.keys()];
+    const changed: string[] = [];
+    for (let start = 0; start < indices.length; start += EPISODE_SET_RESOLVE_BATCH) {
+      const batch = indices.slice(start, start + EPISODE_SET_RESOLVE_BATCH);
+      const ids = batch.map((r) => this.manifest.recordings[r]!.id);
+      const results = await refresher(ids);
+      for (const result of results ?? []) {
+        const r = this.recordingIndexById.get(result?.id);
+        if (r === undefined || !this.resolved.has(r)) continue;
+        const previous = this.resolved.get(r)!;
+        const next = this.checkLayout(r, result.files);
+        if (previous.data.entry.presignedUrl !== next.data.entry.presignedUrl) {
+          changed.push(formatLeRobotPath(DATA_PATH, chunkOf(r)));
         }
+        for (const videoKey of this.videoKeys) {
+          if (
+            previous.videos.get(videoKey)?.entry.presignedUrl !==
+            next.videos.get(videoKey)?.entry.presignedUrl
+          ) {
+            changed.push(formatLeRobotPath(VIDEO_PATH, { ...chunkOf(r), video_key: videoKey }));
+          }
+        }
+        this.resolved.set(r, next);
       }
-      this.urlChanges.emit(changed);
-      this.proactiveRefresh.reschedule();
-    });
+    }
+    this.urlChanges.emit(changed);
+    this.proactiveRefresh.reschedule();
   }
 
   private hasRefresher(): boolean {
@@ -344,7 +349,7 @@ export class EpisodeSetDataSource implements DataSource {
   ): Promise<string> {
     await this.ensureResolved(file.recording);
     let state = this.fileState(file);
-    if (isNearExpiry(state.expiresAtMs) && this.hasRefresher()) {
+    if (this.hasRefresher() && this.refreshCoalescer.shouldRefreshForExpiry(state.expiresAtMs)) {
       await this.refresh();
       state = this.fileState(file);
     }

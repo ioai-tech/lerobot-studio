@@ -51,17 +51,56 @@ export function isAuthFailure(status: number): boolean {
   return status === 401 || status === 403;
 }
 
-/** Runs one task at a time; concurrent callers share the in-flight promise. */
+/**
+ * Never refresh because of a near expiry more often than this: a refresh that
+ * returns URLs which still expire within the margin must not turn every read
+ * into another refresh.
+ */
+export const MIN_EXPIRY_REFRESH_INTERVAL_MS = 30_000;
+
+/**
+ * Runs one refresh at a time; concurrent callers share the in-flight promise.
+ * Each successful refresh bumps `generation`, so a read that got its URL
+ * before a refresh finished retries with the new URL instead of starting
+ * another refresh.
+ */
 export class Coalescer {
   private inFlight: Promise<void> | null = null;
+  /** Count of successful refreshes. */
+  generation = 0;
+  private lastSuccessAt = -Infinity;
+  private readonly now: () => number;
+
+  constructor(now: () => number = Date.now) {
+    this.now = now;
+  }
 
   run(task: () => Promise<void>): Promise<void> {
     if (!this.inFlight) {
-      this.inFlight = task().finally(() => {
-        this.inFlight = null;
-      });
+      this.inFlight = task()
+        .then(() => {
+          this.generation++;
+          this.lastSuccessAt = this.now();
+        })
+        .finally(() => {
+          this.inFlight = null;
+        });
     }
     return this.inFlight;
+  }
+
+  /** Refresh unless one already succeeded after generation `seen` (then reuse it). */
+  runSince(seen: number, task: () => Promise<void>): Promise<void> {
+    if (this.generation !== seen && !this.inFlight) return Promise.resolve();
+    return this.run(task);
+  }
+
+  /** Whether an expiry this close justifies a refresh now (rate-limited after a refresh). */
+  shouldRefreshForExpiry(expiresAtMs: number | null): boolean {
+    const now = this.now();
+    return (
+      isNearExpiry(expiresAtMs, now) && now - this.lastSuccessAt >= MIN_EXPIRY_REFRESH_INTERVAL_MS
+    );
   }
 }
 
@@ -98,16 +137,21 @@ export class UrlChangeEmitter {
   }
 }
 
+/** Longest wait between proactive refresh attempts that did not help. */
+const MAX_PROACTIVE_REFRESH_DELAY_MS = 5 * 60_000;
+
 /**
  * Schedules one refresh shortly before the earliest known expiry while at
  * least one consumer holds URLs (a playing video keeps requesting ranges with
- * the URL it was given).
+ * the URL it was given). A refresh that fails, or that leaves the earliest
+ * expiry inside the margin, backs off exponentially instead of re-firing.
  */
 export class ProactiveRefreshTimer {
   private timer: ReturnType<typeof setTimeout> | null = null;
   private readonly earliestExpiry: () => number | null;
   private readonly refresh: () => Promise<void>;
   private readonly active: () => boolean;
+  private failures = 0;
 
   constructor(
     earliestExpiry: () => number | null,
@@ -124,14 +168,22 @@ export class ProactiveRefreshTimer {
     if (!this.active()) return;
     const expiry = this.earliestExpiry();
     if (expiry == null) return;
-    const delay = Math.max(
-      MIN_PROACTIVE_REFRESH_DELAY_MS,
-      expiry - URL_REFRESH_MARGIN_MS - Date.now(),
+    const backoff = Math.min(
+      MAX_PROACTIVE_REFRESH_DELAY_MS,
+      MIN_PROACTIVE_REFRESH_DELAY_MS * 2 ** this.failures,
     );
+    const delay = Math.max(backoff, expiry - URL_REFRESH_MARGIN_MS - Date.now());
     this.timer = setTimeout(() => {
       this.timer = null;
       void this.refresh()
-        .catch((error) => console.warn('Proactive URL refresh failed', error))
+        .then(() => {
+          // Still expiring within the margin: the refresh did not help.
+          this.failures = isNearExpiry(this.earliestExpiry()) ? this.failures + 1 : 0;
+        })
+        .catch((error) => {
+          this.failures++;
+          console.warn('Proactive URL refresh failed', error);
+        })
         .finally(() => this.reschedule());
     }, delay);
   }
@@ -144,6 +196,12 @@ export class ProactiveRefreshTimer {
   }
 }
 
+/** How a fetch renews URLs: the current refresh generation, and a refresh since a generation. */
+export interface UrlRefresher {
+  generation(): number;
+  refreshSince(seenGeneration: number): Promise<void>;
+}
+
 /**
  * Fetch `path` with one refresh-and-retry: a 401/403 or a network failure
  * (signed-URL hosts often omit CORS headers on 403, which surfaces as a
@@ -153,16 +211,18 @@ export class ProactiveRefreshTimer {
 export async function fetchWithRefresh(
   path: string,
   getUrl: () => Promise<string>,
-  refresh: (() => Promise<void>) | null,
+  refresher: UrlRefresher | null,
   init?: RequestInit,
 ): Promise<Response> {
   let lastStatus: number | undefined;
   let lastError: unknown;
+  let seenGeneration = 0;
   for (let attempt = 0; attempt < 2; attempt++) {
     if (attempt === 1) {
-      if (!refresh) break;
+      if (!refresher) break;
       try {
-        await refresh();
+        // A refresh that finished after this read got its URL already renewed it.
+        await refresher.refreshSince(seenGeneration);
       } catch (error) {
         throw new RemoteSourceError(
           'REFRESH_FAILED',
@@ -176,6 +236,8 @@ export async function fetchWithRefresh(
       }
     }
     const url = await getUrl();
+    // The URL belongs to the refresh generation current when it was handed out.
+    if (attempt === 0) seenGeneration = refresher?.generation() ?? 0;
     let response: Response;
     try {
       response = await fetch(url, init);

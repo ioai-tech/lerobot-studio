@@ -212,6 +212,98 @@ describe('remote manifest URL refresh', () => {
     expect(server.refreshCalls).toBe(1);
   });
 
+  it('lets a refresh replace a manifest-wide expiresAt (no refresh on every read)', async () => {
+    const server = fakeSigningServer();
+    vi.stubGlobal('fetch', server.fetchImpl);
+    const strip = (entries: RemoteFileEntry[]) =>
+      entries.map(({ expiresAt: _drop, ...entry }) => entry);
+    // The documented setup: one manifest-wide expiry, a refresh without per-entry expiry.
+    const source = createRemoteManifestDataSource(strip(server.manifest()), {
+      refresh: async () => strip(await server.refresh()),
+      expiresAt: new Date(Date.now() + 10_000).toISOString(),
+    });
+    server.rotate();
+    for (let i = 0; i < 5; i++) await source.readText('meta/info.json');
+    expect(server.refreshCalls).toBe(1);
+  });
+
+  it('applies the expiry a refresh returns with its files', async () => {
+    vi.useFakeTimers({ now: Date.parse('2026-01-01T00:00:00Z') });
+    const server = fakeSigningServer();
+    vi.stubGlobal('fetch', server.fetchImpl);
+    const strip = (entries: RemoteFileEntry[]) =>
+      entries.map(({ expiresAt: _drop, ...entry }) => entry);
+    const source = createRemoteManifestDataSource(strip(server.manifest()), {
+      refresh: async () => ({
+        files: strip(await server.refresh()),
+        expiresAt: new Date(Date.now() + 10 * 60_000).toISOString(),
+      }),
+      expiresAt: new Date(Date.now() + 10_000).toISOString(),
+    });
+    server.rotate();
+    const read = source.readText('meta/info.json');
+    await vi.advanceTimersByTimeAsync(10);
+    await read;
+    expect(server.refreshCalls).toBe(1);
+    // Ten minutes later the returned expiry is near: one more refresh, not before.
+    await vi.advanceTimersByTimeAsync(8 * 60_000);
+    await source.getObjectUrl('meta/info.json');
+    expect(server.refreshCalls).toBe(1);
+    await vi.advanceTimersByTimeAsync(2 * 60_000);
+    const url = source.getObjectUrl('meta/info.json');
+    await vi.advanceTimersByTimeAsync(10);
+    await url;
+    expect(server.refreshCalls).toBe(2);
+  });
+
+  it('does not refresh on every read when refreshed URLs still expire within the margin', async () => {
+    const server = fakeSigningServer();
+    vi.stubGlobal('fetch', server.fetchImpl);
+    const source = createRemoteManifestDataSource(server.manifest(30_000), {
+      refresh: () => server.refresh(30_000),
+    });
+    server.rotate();
+    for (let i = 0; i < 5; i++) await source.readText('meta/info.json');
+    expect(server.refreshCalls).toBe(1);
+  });
+
+  it('backs off a proactive refresh that does not help instead of re-firing every 5 s', async () => {
+    vi.useFakeTimers({ now: Date.parse('2026-01-01T00:00:00Z') });
+    const server = fakeSigningServer();
+    vi.stubGlobal('fetch', server.fetchImpl);
+    const source = createRemoteManifestDataSource(server.manifest(30_000), {
+      refresh: () => server.refresh(30_000),
+    });
+    source.subscribeUrlChanges!(() => undefined);
+    await vi.advanceTimersByTimeAsync(10 * 60_000);
+    // 5 s, 10 s, 20 s ... capped at 5 min: about 8 attempts in 10 minutes, not 120.
+    expect(server.refreshCalls).toBeLessThanOrEqual(9);
+    expect(server.refreshCalls).toBeGreaterThanOrEqual(3);
+    source.clear();
+  });
+
+  it('retries a read whose URL predates a finished refresh without refreshing again', async () => {
+    const server = fakeSigningServer();
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => (release = resolve));
+    const fetchImpl = vi.fn(async (input: RequestInfo | URL) => {
+      if (String(input).includes('cam.mp4')) await gate;
+      return server.fetchImpl(input);
+    });
+    vi.stubGlobal('fetch', fetchImpl);
+    const source = createRemoteManifestDataSource(server.manifest(), {
+      refresh: () => server.refresh(),
+    });
+    server.rotate();
+    // The slow read got its URL before the other read's refresh finished.
+    const slow = source.readText('videos/cam/chunk-000/file-000.mp4');
+    await source.readText('meta/info.json');
+    expect(server.refreshCalls).toBe(1);
+    release();
+    await expect(slow).resolves.toBe('{"ok":true}');
+    expect(server.refreshCalls).toBe(1);
+  });
+
   it('validates the episode scope', () => {
     expect(() =>
       createRemoteManifestDataSource(

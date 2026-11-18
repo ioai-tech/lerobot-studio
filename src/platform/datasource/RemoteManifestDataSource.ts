@@ -2,12 +2,12 @@ import type { DataSource, ProgressHandler } from '../../core/datasource/types';
 import {
   Coalescer,
   fetchWithRefresh,
-  isNearExpiry,
   normalizeLogicalPath,
   parseExpiresAt,
   ProactiveRefreshTimer,
   readResponseBytes,
   UrlChangeEmitter,
+  type UrlRefresher,
 } from './signedUrls';
 import {
   assertMaterializable,
@@ -42,14 +42,26 @@ export interface RemoteManifestOptions {
    * of its expiry; concurrent failures share one call. Paths the result does
    * not list keep their URL; new paths are ignored.
    */
-  refresh?: () => Promise<RemoteFileEntry[]>;
-  /** Default ISO 8601 expiry for entries without their own `expiresAt`. */
+  refresh?: () => Promise<RemoteFileEntry[] | RemoteManifestRefreshResult>;
+  /**
+   * Default ISO 8601 expiry for the initial entries without their own
+   * `expiresAt`. A refresh replaces it: refreshed entries expire at their own
+   * `expiresAt`, else at the refresh result's `expiresAt`, else at an unknown
+   * time (then only a 401/403 triggers the next refresh).
+   */
   expiresAt?: string | null;
   /**
    * Dataset `episode_index` values to show. Only those episodes are listed
    * and read; the health report marks the others as not evaluated.
    */
   episodeScope?: readonly number[];
+}
+
+/** What `refresh` may return when the new URLs share one expiry. */
+export interface RemoteManifestRefreshResult {
+  files: RemoteFileEntry[];
+  /** Default ISO 8601 expiry for the returned entries without their own `expiresAt`. */
+  expiresAt?: string | null;
 }
 
 /** Validate a host-given episode scope (non-negative integers, deduplicated, sorted). */
@@ -89,8 +101,7 @@ interface ManifestEntryState {
 export class RemoteManifestDataSource implements DataSource {
   private readonly entryMap = new Map<string, ManifestEntryState>();
   private readonly limits: Readonly<DataSourceSafetyLimits>;
-  private readonly refreshManifest: (() => Promise<RemoteFileEntry[]>) | null;
-  private readonly defaultExpiresAtMs: number | null;
+  private readonly refreshManifest: RemoteManifestOptions['refresh'] | null;
   private readonly refreshCoalescer = new Coalescer();
   private readonly urlChanges = new UrlChangeEmitter();
   private readonly proactiveRefresh: ProactiveRefreshTimer;
@@ -103,7 +114,7 @@ export class RemoteManifestDataSource implements DataSource {
   ) {
     this.limits = resolveSafetyLimits(limitOverrides);
     this.refreshManifest = options.refresh ?? null;
-    this.defaultExpiresAtMs = parseExpiresAt(options.expiresAt);
+    const defaultExpiresAtMs = parseExpiresAt(options.expiresAt);
     const scope = normalizeEpisodeScope(options.episodeScope);
     if (scope) this.episodeScope = scope;
     this.proactiveRefresh = new ProactiveRefreshTimer(
@@ -150,7 +161,10 @@ export class RemoteManifestDataSource implements DataSource {
           );
         }
       }
-      this.entryMap.set(path, { entry: file, expiresAtMs: this.entryExpiry(file) });
+      this.entryMap.set(path, {
+        entry: file,
+        expiresAtMs: parseExpiresAt(file.expiresAt) ?? defaultExpiresAtMs,
+      });
     }
   }
 
@@ -169,11 +183,7 @@ export class RemoteManifestDataSource implements DataSource {
   async readBytes(path: string, onProgress?: ProgressHandler): Promise<Uint8Array> {
     const state = this.getState(path);
     assertMaterializable(path, state.entry.sizeBytes ?? undefined, this.limits);
-    const res = await fetchWithRefresh(
-      path,
-      () => this.getUrl(path),
-      this.refreshManifest ? () => this.refresh() : null,
-    );
+    const res = await fetchWithRefresh(path, () => this.getUrl(path), this.urlRefresher());
     return readResponseBytes(res, path, this.limits, onProgress);
   }
 
@@ -203,37 +213,47 @@ export class RemoteManifestDataSource implements DataSource {
 
   /** Refresh every URL once; concurrent callers share the same request. */
   refresh(): Promise<void> {
-    const refreshManifest = this.refreshManifest;
-    if (!refreshManifest) return Promise.resolve();
-    return this.refreshCoalescer.run(async () => {
-      const files = await refreshManifest();
-      const changed: string[] = [];
-      for (const file of files) {
-        let path: string;
-        try {
-          path = validateUntrustedPath(file.logicalPath, this.limits);
-        } catch {
-          continue;
-        }
-        const state = this.entryMap.get(path);
-        if (!state) continue;
-        validateManifestUrl(file.presignedUrl, this.limits, path);
-        const previousUrl = state.entry.presignedUrl;
-        state.entry = {
-          ...state.entry,
-          presignedUrl: file.presignedUrl,
-          expiresAt: file.expiresAt,
-        };
-        state.expiresAtMs = this.entryExpiry(file);
-        if (previousUrl !== file.presignedUrl) changed.push(path);
-      }
-      this.urlChanges.emit(changed);
-      this.proactiveRefresh.reschedule();
-    });
+    if (!this.refreshManifest) return Promise.resolve();
+    return this.refreshCoalescer.run(() => this.refreshNow());
   }
 
-  private entryExpiry(file: RemoteFileEntry): number | null {
-    return parseExpiresAt(file.expiresAt) ?? this.defaultExpiresAtMs;
+  private async refreshNow(): Promise<void> {
+    const refreshManifest = this.refreshManifest;
+    if (!refreshManifest) return;
+    const result = await refreshManifest();
+    const files = Array.isArray(result) ? result : (result?.files ?? []);
+    const resultExpiresAtMs = Array.isArray(result) ? null : parseExpiresAt(result?.expiresAt);
+    const changed: string[] = [];
+    for (const file of files) {
+      let path: string;
+      try {
+        path = validateUntrustedPath(file.logicalPath, this.limits);
+      } catch {
+        continue;
+      }
+      const state = this.entryMap.get(path);
+      if (!state) continue;
+      validateManifestUrl(file.presignedUrl, this.limits, path);
+      const previousUrl = state.entry.presignedUrl;
+      state.entry = {
+        ...state.entry,
+        presignedUrl: file.presignedUrl,
+        expiresAt: file.expiresAt,
+      };
+      // The refresh owns the expiry now; the initial manifest default no longer applies.
+      state.expiresAtMs = parseExpiresAt(file.expiresAt) ?? resultExpiresAtMs;
+      if (previousUrl !== file.presignedUrl) changed.push(path);
+    }
+    this.urlChanges.emit(changed);
+    this.proactiveRefresh.reschedule();
+  }
+
+  private urlRefresher(): UrlRefresher | null {
+    if (!this.refreshManifest) return null;
+    return {
+      generation: () => this.refreshCoalescer.generation,
+      refreshSince: (seen) => this.refreshCoalescer.runSince(seen, () => this.refreshNow()),
+    };
   }
 
   private earliestExpiry(): number | null {
@@ -248,7 +268,7 @@ export class RemoteManifestDataSource implements DataSource {
 
   private async getUrl(path: string): Promise<string> {
     const state = this.getState(path);
-    if (this.refreshManifest && isNearExpiry(state.expiresAtMs)) {
+    if (this.refreshManifest && this.refreshCoalescer.shouldRefreshForExpiry(state.expiresAtMs)) {
       await this.refresh();
     }
     return this.getState(path).entry.presignedUrl;

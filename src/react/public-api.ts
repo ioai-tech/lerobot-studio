@@ -18,6 +18,7 @@ import {
   RemoteManifestDataSource,
   type RemoteFileEntry,
   type RemoteManifestOptions,
+  type RemoteManifestRefreshResult,
 } from '../platform/datasource/RemoteManifestDataSource';
 
 export { LeRobotViewer, LeRobotViewerContent } from './components/LeRobotViewer';
@@ -44,7 +45,7 @@ export type {
   ProgressHandler,
   ProgressInfo,
 } from '../core/datasource/types';
-export type { RemoteFileEntry, RemoteManifestOptions };
+export type { RemoteFileEntry, RemoteManifestOptions, RemoteManifestRefreshResult };
 export { RemoteSourceError } from '../platform/datasource/signedUrls';
 export { EpisodeSetError } from '../platform/datasource/EpisodeSetDataSource';
 export type {
