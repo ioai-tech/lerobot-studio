@@ -134,8 +134,10 @@ function Host({
       messages={
         {
           'segments.progress': '{{confirmed}} of {{total}} reviewed',
-          // Not a public key: ignored.
-          'sidebar.episodesCount': 'INTERNAL COPY',
+          // Copy outside segments is the host's to rename too.
+          'sidebar.episodesCount': '{count, plural, one {# take} other {# takes}}',
+          // Standalone-app copy is not a host key: ignored.
+          'seo.title': 'INTERNAL COPY',
         } as LeRobotMessages
       }
     />
@@ -250,8 +252,9 @@ describe('browser: segments, review and change ops', () => {
       />,
     );
     await waitForSegments(host);
-    // Host copy replaces the built-in message; internal copy cannot be replaced.
+    // Host copy replaces built-in messages; standalone-app copy cannot be replaced.
     expect(host.textContent).toContain('0 of 2 reviewed');
+    expect(host.textContent).toContain('2 takes');
     expect(host.textContent).not.toContain('INTERNAL COPY');
     await selectWithKeys(host, 1);
     await press('a');

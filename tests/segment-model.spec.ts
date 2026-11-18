@@ -264,16 +264,18 @@ describe('host messages', () => {
     );
   }
 
-  it('the overridable keys are exactly the segment, overlay and marker messages, present in every locale', () => {
-    const hostKeys = (locale: typeof en) =>
-      [
-        ...flatten(locale.segments, 'segments.'),
-        ...flatten(locale.overlay, 'overlay.'),
-        ...flatten(locale.markers, 'markers.'),
-      ].sort();
-    expect([...LEROBOT_MESSAGE_KEYS].sort()).toEqual(hostKeys(en));
-    expect(hostKeys(zh)).toEqual([...LEROBOT_MESSAGE_KEYS].sort());
-    expect(hostKeys(ja)).toEqual([...LEROBOT_MESSAGE_KEYS].sort());
+  it('every overridable key has its built-in copy in every locale (coverage: message-keys.spec)', () => {
+    const keys = (locale: typeof en) =>
+      new Set(
+        Object.entries(locale).flatMap(([name, value]) =>
+          typeof value === 'string' ? [name] : flatten(value, `${name}.`),
+        ),
+      );
+    for (const locale of [en, zh, ja]) {
+      const present = keys(locale);
+      expect(LEROBOT_MESSAGE_KEYS.filter((key) => !present.has(key))).toEqual([]);
+    }
+    expect(LEROBOT_MESSAGE_KEYS).toContain('segments.title');
   });
 });
 

@@ -327,7 +327,9 @@ export function RecordingStudio({ view, url, navigate }: HostProps) {
 
 Switching `rendition` passes another `dataSource` with the same frames; the viewer keeps the episode, segment and time (see [Selection and deep links](#selection-and-deep-links)).
 
-`messages` values are ICU message strings (`{{name}}` placeholders also work). The viewer keeps its built-in copy for a key it does not document, or for a value that is not a string, such as a precompiled message array. It logs one `console.warn` per key, for example `lerobot-studio: messages["segments.row"] ignored: expected an ICU string, got array`.
+Every message an embedded viewer can show can be replaced, not only segment copy. That covers the segment list, sidebar, panels, charts, playback, export, batch trim, health checks, dialogs and errors. `LEROBOT_MESSAGE_KEYS` lists the keys, and the TypeScript type `LeRobotMessageKey` checks them. The English catalog `src/react/locales/en.json` shows each key's default. Only copy that the standalone app alone shows is not a host key: its page metadata, and opening or restoring local folders.
+
+`messages` values are ICU message strings (`{{name}}` placeholders also work). The viewer keeps its built-in copy for an unknown key, or for a value that is not a string, such as a precompiled message array. It logs one `console.warn` per key, for example `lerobot-studio: messages["segments.row"] ignored: expected an ICU string, got array`.
 
 ### Markers and read-only suggestions
 
@@ -443,7 +445,7 @@ Common props include:
 | `annotation`               | Host-controlled segments: `value`, `onChange`, `saveState`                             |
 | `readOnly`                 | Show segments and review without any edit control                                      |
 | `fields`                   | Values a person sets on each segment (`select`, `tags`, `text`)                        |
-| `messages`                 | Replace built-in segment copy by key                                                   |
+| `messages`                 | Replace any built-in copy by key                                                       |
 | `markers`                  | Ranges on the time axis by severity; see [Markers](#markers-and-read-only-suggestions) |
 | `overlaySegments`          | Read-only segments in a band above the segment track                                   |
 | `extensions`               | Host toolbar items and notices; see [Toolbar and notices](#toolbar-and-notices)        |

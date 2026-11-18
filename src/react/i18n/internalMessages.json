@@ -1,0 +1,18 @@
+{
+  "seo.title": "Page metadata of the standalone app; an embedded viewer has no page of its own.",
+  "seo.description": "Page metadata of the standalone app; an embedded viewer has no page of its own.",
+  "seo.keywords": "Page metadata of the standalone app; an embedded viewer has no page of its own.",
+  "seo.ogTitle": "Page metadata of the standalone app; an embedded viewer has no page of its own.",
+  "seo.ogDescription": "Page metadata of the standalone app; an embedded viewer has no page of its own.",
+  "app.title": "Not shown: no code reads it.",
+  "app.enterRemoteArchiveUrl": "Not shown: no code reads it.",
+  "panels.welcome.dropToOpen": "Standalone app only: dropping a folder onto the app window.",
+  "panels.welcome.dropHint": "Standalone app only: dropping a folder onto the app window.",
+  "panels.welcome.dropDirectoryUnsupported": "Standalone app only: dropping a folder onto the app window.",
+  "dialogs.remoteArchive.preflight": "Standalone app only: its remote archive dialog.",
+  "source.restoreHandleMissing": "Standalone app only: restoring a saved local folder; the host owns the data source.",
+  "source.restorePermissionDenied": "Standalone app only: restoring a saved local folder; the host owns the data source.",
+  "source.restoreHandleMismatch": "Standalone app only: restoring a saved local folder; the host owns the data source.",
+  "source.restoreHandleNotFound": "Standalone app only: restoring a saved local folder; the host owns the data source.",
+  "source.insecureOriginPickerFallback": "Standalone app only: its file picker; the host owns the data source."
+}

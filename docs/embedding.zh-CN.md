@@ -327,7 +327,9 @@ export function RecordingStudio({ view, url, navigate }: HostProps) {
 
 切换 `rendition` 会传入帧相同的另一个 `dataSource`；查看器保留所在的 episode、分段和时间（见[选择与深层链接](#selection-and-deep-links)）。
 
-`messages` 的值是 ICU 消息字符串（也支持 `{{name}}` 占位符）。对于未在文档中列出的键，或值不是字符串（例如预编译的消息数组）的键，查看器保留内置文案，并为每个键输出一条 `console.warn`，例如 `lerobot-studio: messages["segments.row"] ignored: expected an ICU string, got array`。
+嵌入的查看器能显示的每一条文案都可以替换，不只是分段文案。范围包括分段列表、侧栏、面板、图表、播放、导出、批量裁剪、健康检查、对话框和错误提示。`LEROBOT_MESSAGE_KEYS` 列出所有键，TypeScript 类型 `LeRobotMessageKey` 会检查键名。英文目录 `src/react/locales/en.json` 给出每个键的默认文案。只有独立应用自己才显示的文案不是宿主可用的键：它的页面元数据，以及打开或恢复本地文件夹的提示。
+
+`messages` 的值是 ICU 消息字符串（也支持 `{{name}}` 占位符）。对于未知的键，或值不是字符串（例如预编译的消息数组）的键，查看器保留内置文案，并为每个键输出一条 `console.warn`，例如 `lerobot-studio: messages["segments.row"] ignored: expected an ICU string, got array`。
 
 ### 标记与只读建议 {#markers-and-read-only-suggestions}
 
@@ -443,7 +445,7 @@ const LeRobotViewer = dynamic(
 | `annotation`               | 由宿主控制的分段：`value`、`onChange`、`saveState`                         |
 | `readOnly`                 | 只显示分段和审核，不显示任何编辑控件                                       |
 | `fields`                   | 每个分段上可设置的值（`select`、`tags`、`text`）                           |
-| `messages`                 | 按键替换内置的分段文案                                                     |
+| `messages`                 | 按键替换任意内置文案                                                       |
 | `markers`                  | 时间轴上按严重程度着色的区间，见[标记](#markers-and-read-only-suggestions) |
 | `overlaySegments`          | 分段轨道上方细条中的只读分段                                               |
 | `extensions`               | 宿主工具栏项和通知，见[工具栏与通知](#toolbar-and-notices)                 |
