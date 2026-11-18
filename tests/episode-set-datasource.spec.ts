@@ -1,10 +1,17 @@
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 
 vi.mock('../src/platform/workers/workerManager.ts', async () => {
-  const { readParquetToIPC, readNumericColumns, readFeatureData } =
-    await import('./helpers/parquet');
+  const {
+    readParquetToIPC,
+    readNumericColumns,
+    readFeatureData,
+    readNumericColumnsRanged,
+    readFeatureDataRanged,
+  } = await import('./helpers/parquet');
   return {
     createParquetWorker: () => ({
+      readNumericColumnsRanged,
+      readFeatureDataRanged,
       readParquet: async (buffer: ArrayBuffer, columns?: string[]) =>
         readParquetToIPC(new Uint8Array(buffer), columns),
       readNumericColumns: async (buffer: ArrayBuffer, columns: string[], s: number, e: number) =>

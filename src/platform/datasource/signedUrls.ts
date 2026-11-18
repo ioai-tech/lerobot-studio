@@ -1,4 +1,4 @@
-import type { ProgressHandler } from '../../core/datasource/types';
+import type { ByteRangeResult, ProgressHandler } from '../../core/datasource/types';
 import {
   assertMaterializable,
   DataSourceSafetyError,
@@ -10,8 +10,15 @@ export const URL_REFRESH_MARGIN_MS = 60_000;
 /** Never schedule proactive refreshes closer together than this. */
 const MIN_PROACTIVE_REFRESH_DELAY_MS = 5_000;
 
-/** Machine-readable reasons a remote read failed after its one retry. */
-export type RemoteSourceErrorCode = 'HTTP_STATUS' | 'NETWORK' | 'REFRESH_FAILED';
+/**
+ * Machine-readable reasons a remote read failed after its one retry.
+ * `RANGE_SIZE_UNKNOWN`: a range read of a file whose size is unknown (the
+ * manifest has no `sizeBytes` and the response's `Content-Range` is not
+ * readable; cross-origin servers must list it in
+ * `Access-Control-Expose-Headers`).
+ */
+export type RemoteSourceErrorCode =
+  'HTTP_STATUS' | 'NETWORK' | 'REFRESH_FAILED' | 'RANGE_SIZE_UNKNOWN';
 
 /** A remote file could not be read, even after refreshing its URL once. */
 export class RemoteSourceError extends Error {
@@ -264,6 +271,72 @@ export async function fetchWithRefresh(
   throw new RemoteSourceError('NETWORK', path, `Network error fetching ${path}`, {
     cause: lastError,
   });
+}
+
+const CONTENT_RANGE = /^bytes (\d+)-(\d+)\/(\d+|\*)$/;
+
+/**
+ * Read bytes [start, end) of a remote file (see `DataSource.readRange`) with
+ * the same one refresh-and-retry as `fetchWithRefresh`. With a known size the
+ * request is an explicit `bytes=a-b` range (a CORS-safelisted header); without
+ * one, a negative `start` becomes a suffix range and the size comes from
+ * `Content-Range`. A server that ignores ranges answers 200: the whole file is
+ * returned and the caller sees `bytes.length === size`.
+ */
+export async function fetchByteRange(
+  path: string,
+  getUrl: () => Promise<string>,
+  refresher: UrlRefresher | null,
+  knownSize: number | null,
+  start: number,
+  end: number | undefined,
+  limits: Readonly<DataSourceSafetyLimits>,
+): Promise<ByteRangeResult> {
+  if (!Number.isSafeInteger(start) || (end !== undefined && !Number.isSafeInteger(end))) {
+    throw new RangeError(`readRange(${path}): start and end must be integers`);
+  }
+  let header: string;
+  let expectedStart: number | null;
+  if (knownSize != null) {
+    const from = start < 0 ? Math.max(0, knownSize + start) : Math.min(start, knownSize);
+    const to =
+      start < 0 || end === undefined ? knownSize : Math.max(from, Math.min(end, knownSize));
+    if (to <= from) return { bytes: new Uint8Array(0), start: from, size: knownSize };
+    header = `bytes=${from}-${to - 1}`;
+    expectedStart = from;
+  } else if (start < 0) {
+    header = `bytes=-${-start}`;
+    expectedStart = null;
+  } else {
+    if (end !== undefined && end <= start) {
+      throw new RangeError(`readRange(${path}): empty range on a file of unknown size`);
+    }
+    header = end === undefined ? `bytes=${start}-` : `bytes=${start}-${end - 1}`;
+    expectedStart = start;
+  }
+  const res = await fetchWithRefresh(path, getUrl, refresher, { headers: { Range: header } });
+  const bytes = await readResponseBytes(res, path, limits);
+  // A readable ETag names the file version (cross-origin servers expose it
+  // with Access-Control-Expose-Headers).
+  const etag = res.headers.get('etag') ?? undefined;
+  const version = etag ? { etag } : {};
+  if (res.status !== 206) {
+    // The server ignored the range and sent the whole file.
+    return { bytes, start: 0, size: bytes.length, ...version };
+  }
+  const contentRange = CONTENT_RANGE.exec(res.headers.get('content-range') ?? '');
+  const rangeStart = contentRange ? Number(contentRange[1]) : expectedStart;
+  const size =
+    contentRange && contentRange[3] !== '*' ? Number(contentRange[3]) : (knownSize ?? null);
+  if (rangeStart == null || size == null) {
+    throw new RemoteSourceError(
+      'RANGE_SIZE_UNKNOWN',
+      path,
+      `Cannot place a range read of ${path}: no size in the manifest and no readable Content-Range`,
+      { status: res.status },
+    );
+  }
+  return { bytes, start: rangeStart, size, ...version };
 }
 
 /** Read a response body into memory within the materialization limits. */

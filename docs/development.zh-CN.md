@@ -85,6 +85,8 @@ node scripts/bench/range-server.mjs --page scripts/bench/dist --dataset f22=/dat
 node scripts/bench/measure-playback.mjs --url 'http://127.0.0.1:4877/?manifest=/manifest/f22.json' --label run1
 ```
 
+`--charts-only` 在图表出现后停止，报告第一个图表和全部图表绘制完成的时间（也给出相对首帧的时间），以及服务器响应的每次 parquet 数据读取（`GET /__reads`）。`--executable /usr/bin/google-chrome` 使用系统 Chrome；`range-server.mjs --no-range` 对 parquet 的 Range 请求返回整个文件；`?manifest=/manifest/<name>.json%3Fsizes%3D0` 去掉清单中的 `sizeBytes`。
+
 `native-spread.mjs` 在同一服务器上测量普通 `<video>` 元素，作为浏览器自身呈现能力的参考。结果取决于机器及其负载，只比较同一台机器上的结果。
 
 ## 包验证

@@ -1,4 +1,4 @@
-import React, { Suspense, useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   useLeRobotData,
@@ -7,9 +7,9 @@ import {
   useLeRobotSubtask,
   useLeRobotUi,
 } from '../../contexts/LeRobotContext';
-import { SegmentList } from '../Segments/SegmentList';
+import { LazySegmentList } from '../Segments/lazySegments';
 import type { EpisodeMetadata } from '@/core';
-import { EditTaskDialog } from '../dialogs/EditTaskDialog';
+import { LazyEditTaskDialog } from '../dialogs/lazyDialogs';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/ui';
 import { Button } from '@/ui';
 import { Textarea } from '@/ui';
@@ -18,11 +18,11 @@ import { EpisodeSearch } from './episodes/EpisodeSearch';
 import { EpisodeFilters } from './episodes/EpisodeFilters';
 import { EpisodeToolbar } from './episodes/EpisodeToolbar';
 import { EpisodeList } from './episodes/EpisodeList';
+import { lazyChunk } from '../Commons/lazyChunk';
 
-const BatchTrimDialog = React.lazy(async () => {
-  const mod = await import('../dialogs/BatchTrimDialog');
-  return { default: mod.BatchTrimDialog };
-});
+const BatchTrimDialog = lazyChunk(
+  async () => (await import('../dialogs/BatchTrimDialog')).BatchTrimDialog,
+);
 
 export const EpisodeSidebar: React.FC = () => {
   const { t } = useTranslation();
@@ -225,7 +225,7 @@ export const EpisodeSidebar: React.FC = () => {
           </div>
         ) : null}
         <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-          <SegmentList episodeIndex={episodes[0].episode_index} />
+          <LazySegmentList episodeIndex={episodes[0].episode_index} />
         </div>
       </div>
     );
@@ -307,7 +307,9 @@ export const EpisodeSidebar: React.FC = () => {
           onRestore={(episodeIndex, event) => handleRestore(event, episodeIndex)}
           renderSelectedExpansion={
             segments.active
-              ? (episode) => <SegmentList episodeIndex={episode.episode_index} showTitle={false} />
+              ? (episode) => (
+                  <LazySegmentList episodeIndex={episode.episode_index} showTitle={false} />
+                )
               : undefined
           }
           expansionHeight={(episode) => {
@@ -318,15 +320,10 @@ export const EpisodeSidebar: React.FC = () => {
       </div>
 
       {!mutationDisabled && batchTrimEpisodes && (
-        <Suspense fallback={null}>
-          <BatchTrimDialog
-            episodes={batchTrimEpisodes}
-            onClose={() => setBatchTrimEpisodes(null)}
-          />
-        </Suspense>
+        <BatchTrimDialog episodes={batchTrimEpisodes} onClose={() => setBatchTrimEpisodes(null)} />
       )}
       {!mutationDisabled && (
-        <EditTaskDialog
+        <LazyEditTaskDialog
           key={episodeToEdit?.episode_index ?? 'edit-dialog'}
           open={editDialogOpen}
           onOpenChange={setEditDialogOpen}

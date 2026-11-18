@@ -98,7 +98,13 @@ class BlobUrlLruCache {
   }
 }
 
-import type { DataSource, ProgressHandler, ProgressInfo, LoadingPhase } from '@/core';
+import type {
+  ByteRangeResult,
+  DataSource,
+  ProgressHandler,
+  ProgressInfo,
+  LoadingPhase,
+} from '@/core';
 export type { DataSource, ProgressHandler, ProgressInfo, LoadingPhase };
 
 function normalizePath(path: string): string {
@@ -537,6 +543,14 @@ export class RemoteFullArchiveDataSource implements DataSource {
   }
 }
 
+/** `DataSource.readRange` over a local Blob / File. */
+async function readBlobRange(blob: Blob, start: number, end?: number): Promise<ByteRangeResult> {
+  const size = blob.size;
+  const from = start < 0 ? Math.max(0, size + start) : Math.min(start, size);
+  const to = start < 0 || end === undefined ? size : Math.max(from, Math.min(end, size));
+  return { bytes: new Uint8Array(await blob.slice(from, to).arrayBuffer()), start: from, size };
+}
+
 export class DirectoryDataSource implements DataSource {
   private rootHandle: FileSystemDirectoryHandle;
   private objectUrlCache: BlobUrlLruCache = new BlobUrlLruCache();
@@ -591,6 +605,10 @@ export class DirectoryDataSource implements DataSource {
     const file = await fileHandle.getFile();
     onProgress?.({ phase: 'read', loaded: 0, total: file.size });
     return new Uint8Array(await file.arrayBuffer());
+  }
+
+  async readRange(path: string, start: number, end?: number): Promise<ByteRangeResult> {
+    return readBlobRange(await (await this.getFileHandle(path)).getFile(), start, end);
   }
 
   async getObjectUrl(
@@ -691,6 +709,10 @@ export class FileListDirectoryDataSource implements DataSource {
     const file = this.getFile(path);
     onProgress?.({ phase: 'read', loaded: 0, total: file.size });
     return new Uint8Array(await file.arrayBuffer());
+  }
+
+  async readRange(path: string, start: number, end?: number): Promise<ByteRangeResult> {
+    return readBlobRange(this.getFile(path), start, end);
   }
 
   async getObjectUrl(

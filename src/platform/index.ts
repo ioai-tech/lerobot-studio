@@ -1,4 +1,10 @@
-export type { DataSource, ProgressHandler, ProgressInfo, LoadingPhase } from '@/core';
+export type {
+  ByteRangeResult,
+  DataSource,
+  ProgressHandler,
+  ProgressInfo,
+  LoadingPhase,
+} from '@/core';
 
 export {
   DirectoryDataSource,

@@ -114,7 +114,12 @@ describe('browser: data foundations', () => {
 
   it('draws one chart per feature, titled by key, with declared dimension names', async () => {
     await render(<LeRobotViewer dataSource={new SignedFixtureSource()} language="en" />);
-    await waitFor(() => host.querySelectorAll('[data-chart-group]').length >= 2);
+    // Groups show placeholders while their columns load; wait until all are drawn.
+    await waitFor(
+      () =>
+        host.querySelectorAll('[data-chart-group]').length >= 2 &&
+        host.querySelector('[data-testid="chart-groups"]')?.getAttribute('aria-busy') === 'false',
+    );
     const titles = Array.from(host.querySelectorAll('[data-chart-group] h3')).map(
       (h) => h.textContent,
     );
@@ -131,6 +136,7 @@ describe('browser: data foundations', () => {
     await render(<LeRobotViewer dataSource={source} language="en" showPlaybackBar={false} />);
     await waitFor(() => (video()?.readyState ?? 0) >= 2);
     expect(source.invalidations).toBe(1);
+    await waitFor(() => host.querySelector('[data-chart-group="action"] .u-over') !== null);
 
     // Seek to a later frame by clicking the chart.
     const over = host.querySelector<HTMLElement>('[data-chart-group="action"] .u-over')!;
@@ -235,6 +241,48 @@ describe('browser: data foundations', () => {
     await new Promise((resolve) => setTimeout(resolve, 300));
     expect(reads()).toBe(1);
     expect(host.querySelector('[data-chart-group="aux:extra"]')).not.toBeNull();
+  }, 60_000);
+
+  it('reads auxiliary series only after the episode charts, never competing with them', async () => {
+    const events: string[] = [];
+    class SlowDataSource extends SignedFixtureSource {
+      override async readBytes(path: string) {
+        if (path.startsWith('data/')) await new Promise((resolve) => setTimeout(resolve, 800));
+        const bytes = await super.readBytes(path);
+        if (path.startsWith('data/')) events.push('episode-data');
+        return bytes;
+      }
+    }
+    const realFetch = globalThis.fetch;
+    vi.spyOn(globalThis, 'fetch').mockImplementation((input, init) => {
+      if (String(input).includes('aux=1')) events.push('aux');
+      return realFetch(input, init);
+    });
+    await render(
+      <LeRobotViewer
+        dataSource={new SlowDataSource()}
+        language="en"
+        showPlaybackBar={false}
+        auxiliarySeries={[
+          {
+            id: 'extra',
+            label: 'Extra sensor',
+            files: [
+              {
+                logicalPath: 'extra.parquet',
+                presignedUrl: `${location.origin}${DATASET}/data/chunk-000/file-000.parquet?aux=1`,
+              },
+            ],
+            timeColumn: 'timestamp',
+            timeUnit: 's',
+            columns: ['action'],
+          },
+        ]}
+      />,
+    );
+    await waitFor(() => host.querySelector('[data-chart-group="aux:extra"] canvas') !== null);
+    expect(events.indexOf('aux')).toBeGreaterThan(events.indexOf('episode-data'));
+    expect(events.indexOf('episode-data')).toBeGreaterThanOrEqual(0);
   }, 60_000);
 
   it('shows an auxiliary series that loads after the dataset charts with its dimensions on', async () => {

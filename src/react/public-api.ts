@@ -40,6 +40,7 @@ export { useDragAndDrop } from './utils/dragAndDrop';
 export type { DirectoryFile, DragAndDropCallbacks } from './utils/dragAndDrop';
 export type { ParsedSourceUrl, SourceKind } from './utils/sourceUrlTypes';
 export type {
+  ByteRangeResult,
   DataSource,
   LoadingPhase,
   ProgressHandler,

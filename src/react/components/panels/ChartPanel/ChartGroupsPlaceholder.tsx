@@ -31,11 +31,18 @@ export function ChartGroupsPlaceholder({ groups }: { groups: ChartGroup[] }) {
               <span key={series.id} className="h-5 w-14 rounded border border-border/60" />
             ))}
           </header>
-          <div className="relative min-h-0 flex-1 pt-1.5 pr-2 pb-[24px] pl-[52px]">
-            <div className="h-full w-full animate-pulse rounded-sm bg-muted/60 motion-reduce:animate-none" />
-          </div>
+          <ChartPlotPlaceholder />
         </section>
       ))}
+    </div>
+  );
+}
+
+/** The plot area of a chart whose data is still loading, inset like the plot's axes. */
+export function ChartPlotPlaceholder() {
+  return (
+    <div className="relative min-h-0 flex-1 pt-1.5 pr-2 pb-[24px] pl-[52px]">
+      <div className="h-full w-full animate-pulse rounded-sm bg-muted/60 motion-reduce:animate-none" />
     </div>
   );
 }

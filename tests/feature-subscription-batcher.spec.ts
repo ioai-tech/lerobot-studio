@@ -47,6 +47,34 @@ describe('FeatureSubscriptionBatcher', () => {
     expect(onFeatureData).toHaveBeenCalledWith({ vector: [[3, 4]] });
   });
 
+  it('leaves features to the episode load while its chart columns are still read', async () => {
+    let scheduled: (() => void) | undefined;
+    const loadFeatureData = vi.fn(async () => ({ vector: [[3, 4]] }));
+    const onFeatureData = vi.fn();
+    const batcher = new FeatureSubscriptionBatcher({
+      getSnapshot: () => ({
+        episodeIndex: 7,
+        loader: { loadFeatureData } as unknown as LeRobotDataLoader,
+        info,
+        chartData: {},
+        chartColumnsPending: true,
+        featureData: {},
+      }),
+      onFeatureData,
+      schedule: (callback) => {
+        scheduled = callback;
+        return 1;
+      },
+    });
+
+    await batcher.subscribe('vector');
+    scheduled?.();
+    await Promise.resolve();
+    // No read competing with the charts; the episode load reads subscribed features after them.
+    expect(loadFeatureData).not.toHaveBeenCalled();
+    expect(batcher.getSubscribedFeatureNames(info)).toEqual(['vector']);
+  });
+
   it('does not schedule media features and filters inactive subscriptions', async () => {
     const schedule = vi.fn(() => 1);
     const cancel = vi.fn();

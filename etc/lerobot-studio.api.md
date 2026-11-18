@@ -148,6 +148,14 @@ export interface AuxiliarySeriesWarning {
 export type AuxiliarySeriesWarningCode = 'COLUMN_MISSING' | 'TIME_COLUMN_MISSING' | 'TIME_UNIT_MISMATCH' | 'ROW_TIME_NEEDS_FRAME_UNIT' | 'READ_FAILED' | 'EPISODE_SET_UNSUPPORTED';
 
 // @public
+export interface ByteRangeResult {
+    bytes: Uint8Array;
+    etag?: string;
+    size: number;
+    start: number;
+}
+
+// @public
 export function createArchiveDataSourceFromFile(file: File): DataSource;
 
 // @public
@@ -193,6 +201,7 @@ export interface DataSource {
     invalidateObjectUrl?(path: string): void | Promise<void>;
     listPaths?(): Promise<string[]>;
     readBytes(path: string, onProgress?: ProgressHandler): Promise<Uint8Array>;
+    readRange?(path: string, start: number, end?: number): Promise<ByteRangeResult>;
     readText(path: string, onProgress?: ProgressHandler): Promise<string>;
     subscribeUrlChanges?(listener: (paths: readonly string[]) => void): () => void;
 }
@@ -558,7 +567,7 @@ export class RemoteSourceError extends Error {
 }
 
 // @public
-export type RemoteSourceErrorCode = 'HTTP_STATUS' | 'NETWORK' | 'REFRESH_FAILED';
+export type RemoteSourceErrorCode = 'HTTP_STATUS' | 'NETWORK' | 'REFRESH_FAILED' | 'RANGE_SIZE_UNKNOWN';
 
 // @public
 export type ReviewState = 'to_review' | 'confirmed';

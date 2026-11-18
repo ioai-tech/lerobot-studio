@@ -49,9 +49,9 @@ export interface LeRobotDataContextType {
   isLoading: boolean;
   /** Open this selection once its episode loads (deep link, data-source swap); `null` drops it. */
   setPendingSelection: (selection: PendingSelection | null) => void;
-  /** True while a selection waits for its episode (autoplay holds; selection reports wait). */
   /** The selection still waiting to land, if any. */
   getPendingSelection: () => PendingSelection | null;
+  /** True while a selection waits for its episode (autoplay holds; selection reports wait). */
   hasPendingSelection: () => boolean;
 }
 
@@ -80,6 +80,11 @@ export interface LeRobotPlaybackContextType {
   clock: PlaybackClock;
   currentFrames: FrameData[];
   chartData: NumericalColumnMap;
+  /**
+   * Chart columns of the selected episode still being read (they arrive in
+   * batches, the top chart group first); empty when every column is in.
+   */
+  pendingChartColumns: readonly string[];
   currentFrameIndex: number;
   isPlaying: boolean;
   playbackMode: PlaybackMode;

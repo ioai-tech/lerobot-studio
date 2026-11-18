@@ -34,6 +34,19 @@ export function getEagerEpisodeColumns(info: LeRobotInfo): string[] {
   return Array.from(columns);
 }
 
+/**
+ * Eager episode columns in fetch order: the time axis with the first chart
+ * group (the one drawn at the top), then every other group. The first batch
+ * starts playback and draws the top chart; the rest follow.
+ */
+export function getEpisodeColumnBatches(info: LeRobotInfo): string[][] {
+  const [time, ...features] = getEagerEpisodeColumns(info);
+  if (features.length === 0) return [[time!]];
+  const batches = [[time!, features[0]!]];
+  if (features.length > 1) batches.push(features.slice(1));
+  return batches;
+}
+
 export function buildPlaybackFrames(columnData: NumericalColumnMap, fps: number): FrameData[] {
   const timestampColumn = columnData.timestamp;
   const timestamps = timestampColumn

@@ -52,7 +52,8 @@ async function main() {
   const manifestUrl = params.get('manifest') ?? '/manifest/default.json';
   const expiresIn = params.get('expiresIn');
   const fetchManifest = async (): Promise<RemoteFileEntry[]> => {
-    const url = expiresIn ? `${manifestUrl}?expiresIn=${expiresIn}` : manifestUrl;
+    const url = new URL(manifestUrl, location.href);
+    if (expiresIn) url.searchParams.set('expiresIn', expiresIn);
     return (await fetch(url)).json();
   };
   const dataSource: DataSource = createRemoteManifestDataSource(await fetchManifest(), {

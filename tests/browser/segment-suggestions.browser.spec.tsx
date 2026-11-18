@@ -72,6 +72,40 @@ it('suggests segments through the real sidebar, previews without adding, and add
     await expect.element(page.getByRole('button', { name: 'Return to suggestions' })).toBeVisible();
     // Previewing adds nothing.
     expect(host.querySelector('[data-testid="lerobot-segment-track"]')).toBeNull();
+    await expect
+      .element(page.getByText('3 → 2 frames · keep 0.10–0.30 s', { exact: true }))
+      .toBeVisible();
+    // Playing the preview stays inside the kept frames (1–2), stops at the
+    // last one and opens no dialog (no subtask prompt at the end).
+    const slider = () =>
+      host.querySelector<HTMLElement>('[role="slider"][aria-label="Playback progress"]');
+    const playPause = () =>
+      host.querySelector<HTMLButtonElement>('button[aria-label="Play/pause"]')!;
+    const playing = () => playPause().querySelector('.lucide-pause') != null;
+    const dialogOpen = () => document.querySelector('[data-slot="dialog-content"]') != null;
+    await expect.poll(() => playPause().disabled).toBe(false);
+    const frames: number[] = [];
+    let sawDialog = false;
+    let sawPlaying = false;
+    playPause().click();
+    const started = performance.now();
+    while (performance.now() - started < 5_000) {
+      frames.push(Number(slider()?.getAttribute('aria-valuenow')));
+      sawDialog ||= dialogOpen();
+      sawPlaying ||= playing();
+      if (sawPlaying && !playing() && performance.now() - started > 500) break;
+      await new Promise((resolve) => setTimeout(resolve, 15));
+    }
+    // Watch a little longer: nothing opens after the stop either.
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    sawDialog ||= dialogOpen();
+    expect(sawPlaying).toBe(true);
+    expect(playing()).toBe(false);
+    expect(sawDialog).toBe(false);
+    expect(Math.min(...frames)).toBeGreaterThanOrEqual(1);
+    expect(Math.max(...frames)).toBeLessThanOrEqual(2);
+    // The slider's accessible value ends on the frame playback stopped at.
+    expect(Number(slider()?.getAttribute('aria-valuenow'))).toBe(2);
     await page.getByRole('spinbutton', { name: 'Start frame', exact: true }).fill('2');
     await expect
       .element(page.getByText('3 → 1 frames · keep 0.20–0.30 s', { exact: true }))

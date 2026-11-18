@@ -74,6 +74,9 @@
     "stackTrace": "スタックトレース",
     "reload": "アプリケーションを再読み込み"
   },
+  "lazyChunk": {
+    "failed": "ビューアーの一部を読み込めませんでした（CHUNK_LOAD_FAILED）。接続を確認して再試行してください。"
+  },
   "panelErrorBoundary": {
     "title": "パネルの読み込みに失敗しました",
     "namedTitle": "{{panelName}} の読み込みに失敗しました",
@@ -1003,7 +1006,7 @@
       "fail": "失敗"
     },
     "issueCount": "問題 {count} 件",
-    "issueList": "問題：{{labels}}"
+    "issueList": "問題：{labels}"
   },
   "overlay": {
     "legend": "提案（読み取り専用）",

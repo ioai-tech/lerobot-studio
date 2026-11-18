@@ -11,7 +11,7 @@ Remote archives are requested from the URL you provide. CORS, range requests, au
 ```http
 Access-Control-Allow-Origin: *
 Accept-Ranges: bytes
-Access-Control-Expose-Headers: Accept-Ranges, Content-Length, Content-Range
+Access-Control-Expose-Headers: Accept-Ranges, Content-Length, Content-Range, ETag
 ```
 
 When the viewer asks for `Range: bytes=0-65535`, answer with:
@@ -36,6 +36,8 @@ Using cookies / credentials? Echo the viewer origin — never combine `*` with c
 ## Why Range matters
 
 Without `Range` support, the browser may need to download the entire archive before it can display data. This is suitable only for small archives. Redirects, CDNs, and signed URLs should preserve CORS and `206` response behavior.
+
+The same applies to signed per-file manifests: charts read parquet footers and column chunks by range, and fall back to whole files (logging `RANGE_UNSUPPORTED`) when the server answers `200`. See [Charts read only what they show](./embedding.md#charts-read-only-what-they-show).
 
 ---
 

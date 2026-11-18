@@ -3,8 +3,10 @@ import { IntlProvider, useIntl } from 'react-intl';
 import {
   coerceLocale,
   detectInitialLocale,
-  messagesByLocale,
+  getLoadedMessages,
+  loadMessages,
   persistLocale,
+  type MessageMap,
   type SupportedLocale,
 } from './messages';
 import { LEROBOT_MESSAGE_KEYS } from './messageKeys';
@@ -89,6 +91,31 @@ export function I18nProvider({
   const [locale, setLocaleState] = useState<SupportedLocale>(() =>
     coerceLocale(forcedLanguage ?? detectInitialLocale()),
   );
+  // Messages of the shown locale. A locale that is not loaded yet keeps the
+  // previous messages until its chunk arrives (on first render: nothing is
+  // shown for that moment, rather than English that then changes).
+  const [shown, setShown] = useState<{ locale: SupportedLocale; messages: MessageMap } | null>(
+    () => {
+      const messages = getLoadedMessages(locale);
+      return messages ? { locale, messages } : null;
+    },
+  );
+  useEffect(() => {
+    if (shown?.locale === locale) return;
+    let cancelled = false;
+    loadMessages(locale).then(
+      (messages) => {
+        if (!cancelled) setShown({ locale, messages });
+      },
+      (error) => {
+        console.error(`[i18n] could not load the ${locale} messages`, error);
+        if (!cancelled) setShown({ locale, messages: getLoadedMessages('en')! });
+      },
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, [locale, shown?.locale]);
 
   const setLocale = useCallback((nextLocaleRaw: string) => {
     const nextLocale = coerceLocale(nextLocaleRaw);
@@ -104,9 +131,13 @@ export function I18nProvider({
     }
   }, [forcedLanguage, locale, setLocale]);
 
-  const value = useMemo<I18nContextValue>(() => ({ locale, setLocale }), [locale, setLocale]);
+  const shownLocale = shown?.locale ?? locale;
+  const value = useMemo<I18nContextValue>(
+    () => ({ locale: shownLocale, setLocale }),
+    [shownLocale, setLocale],
+  );
   const localeMessages = useMemo(() => {
-    const base = messagesByLocale[locale];
+    const base = shown?.messages ?? {};
     if (!messages) return base;
     const overrides = Object.fromEntries(
       Object.entries(messages)
@@ -117,11 +148,13 @@ export function I18nProvider({
         .map(([key, text]) => [key, text.replace(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g, '{$1}')]),
     );
     return { ...base, ...overrides };
-  }, [locale, messages]);
+  }, [shown?.messages, messages]);
+
+  if (!shown) return null;
 
   return (
     <I18nContext.Provider value={value}>
-      <IntlProvider locale={locale} messages={localeMessages} onError={reportIntlError}>
+      <IntlProvider locale={shownLocale} messages={localeMessages} onError={reportIntlError}>
         <TranslateBridge>{children}</TranslateBridge>
       </IntlProvider>
     </I18nContext.Provider>

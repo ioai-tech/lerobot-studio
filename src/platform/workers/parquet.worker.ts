@@ -7,9 +7,20 @@
  */
 
 import * as Comlink from 'comlink';
-import { tableFromIPC, type Table, type Vector } from 'apache-arrow';
-import init, { readParquet } from 'parquet-wasm';
-import type { ParquetWorkerAPI } from '@/core';
+import { tableFromIPC, type Table } from 'apache-arrow';
+import init, { ParquetFile, readParquet } from 'parquet-wasm';
+import type {
+  ParquetRangeFetcher,
+  ParquetWorkerAPI,
+  RangedParquetRead,
+  RangedParquetSource,
+} from '@/core';
+import {
+  extractFeatures,
+  extractNumeric,
+  readRangedTable,
+  type NumericResult,
+} from './parquetDecode';
 
 let wasmInitialized = false;
 let wasmInitPromise: Promise<void> | null = null;
@@ -57,90 +68,25 @@ function getColumnsKey(columns?: string[]): string {
   return columns && columns.length > 0 ? [...columns].sort().join(',') : 'all';
 }
 
-function isArrayLikeValue(
-  value: unknown,
-): value is Iterable<unknown> & { length?: number; toArray?: () => unknown[] } {
-  if (!value || typeof value !== 'object') return false;
-  const candidate = value as { constructor?: { name?: string }; toArray?: () => unknown[] };
-  return Boolean(
-    candidate.constructor?.name?.includes('Array') || typeof candidate.toArray === 'function',
+function transferNumeric(result: NumericResult): NumericResult {
+  return Comlink.transfer(
+    result,
+    Object.values(result).map((column) => column.values),
   );
 }
 
-function getArrayItems(value: Iterable<unknown> & { toArray?: () => unknown[] }): unknown[] {
-  if (typeof value.toArray === 'function') {
-    return value.toArray();
+async function readRanged(
+  source: RangedParquetSource,
+  fetchRange: ParquetRangeFetcher,
+  read: RangedParquetRead,
+): Promise<Table> {
+  await initWasm();
+  try {
+    return await readRangedTable((file) => ParquetFile.fromFile(file), source, fetchRange, read);
+  } finally {
+    // Close the MessagePort of the main thread's fetch callback.
+    (fetchRange as Partial<{ [Comlink.releaseProxy]: () => void }>)[Comlink.releaseProxy]?.();
   }
-  return Array.from(value);
-}
-
-function getNumericWidth(
-  vector: Vector | null | undefined,
-  startRow: number,
-  endRow: number,
-): number {
-  if (!vector) return 1;
-
-  for (let rowIndex = startRow; rowIndex < endRow; rowIndex++) {
-    const sample = vector.get(rowIndex);
-    if (sample === null || sample === undefined) continue;
-    if (typeof sample === 'number' || typeof sample === 'bigint') return 1;
-    if (isArrayLikeValue(sample)) {
-      const items = getArrayItems(sample);
-      return Math.max(1, items.length);
-    }
-    return 1;
-  }
-
-  return 1;
-}
-
-function toNumericValue(value: unknown): number {
-  if (typeof value === 'number') {
-    return Number.isFinite(value) ? value : 0;
-  }
-  if (typeof value === 'bigint') {
-    return Number(value);
-  }
-  return 0;
-}
-
-function convertFeatureValue(value: unknown): unknown {
-  if (value === null || value === undefined) return value;
-  if (typeof value === 'bigint') return Number(value);
-  if (value instanceof Uint8Array) return value;
-  if (value instanceof ArrayBuffer) return new Uint8Array(value);
-
-  if (typeof value === 'object') {
-    const obj = value as Record<string, unknown>;
-    if ('bytes' in obj && obj.bytes !== null && obj.bytes !== undefined) {
-      const bytes = obj.bytes;
-      if (bytes instanceof Uint8Array) return bytes;
-      if (bytes instanceof ArrayBuffer) return new Uint8Array(bytes);
-      if (Array.isArray(bytes)) return new Uint8Array(bytes as number[]);
-      if (typeof bytes === 'object') {
-        const entries = Object.entries(bytes as Record<string, number>)
-          .map(([key, byte]) => [Number(key), byte] as const)
-          .filter(([key]) => Number.isFinite(key))
-          .sort((left, right) => left[0] - right[0]);
-        return new Uint8Array(entries.map(([, byte]) => byte));
-      }
-    }
-
-    if ('toUint8Array' in obj && typeof obj.toUint8Array === 'function') {
-      return (obj as { toUint8Array: () => Uint8Array }).toUint8Array();
-    }
-
-    if ('data' in obj && obj.data instanceof Uint8Array) {
-      return obj.data;
-    }
-
-    if (isArrayLikeValue(value)) {
-      return getArrayItems(value).map((item) => convertFeatureValue(item));
-    }
-  }
-
-  return value;
 }
 
 function parseTable(uint8Array: Uint8Array, columns?: string[]): FileCache {
@@ -220,44 +166,8 @@ const api: ParquetWorkerAPI = {
     endRow: number,
   ): Promise<Record<string, { values: ArrayBuffer; rows: number; width: number }>> {
     await initWasm();
-
-    const uint8Array = new Uint8Array(buffer);
-    const parsed = getParsedTable(uint8Array, columns);
-    const safeStart = Math.max(0, startRow);
-    const boundedEnd = endRow <= 0 ? parsed.table.numRows : Math.min(endRow, parsed.table.numRows);
-    const safeEnd = Math.max(safeStart, boundedEnd);
-    const rows = safeEnd - safeStart;
-    const result: Record<string, { values: ArrayBuffer; rows: number; width: number }> = {};
-    const transferables: ArrayBuffer[] = [];
-
-    columns.forEach((column) => {
-      const vector = parsed.table.getChild(column);
-      const width = getNumericWidth(vector, safeStart, safeEnd);
-      const values = new Float64Array(rows * width);
-
-      for (let rowIndex = safeStart; rowIndex < safeEnd; rowIndex++) {
-        const rowOffset = (rowIndex - safeStart) * width;
-        const cellValue = vector?.get(rowIndex);
-
-        if (isArrayLikeValue(cellValue)) {
-          const items = getArrayItems(cellValue);
-          for (let itemIndex = 0; itemIndex < width; itemIndex++) {
-            values[rowOffset + itemIndex] = toNumericValue(items[itemIndex]);
-          }
-        } else {
-          values[rowOffset] = toNumericValue(cellValue);
-        }
-      }
-
-      result[column] = {
-        values: values.buffer,
-        rows,
-        width,
-      };
-      transferables.push(values.buffer);
-    });
-
-    return Comlink.transfer(result, transferables);
+    const parsed = getParsedTable(new Uint8Array(buffer), columns);
+    return transferNumeric(extractNumeric(parsed.table, columns, startRow, endRow));
   },
 
   async readFeatureData(
@@ -267,24 +177,26 @@ const api: ParquetWorkerAPI = {
     endRow: number,
   ): Promise<Record<string, unknown[]>> {
     await initWasm();
+    const parsed = getParsedTable(new Uint8Array(buffer), columns);
+    return extractFeatures(parsed.table, columns, startRow, endRow);
+  },
 
-    const uint8Array = new Uint8Array(buffer);
-    const parsed = getParsedTable(uint8Array, columns);
-    const safeStart = Math.max(0, startRow);
-    const boundedEnd = endRow <= 0 ? parsed.table.numRows : Math.min(endRow, parsed.table.numRows);
-    const safeEnd = Math.max(safeStart, boundedEnd);
-    const result: Record<string, unknown[]> = {};
+  async readNumericColumnsRanged(
+    source: RangedParquetSource,
+    fetchRange: ParquetRangeFetcher,
+    read: RangedParquetRead,
+  ): Promise<Record<string, { values: ArrayBuffer; rows: number; width: number }>> {
+    const table = await readRanged(source, fetchRange, read);
+    return transferNumeric(extractNumeric(table, read.columns, 0, table.numRows));
+  },
 
-    columns.forEach((column) => {
-      const vector = parsed.table.getChild(column);
-      const rows: unknown[] = [];
-      for (let rowIndex = safeStart; rowIndex < safeEnd; rowIndex++) {
-        rows.push(convertFeatureValue(vector?.get(rowIndex)));
-      }
-      result[column] = rows;
-    });
-
-    return result;
+  async readFeatureDataRanged(
+    source: RangedParquetSource,
+    fetchRange: ParquetRangeFetcher,
+    read: RangedParquetRead,
+  ): Promise<Record<string, unknown[]>> {
+    const table = await readRanged(source, fetchRange, read);
+    return extractFeatures(table, read.columns, 0, table.numRows);
   },
 
   async clearCache(): Promise<void> {

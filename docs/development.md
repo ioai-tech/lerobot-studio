@@ -96,6 +96,8 @@ node scripts/bench/range-server.mjs --page scripts/bench/dist --dataset f22=/dat
 node scripts/bench/measure-playback.mjs --url 'http://127.0.0.1:4877/?manifest=/manifest/f22.json' --label run1
 ```
 
+`--charts-only` stops after the charts and reports the first chart and all charts drawn (also relative to the first frame) and every parquet data read the server answered (`GET /__reads`). `--executable /usr/bin/google-chrome` runs a system Chrome; `range-server.mjs --no-range` answers parquet Range requests with the whole file, and `?manifest=/manifest/<name>.json%3Fsizes%3D0` drops `sizeBytes` from the manifest.
+
 `native-spread.mjs` measures plain `<video>` elements on the same server, as a reference for what the browser itself presents. Results depend on the machine and its load, so compare runs from the same machine.
 
 ## Package validation

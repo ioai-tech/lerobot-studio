@@ -74,6 +74,9 @@
     "stackTrace": "Stack trace",
     "reload": "Reload application"
   },
+  "lazyChunk": {
+    "failed": "Part of the viewer could not load (CHUNK_LOAD_FAILED). Check the connection and retry."
+  },
   "panelErrorBoundary": {
     "title": "Panel failed to load",
     "namedTitle": "{{panelName}} failed to load",
@@ -1001,7 +1004,7 @@
       "fail": "Failure"
     },
     "issueCount": "{count, plural, one {# issue} other {# issues}}",
-    "issueList": "Issues: {{labels}}"
+    "issueList": "Issues: {labels}"
   },
   "overlay": {
     "legend": "Suggestions (read-only)",

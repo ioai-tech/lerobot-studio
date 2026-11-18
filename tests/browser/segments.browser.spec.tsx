@@ -161,6 +161,10 @@ async function waitForSegments(host: HTMLElement) {
       { timeout: 30_000, interval: 200 },
     )
     .toBe(true);
+  // Autoplay may have moved the playhead before it stopped (a frame is 0.1 s
+  // here); the key steps count segments from the start.
+  viewerRoot(host).focus();
+  await press('{Home}');
 }
 
 /** Select the segment `n` (1-based, current episode) with J from the start. */

@@ -107,9 +107,9 @@ The full key table is in the [User Guide](./user-manual.md#split-and-review-epis
 
 Implement `DataSource` if your application needs to read bytes or text by path. Treat paths and content as untrusted, and release object URLs in `clear()`.
 
-Optional members: `episodeScope` limits the dataset to some `episode_index` values. `invalidateObjectUrl(path)` is called when a URL the viewer got from `getObjectUrl` fails, `subscribeUrlChanges(listener)` tells the viewer which paths have new URLs so videos can switch without losing their place, and `focusEpisode(episodeIndex)` is a hint that the viewer is about to read that episode (lazy sources can prefetch what follows).
+Optional members: `episodeScope` limits the dataset to some `episode_index` values. `invalidateObjectUrl(path)` is called when a URL the viewer got from `getObjectUrl` fails, `subscribeUrlChanges(listener)` tells the viewer which paths have new URLs so videos can switch without losing their place, `focusEpisode(episodeIndex)` is a hint that the viewer is about to read that episode (lazy sources can prefetch what follows), and `readRange(path, start, end?)` reads part of a file (`Blob.slice` semantics; a negative `start` reads that many bytes from the end) and resolves to a `ByteRangeResult` (`bytes`, `start`, the whole file's `size`, and the file version's `etag` when known). With `readRange` the charts read only the parquet footer and the selected episode's column chunks; a source whose server ignored the range returns the whole file (`start` 0, `bytes.length === size`) and the viewer then reads that file whole. The remote manifest, episode set and local folder sources implement it.
 
-Typed errors: `RemoteSourceError` (manifest reads) and `EpisodeSetError` (episode sets) carry a machine-readable `code`.
+Typed errors: `RemoteSourceError` (manifest reads) and `EpisodeSetError` (episode sets) carry a machine-readable `code`. `RANGE_SIZE_UNKNOWN` means a range read could not learn the file size (no `sizeBytes`, no readable `Content-Range`).
 
 Loading phases are `download`, `index`, `gunzip`, and `read`. Fatal errors include invalid sources, unavailable remote URLs, unsupported archives, and dataset-loading failures.
 

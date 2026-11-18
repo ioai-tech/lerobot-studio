@@ -95,6 +95,22 @@ export function SignedManifestViewer({ files }: { files: RemoteFileEntry[] }) {
 
 Each entry needs a logical dataset path and an HTTP(S) URL. Optional `contentType` and `sizeBytes` help the viewer and the built-in safety limits.
 
+### Charts read only what they show
+
+The charts of an episode need its numeric columns, not the whole data file. The viewer reads parquet data files with HTTP Range requests:
+
+- The footer first (the last 64 KB), then only the selected columns' chunks of the row groups that hold the episode, nearby chunks in one request. Switching to another episode of the same file reuses the bytes already read.
+- The time axis and the top chart group arrive first, then the other groups: each chart draws as soon as its columns are in, and groups still loading show a placeholder (`aria-busy`). The raw panel's other columns are read after the charts.
+- With `sizeBytes` the requests are plain `bytes=a-b` ranges, a CORS-safelisted header (no preflight). Without it the footer request is a suffix range and the size comes from `Content-Range`, which a cross-origin server must expose (`Access-Control-Expose-Headers: Content-Range`).
+- A server that ignores `Range` (answers `200`) costs one whole-file download, reused for every column; the viewer logs `RANGE_UNSUPPORTED` once and reads that source's files whole. `RANGE_SIZE_UNKNOWN` (no size) and a file that is not parquet fall back the same way, by name.
+- Reads of one file are combined only when they report the same size and, when the server exposes it, the same `ETag` (`Access-Control-Expose-Headers: ETag`). A file that changed is opened again from its new footer once; if it changes again, it is read whole (`FILE_CHANGED`).
+- A footer that cannot be trusted (spans outside the data, oversized lists, a footer over 64 MiB) is refused before anything is read with it, and the file is read whole (`FOOTER_INVALID`).
+- Each fallback reason is logged once per viewer.
+
+The first chart is drawn soon after the first video frame; the other charts are limited by how fast their bytes arrive on the link, which they share with the cameras.
+
+Row groups are the smallest unit: a writer that puts many episodes in one row group (pyarrow's default for small files) still costs the episode's columns for the whole group.
+
 ### Refresh expiring URLs
 
 Signed URLs expire. Pass `refresh` and the viewer re-signs instead of failing:
@@ -115,7 +131,7 @@ const dataSource = createRemoteManifestDataSource(files, {
 - A refresh replaces the expiry. Each refreshed entry expires at its own `expiresAt`, else at the `expiresAt` returned with the files, else at an unknown time; then only a 401 or 403 triggers the next refresh. `refresh` may also return just the entry array.
 - Refreshes caused by a near expiry happen at most once per 30 s. A background refresh that fails, or returns URLs that still expire within 60 s, waits longer each time (5 s, doubling up to 5 min).
 - The new URLs replace the old ones by path, and the failed read is retried once. Playing videos switch to the new URL at the same time and keep playing or stay paused.
-- If the retry fails too, the read fails with a `RemoteSourceError` (`code`: `HTTP_STATUS`, `NETWORK` or `REFRESH_FAILED`, plus `path` and `status`).
+- If the retry fails too, the read fails with a `RemoteSourceError` (`code`: `HTTP_STATUS`, `NETWORK` or `REFRESH_FAILED`, plus `path` and `status`). Range reads keep their range across the refresh.
 - Without `refresh`, a failed read is not retried.
 
 ### Show only some episodes
@@ -170,7 +186,7 @@ const dataSource = createEpisodeSetDataSource(
 
 ## Plot extra time series
 
-`auxiliarySeries` adds time series from separate parquet files, such as a 200 Hz IMU or another process's outputs. They are drawn as extra chart groups on the same playhead:
+`auxiliarySeries` adds time series from separate parquet files, such as a 200 Hz IMU or another process's outputs. They are drawn as extra chart groups on the same playhead. They are read after the episode's charts, so they never delay them:
 
 ```tsx
 <LeRobotViewer
@@ -414,7 +430,7 @@ Common props include:
 | -------------------------- | -------------------------------------------------------------------------------------- |
 | `dataSource`               | Remote archive URL, remote file manifest, or a custom `DataSource`                     |
 | `theme`                    | `light`, `dark`, or `system`                                                           |
-| `language`                 | `en`, `zh`, or `ja`                                                                    |
+| `language`                 | `en`, `zh`, or `ja` (`zh` and `ja` load on demand, before the first render)            |
 | `showSidebar`              | Show or hide the episode sidebar                                                       |
 | `showPlaybackBar`          | Show or hide playback controls                                                         |
 | `enableKeyboardShortcuts`  | Enable or disable viewer shortcuts                                                     |

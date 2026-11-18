@@ -20,6 +20,8 @@ type FeatureSnapshot = {
   loader: LeRobotDataLoader | null;
   info: LeRobotInfo | null;
   chartData: NumericalColumnMap;
+  /** The selected episode's chart columns are still being read. */
+  chartColumnsPending?: boolean;
   featureData: Record<string, unknown[]>;
 };
 
@@ -89,6 +91,13 @@ export class FeatureSubscriptionBatcher {
     const generation = this.generation;
     const snapshot = this.options.getSnapshot();
     if (snapshot.episodeIndex === null || !snapshot.loader || !snapshot.info) {
+      this.pending.clear();
+      return;
+    }
+    if (snapshot.chartColumnsPending) {
+      // The episode is still loading its charts; once they are in, the
+      // episode load reads every subscribed feature. Reading them now would
+      // compete with the charts for the link and read the chart columns twice.
       this.pending.clear();
       return;
     }
@@ -162,6 +171,7 @@ type UseFeatureSubscriptionsOptions = {
   dataLoader: LeRobotDataLoader | null;
   info: LeRobotInfo | null;
   chartData: NumericalColumnMap;
+  chartColumnsPending: boolean;
   featureData: Record<string, unknown[]>;
   setFeatureData: React.Dispatch<React.SetStateAction<Record<string, unknown[]>>>;
 };
@@ -171,6 +181,7 @@ export function useFeatureSubscriptions({
   dataLoader,
   info,
   chartData,
+  chartColumnsPending,
   featureData,
   setFeatureData,
 }: UseFeatureSubscriptionsOptions) {
@@ -179,6 +190,7 @@ export function useFeatureSubscriptions({
     loader: dataLoader,
     info,
     chartData,
+    chartColumnsPending,
     featureData,
   });
   snapshotRef.current = {
@@ -186,6 +198,7 @@ export function useFeatureSubscriptions({
     loader: dataLoader,
     info,
     chartData,
+    chartColumnsPending,
     featureData,
   };
 
