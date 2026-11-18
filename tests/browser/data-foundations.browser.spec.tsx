@@ -114,7 +114,12 @@ describe('browser: data foundations', () => {
 
   it('draws one chart per feature, titled by key, with declared dimension names', async () => {
     await render(<LeRobotViewer dataSource={new SignedFixtureSource()} language="en" />);
-    await waitFor(() => host.querySelectorAll('[data-chart-group]').length >= 2);
+    // Groups show placeholders while their columns load; wait until all are drawn.
+    await waitFor(
+      () =>
+        host.querySelectorAll('[data-chart-group]').length >= 2 &&
+        host.querySelector('[data-testid="chart-groups"]')?.getAttribute('aria-busy') === 'false',
+    );
     const titles = Array.from(host.querySelectorAll('[data-chart-group] h3')).map(
       (h) => h.textContent,
     );
