@@ -9,6 +9,7 @@ import {
 import { buildMediaDebugMetadata } from '@/core';
 import { checkVideoCodecSupport } from '../../../../platform/services/videoCodecSupport';
 import { CameraFollower } from '../../../services/CameraFollower';
+import { cameraPreload } from '../../../services/cameraPreload';
 import { getFeatureDisplayType, getFirstVisualFeatureName } from '@/core';
 import { ImagePanel } from '../ImagePanel/ImagePanel';
 import { MediaDebugOverlay } from '../Common/MediaDebugOverlay';
@@ -34,13 +35,14 @@ export const HOLD_CAP_MS = 4000;
 const VideoPanelContent: React.FC<VideoPanelProps> = ({ params }) => {
   const { t } = useTranslation();
   const { info, dataLoader, isLoading } = useLeRobotData();
-  const { clock } = useLeRobotPlayback();
+  const { clock, isPlaying } = useLeRobotPlayback();
   /**
-   * While the episode's numeric data downloads, cameras fetch only what the
-   * first frame needs; read-ahead starts once charts have their data, so on a
-   * shared link the charts arrive with the video instead of seconds later.
+   * A camera reads ahead only while it plays (`cameraPreload`): while the
+   * episode's numeric data downloads, or paused, it fetches what the shown
+   * frame needs and lets its connection go, so the charts arrive with the
+   * video and a seek never waits behind the other cameras' read-ahead.
    */
-  const preload: 'metadata' | 'auto' = isLoading ? 'metadata' : 'auto';
+  const preload = cameraPreload({ loading: isLoading, playing: isPlaying });
   const preloadRef = useRef(preload);
   preloadRef.current = preload;
   const { selectedEpisodeIndex } = useLeRobotSelection();

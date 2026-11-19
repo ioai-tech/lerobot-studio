@@ -25,6 +25,7 @@ export default defineConfig({
   },
   test: {
     include: ['tests/browser/**/*.browser.spec.ts', 'tests/browser/**/*.browser.spec.tsx'],
+    globalSetup: ['tests/browser/support/rangeServer.ts'],
     testTimeout: 300_000,
     hookTimeout: 120_000,
     fileParallelism: false,
