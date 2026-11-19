@@ -7,7 +7,9 @@ const watched = new WeakSet<object>();
  * (the network error, e.g. net::ERR_NETWORK_CHANGED or net::ERR_ABORTED) and
  * every 5xx answer (e.g. Vite's 504 "Outdated Optimize Dep"), so a test file
  * that fails to load ("Failed to fetch dynamically imported module") shows
- * its network cause in the run's output. Attaches once per browser context.
+ * its network cause in the run's output. Aborted `blob:` loads (a video's
+ * object URL dropped on a src change) are not printed. Attaches once per
+ * browser context.
  */
 export const logNetworkFailures: BrowserCommand<[]> = (ctx) => {
   if (ctx.provider.name !== 'playwright' || !('context' in ctx)) return;
@@ -15,11 +17,10 @@ export const logNetworkFailures: BrowserCommand<[]> = (ctx) => {
   if (watched.has(context)) return;
   watched.add(context);
   context.on('requestfailed', (request) => {
-    console.warn(
-      `[browser network] ${request.method()} ${request.url()} failed: ${
-        request.failure()?.errorText ?? 'unknown error'
-      }`,
-    );
+    const error = request.failure()?.errorText ?? 'unknown error';
+    // A camera dropping its object URL (a src change, an unmount): not the network.
+    if (request.url().startsWith('blob:') && error === 'net::ERR_ABORTED') return;
+    console.warn(`[browser network] ${request.method()} ${request.url()} failed: ${error}`);
   });
   context.on('response', (response) => {
     if (response.status() < 500) return;
