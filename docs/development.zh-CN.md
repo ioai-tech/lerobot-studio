@@ -110,6 +110,8 @@ npm run verify:npm-consumer
 
 1.0 发布需要 Vite 与 Next.js 纯客户端用法的消费者 fixture、React/React DOM `^19.0.0`、ESM 导入、CSS 加载、Worker 与 WASM。服务端渲染、React Server Components、CommonJS 与 Node.js 执行不在包契约范围内。
 
+`verify:npm-consumer` 打包 tarball 后检查：其中恰有一个带哈希的 `dist-lib/assets/parquet_wasm_bg-<hash>.wasm`，并以 `new URL("assets/…", import.meta.url)` 被引用一次；没有 `wasmUrl-*.js` chunk，任何 JavaScript 中都没有 base64 形式的 WASM。随后构建 Vite 示例并从子路径提供，再以 `next build` 与 `next start` 在 `basePath` 下运行 Next.js 示例，分别用 Turbopack 和 `next build --webpack` 各构建一次。在 Chromium 中，二者都打开 `tests/fixtures/datasets/lerobotv3` 数据集，直到由其 Parquet 绘出图表。每个示例都必须从打包器给出的 URL 以 `application/wasm` 下载一次 WASM，且页面本身不编译任何 WebAssembly。Vite 示例与 Turbopack 构建的示例各再运行一次，用 `setParquetWasmUrl` 指向自行托管的副本。`VERIFY_NEXT_EXAMPLE=0` 可跳过 Next.js。
+
 ### Docker npm 消费者门禁
 
 CI 还会执行隔离的 Docker 构建：先从仓库生成 npm tarball，再仅安装该
@@ -128,7 +130,7 @@ Dockerfile 位于 `tests/npm-consumer/`。主构建上下文提供隔离的消�
 
 Docker 消费者只安装打包后的 tarball，不使用 `file:../..` 或 `src/`；固定
 React 19.2.8，检查公开 API 类型，并构建 Vite 与 Next App Router
-（纯客户端、`ssr: false`）示例，同时验证 Vite bundle 可从非根挂载路径提供静态服务。
+（纯客户端、`ssr: false`）示例，同时验证 Vite bundle 可从非根挂载路径提供静态服务，包括以 `application/wasm` 提供其唯一带哈希的 WASM 文件。Dockerfile 的每个阶段都使用 `.nvmrc` 中的 Node 主版本；运行器在构建前检查这一点。
 
 ## 兼容性工作
 

@@ -5,6 +5,7 @@ import { EpisodeSidebar } from './Sidebar/EpisodeSidebar';
 import { Button } from '@/ui';
 import { ArrowLeft, Download } from 'lucide-react';
 import type { DataSource } from '../../core/datasource/types';
+import { isParquetEngineError } from '../../core/workers/engineError';
 import {
   createArchiveDataSourceFromUrl,
   getArchiveKindFromUrl,
@@ -29,6 +30,7 @@ import { SelectionBridge, type SelectionCarry } from './Host/SelectionBridge';
 import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts';
 import { ViewerLayout } from '../features/viewer/ViewerLayout';
 import { ErrorState } from './Commons/ErrorState';
+import { preloadLeRobotViewer } from '../preload';
 import { AuxiliarySeriesProvider } from '../contexts/AuxiliarySeriesContext';
 import type {
   AuxiliarySeries,
@@ -40,7 +42,8 @@ export type LeRobotViewerErrorCode =
   | 'INVALID_DATA_SOURCE'
   | 'REMOTE_SOURCE_UNAVAILABLE'
   | 'UNSUPPORTED_ARCHIVE'
-  | 'DATASET_LOAD_FAILED';
+  | 'DATASET_LOAD_FAILED'
+  | 'PARQUET_ENGINE_UNAVAILABLE';
 
 /** A fatal viewer error that requires host action or an explicit retry. */
 export interface LeRobotViewerError {
@@ -181,7 +184,11 @@ export function LeRobotViewerContent({
       resolveError ??
       (error
         ? {
-            code: 'DATASET_LOAD_FAILED',
+            // The Parquet reader (its worker or WASM) could not load: a host
+            // or CSP setup problem, not the data.
+            code: isParquetEngineError(error)
+              ? 'PARQUET_ENGINE_UNAVAILABLE'
+              : 'DATASET_LOAD_FAILED',
             message: error,
             recoverable: true,
           }
@@ -196,6 +203,10 @@ export function LeRobotViewerContent({
       return raw;
     }
   };
+
+  // The WASM and the layout and loader code start loading while the data
+  // source is still being resolved (a URL's preflight, a host's source read).
+  useEffect(() => preloadLeRobotViewer(), []);
 
   useEffect(() => {
     let cancelled = false;
@@ -364,7 +375,11 @@ export function LeRobotViewerContent({
   const emptyState = fatalError ? (
     <ErrorState
       title={t('common.error')}
-      message={t('errors.loadFailed')}
+      message={
+        fatalError.code === 'PARQUET_ENGINE_UNAVAILABLE'
+          ? t('errors.parquetEngineUnavailable')
+          : t('errors.loadFailed')
+      }
       errorDetail={fatalError.message}
       onRetry={handleRetry}
     />

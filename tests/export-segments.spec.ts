@@ -3,10 +3,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 
-vi.mock('../src/platform/export/parquetWasmLoader.ts', async () => {
-  const { getParquetWasmNode } = await import('./helpers/parquetWasmNode');
-  return { getParquetWasm: () => getParquetWasmNode() };
-});
+vi.mock('../src/platform/export/parquetWriteClient.ts', () => import('./helpers/parquetWriteNode'));
 
 vi.mock('../src/platform/workers/workerManager.ts', async () => {
   const { readParquetToIPC, readNumericColumns, readFeatureData } =

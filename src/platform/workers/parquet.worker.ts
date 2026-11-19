@@ -1,14 +1,22 @@
 /**
- * Parquet Worker - Vite inline 版本
+ * Parquet Worker: reads Parquet for the data loader and writes it for export.
  *
- * 从主线程接收预加载的 WASM ArrayBuffer 进行初始化。
- * 使用 Promise 等待机制替代轮询，彻底消除竞态条件：
- * 无论主线程何时发送 buffer，initWasm() 都会正确等待并初始化。
+ * The page sends the parquet WASM's URL right after starting the worker; the
+ * worker downloads and compiles it itself (see parquetWasmModule.ts) and every
+ * call waits for that one load.
  */
 
 import * as Comlink from 'comlink';
 import { tableFromIPC, type Table } from 'apache-arrow';
-import init, { ParquetFile, readParquet } from 'parquet-wasm';
+import {
+  Compression,
+  ParquetFile,
+  Table as WasmTable,
+  WriterPropertiesBuilder,
+  readParquet,
+  writeParquet,
+} from 'parquet-wasm';
+import { announceStarted, handleInitMessage, initParquetWasm } from './parquetWasmModule';
 import type {
   ParquetRangeFetcher,
   ParquetWorkerAPI,
@@ -22,17 +30,6 @@ import {
   type NumericResult,
 } from './parquetDecode';
 
-let wasmInitialized = false;
-let wasmInitPromise: Promise<void> | null = null;
-
-// 用 Promise 替代轮询：一旦收到 buffer 立即 resolve，永不超时
-let wasmBufferResolve: ((buf: ArrayBuffer) => void) | null = null;
-let wasmBufferReject: ((err: Error) => void) | null = null;
-const wasmBufferSignal = new Promise<ArrayBuffer>((resolve, reject) => {
-  wasmBufferResolve = resolve;
-  wasmBufferReject = reject;
-});
-
 interface FileCache {
   bufferHash: number;
   columnsKey: string;
@@ -42,14 +39,10 @@ interface FileCache {
 
 let fileCache: FileCache | null = null;
 
-// 接收主线程传来的 WASM ArrayBuffer（或错误通知）
-self.onmessage = (event: MessageEvent) => {
-  if (event.data.type === 'init-wasm') {
-    wasmBufferResolve?.(event.data.wasmBuffer);
-  } else if (event.data.type === 'init-wasm-error') {
-    wasmBufferReject?.(new Error(`Main thread failed to load WASM: ${event.data.message}`));
-  }
-};
+const post = (message: unknown) => self.postMessage(message);
+self.addEventListener('message', (event: MessageEvent) => {
+  handleInitMessage(event.data, post);
+});
 
 /**
  * 简单的 buffer hash
@@ -120,26 +113,9 @@ function getParsedTable(uint8Array: Uint8Array, columns?: string[]): FileCache {
   return fileCache;
 }
 
-/**
- * 初始化 WASM：等待主线程发送的 ArrayBuffer，无竞态条件
- */
-async function initWasm(): Promise<void> {
-  if (wasmInitialized) return;
-  if (wasmInitPromise) return wasmInitPromise;
-
-  wasmInitPromise = (async () => {
-    try {
-      const wasmBuffer = await wasmBufferSignal;
-      await init({ module_or_path: wasmBuffer });
-      wasmInitialized = true;
-    } catch (e) {
-      console.error('Worker: Failed to initialize WASM', e);
-      wasmInitPromise = null;
-      throw e;
-    }
-  })();
-
-  return wasmInitPromise;
+/** Wait for this worker's one parquet-wasm load (a failure is named and kept). */
+function initWasm(): Promise<void> {
+  return initParquetWasm();
 }
 
 /**
@@ -199,10 +175,22 @@ const api: ParquetWorkerAPI = {
     return extractFeatures(table, read.columns, 0, table.numRows);
   },
 
+  async writeParquet(ipcStream: Uint8Array, compression?: 'snappy'): Promise<Uint8Array> {
+    await initWasm();
+    // writeParquet consumes the table; no free() afterwards.
+    const table = WasmTable.fromIPCStream(ipcStream);
+    const properties =
+      compression === 'snappy'
+        ? new WriterPropertiesBuilder().setCompression(Compression.SNAPPY).build()
+        : undefined;
+    const bytes = writeParquet(table, properties);
+    return Comlink.transfer(bytes, [bytes.buffer]);
+  },
+
   async clearCache(): Promise<void> {
     fileCache = null;
   },
 };
 
-// 暴露 API
 Comlink.expose(api);
+announceStarted(post);

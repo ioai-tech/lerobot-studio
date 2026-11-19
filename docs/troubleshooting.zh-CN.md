@@ -51,6 +51,19 @@
 
 ---
 
+## Parquet 读取器无法加载
+
+以 `PARQUET_ENGINE_UNAVAILABLE` 结束的打开，表示 Parquet 读取器未能启动，数据集并未被读取。错误信息会注明原因：
+
+- **worker script could not load**：页面的内容安全策略（`worker-src` 或 `script-src`）不允许 Worker 脚本，或服务器没有提供打包器输出的资源。
+- **could not compile … Content Security Policy**：服务器为 Worker 脚本发送的 CSP 不含 `'wasm-unsafe-eval'`。请在该策略中加入它，或不再为静态资源发送 CSP。
+- **HTTP 404** 或 **could not download**：WASM 文件没有在打包器输出的 URL（或传给 `setParquetWasmUrl` 的 URL）上提供，其他来源的 CDN 未允许 CORS，或随 Worker 脚本下发的 CSP 中 `connect-src` 不允许 WASM 的来源（此时消息以 `TypeError: Failed to fetch` 结尾）。
+- 不涉及 CSP 的 **could not compile … CompileError**：文件已损坏，或不是本包的 WASM（例如一个 HTML 错误页）。
+
+见 [Worker、WebAssembly 与内容安全策略](./embedding#worker、webassembly-与内容安全策略)。重试会启动新的 Worker，并重新下载该文件。
+
+---
+
 ## 看不到子任务
 
 Studio 只映射官方 LeRobot 的 `subtask_index`。

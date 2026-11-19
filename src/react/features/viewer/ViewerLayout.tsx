@@ -15,7 +15,7 @@ import {
 import { LazySegmentDialogs } from '../../components/Segments/lazySegments';
 import { lazyChunk } from '../../components/Commons/lazyChunk';
 
-const loadDockviewLayout = () => import('../../components/DockviewLayout');
+import { loadDockviewLayout } from '../../lazyChunks';
 
 function DockviewLoading() {
   const { t } = useTranslation();

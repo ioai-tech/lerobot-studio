@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { tableFromIPC } from 'apache-arrow';
 import { ExportService, LeRobotDataLoader } from '@/platform';
-import { getParquetWasm } from '../../src/platform/export/parquetWasmLoader';
+import { getPageParquetWasm as getParquetWasm } from './pageParquet';
 import { InMemoryExportAdapter } from '../helpers/inMemoryExportAdapter';
 import { FetchDataSource, isMp4Container } from './fixtures';
 

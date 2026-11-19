@@ -118,6 +118,21 @@ async function verifyViteStaticServe() {
     if (/new Worker\s*\(\s*["'`]\/assets\//i.test(bundledJavaScript)) {
       throw new Error('Vite consumer bundle regressed to an absolute /assets worker URL');
     }
+    if (/AGFzbQ[A-Za-z0-9+/=]{200,}/.test(bundledJavaScript)) {
+      throw new Error('Vite consumer bundle inlined the parquet WASM into JavaScript');
+    }
+    // The package's WASM is a real, hashed file the bundle serves under the mount.
+    const wasmFiles = files.filter((file) => /parquet_wasm_bg[^/]*\.wasm$/.test(file));
+    if (wasmFiles.length !== 1) {
+      throw new Error(`Vite dist must contain one parquet WASM file; found ${wasmFiles.length}`);
+    }
+    const wasmUrl = `${server.baseUrl}${path.relative(viteDist, wasmFiles[0]).split(path.sep).join('/')}`;
+    const wasmResponse = await fetch(wasmUrl);
+    if (!wasmResponse.ok || wasmResponse.headers.get('content-type') !== 'application/wasm') {
+      throw new Error(
+        `${wasmUrl} -> ${wasmResponse.status} ${wasmResponse.headers.get('content-type')}`,
+      );
+    }
   } finally {
     await server.close();
   }
@@ -141,6 +156,10 @@ async function verifyNextBuildOutput() {
   const staticFiles = await collectFiles(staticDir);
   const hasJs = staticFiles.some((file) => file.endsWith('.js'));
   if (!hasJs) throw new Error('Next consumer build produced no static JavaScript chunks');
+  const wasmFiles = staticFiles.filter((file) => /parquet_wasm_bg[^/]*\.wasm$/.test(file));
+  if (wasmFiles.length !== 1) {
+    throw new Error(`Next build must emit one parquet WASM file; found ${wasmFiles.length}`);
+  }
 }
 
 await verifyViteStaticServe();

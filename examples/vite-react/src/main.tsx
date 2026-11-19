@@ -1,5 +1,6 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
+import { setParquetWasmUrl } from '@ioai/lerobot-studio';
 import '@ioai/lerobot-studio/style.css';
 import { App } from './App';
 import './styles.css';
@@ -8,7 +9,6 @@ declare global {
   interface Window {
     __LEROBOT_CONSUMER__: {
       infoRead: boolean;
-      wasmFetched: boolean;
       workerConstructed: boolean;
     };
   }
@@ -16,19 +16,7 @@ declare global {
 
 window.__LEROBOT_CONSUMER__ = {
   infoRead: false,
-  wasmFetched: false,
   workerConstructed: false,
-};
-const nativeFetch = window.fetch.bind(window);
-window.fetch = async (...args) => {
-  const input = args[0];
-  const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
-  const isWasm = url.startsWith('data:')
-    ? url.includes('wasm')
-    : new URL(url).pathname.endsWith('.wasm');
-  const response = await nativeFetch(...args);
-  if (isWasm && response.ok) window.__LEROBOT_CONSUMER__.wasmFetched = true;
-  return response;
 };
 window.Worker = new Proxy(window.Worker, {
   construct(Target, args) {
@@ -36,6 +24,12 @@ window.Worker = new Proxy(window.Worker, {
     return Reflect.construct(Target, args);
   },
 });
+
+// `?wasm=self-hosted`: serve the parquet WASM yourself (a copy next to the
+// page) instead of the file your bundler emitted from the package.
+if (new URLSearchParams(location.search).get('wasm') === 'self-hosted') {
+  setParquetWasmUrl(new URL('self-hosted/parquet.wasm', document.baseURI));
+}
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

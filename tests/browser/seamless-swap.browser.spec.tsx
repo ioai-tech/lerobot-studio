@@ -2,9 +2,12 @@ import React from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, expect, it, vi } from 'vitest';
 import { page, userEvent } from 'vitest/browser';
-import { LeRobotViewer } from '@/components/LeRobotViewer';
+import { LeRobotViewer, LeRobotViewerContent } from '@/components/LeRobotViewer';
+import { LeRobotStudioProvider } from '@/components/LeRobotStudioProvider';
+import { useLeRobotData } from '@/contexts/LeRobotContext';
 import { FetchDataSource } from './fixtures';
 import { HOLD_CAP_MS } from '@/components/panels/VideoPanel/VideoPanel';
+import { LeRobotDataLoader } from '@/platform';
 import '../../src/react/index.css';
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = false;
@@ -17,12 +20,16 @@ const V3 = '/tests/fixtures/datasets/lerobotv3';
 /** The same recording from another source (an anonymized copy, say), slow to open. */
 class Slow extends FetchDataSource {
   readonly dataReads: string[] = [];
+  /** When its info or its episode data failed, and when its episode data was in. */
+  failedAt?: number;
+  dataEndAt?: number;
   constructor(
     base = FRAME_CODED,
     private readonly options: {
       infoMs?: number;
       dataMs?: number;
       failInfo?: boolean;
+      failData?: boolean;
       video?: 'stall' | 'broken';
     } = {},
   ) {
@@ -31,7 +38,10 @@ class Slow extends FetchDataSource {
   override async readText(path: string) {
     if (path === 'meta/info.json') {
       await new Promise((resolve) => setTimeout(resolve, this.options.infoMs ?? 1000));
-      if (this.options.failInfo) throw new Error('fetch meta/info.json -> 503');
+      if (this.options.failInfo) {
+        this.failedAt = performance.now();
+        throw new Error('fetch meta/info.json -> 503');
+      }
     }
     return super.readText(path);
   }
@@ -42,6 +52,11 @@ class Slow extends FetchDataSource {
         await new Promise((resolve) => setTimeout(resolve, this.options.dataMs));
       }
       this.dataReads.push('end');
+      this.dataEndAt = performance.now();
+      if (this.options.failData) {
+        this.failedAt = performance.now();
+        throw new Error(`fetch ${path} -> 503`);
+      }
     }
     return super.readBytes(path, onProgress);
   }
@@ -92,6 +107,38 @@ async function mount(element: React.ReactElement) {
   root = createRoot(host);
   root.render(element);
 }
+
+/** When the provider said no selection is pending any more (landed or dropped). */
+let settledAt: number[] = [];
+function SettleProbe() {
+  const { subscribeSelectionSettled } = useLeRobotData();
+  React.useEffect(
+    () => subscribeSelectionSettled(() => settledAt.push(performance.now())),
+    [subscribeSelectionSettled],
+  );
+  return null;
+}
+/** The viewer with a probe inside its provider, watching the settle announcements. */
+function watched(
+  source: FetchDataSource,
+  initialSelection?: { episodeIndex: number; timeS: number },
+) {
+  return (
+    <LeRobotStudioProvider language="en" showToaster>
+      <SettleProbe />
+      <LeRobotViewerContent dataSource={source} initialSelection={initialSelection} />
+    </LeRobotStudioProvider>
+  );
+}
+async function openWatchedAtFrame(frame: number) {
+  settledAt = [];
+  await mount(watched(new FetchDataSource(FRAME_CODED), { episodeIndex: 0, timeS: frame / 30 }));
+  await expect
+    .poll(() => slider()?.getAttribute('aria-valuenow'), { timeout: 30_000 })
+    .toBe(String(frame));
+}
+const settledSince = (time: number | undefined) =>
+  time !== undefined && settledAt.some((at) => at >= time);
 
 async function openAtFrame(frame: number) {
   await mount(
@@ -216,6 +263,25 @@ it('keeps the shown source and names the error when the new one fails to open', 
   expect(slider()?.getAttribute('aria-valuenow')).toBe('60');
 });
 
+it('a swap that fails to open, with nothing else waiting, says the selection settled', async () => {
+  vi.spyOn(console, 'error').mockImplementation(() => undefined);
+  await openWatchedAtFrame(60);
+  const failing = new SlowOpen(true);
+  root!.render(watched(failing));
+  await expect.poll(() => host!.textContent ?? '', { timeout: 30_000 }).toContain('503');
+  await expect.poll(() => settledSince(failing.failedAt), { timeout: 5_000 }).toBe(true);
+  expect(slider()?.getAttribute('aria-valuenow')).toBe('60');
+});
+
+it('a swap whose episode reload fails ends without a landing and says the selection settled', async () => {
+  vi.spyOn(console, 'error').mockImplementation(() => undefined);
+  await openWatchedAtFrame(60);
+  const failing = new Slow(FRAME_CODED, { infoMs: 200, dataMs: 300, failData: true });
+  root!.render(watched(failing));
+  await expect.poll(() => failing.failedAt !== undefined, { timeout: 30_000 }).toBe(true);
+  await expect.poll(() => settledSince(failing.failedAt), { timeout: 5_000 }).toBe(true);
+});
+
 it('keeps playing across a swap when it was playing', async () => {
   await openAtFrame(30);
   host!.querySelector<HTMLElement>('.lerobot-root')!.focus();
@@ -262,6 +328,53 @@ it('releases a held frame when the new file fails, and names the failure', async
     .toContain('Error loading data');
   // Released at the error itself, not at the cap.
   expect(holding()).toBe(false);
+});
+
+it('releases a held frame when the new load is aborted, into the loading state', async () => {
+  await openAtFrame(30);
+  // Each element's latest load, as its loadstart saw it while a frame is held
+  // (a new URL's own emptied / abort come before its loadstart).
+  const loading = new Map<HTMLVideoElement, string | null>();
+  for (const video of videos()) {
+    video.addEventListener('loadstart', () => {
+      if (holding()) loading.set(video, video.getAttribute('src'));
+    });
+  }
+  root!.render(
+    <LeRobotViewer
+      dataSource={new Slow(FRAME_CODED, { infoMs: 300, video: 'stall' })}
+      language="en"
+    />,
+  );
+  await expect.poll(holding, { timeout: 15_000 }).toBe(true);
+  // Abort once every element is loading the URL it shows (no newer URL set
+  // whose loadstart is still to come); then the load ends without data.
+  const settled = () =>
+    videos().every(
+      (video) =>
+        loading.get(video) === video.getAttribute('src') &&
+        video.networkState === HTMLMediaElement.NETWORK_LOADING,
+    );
+  let aborted = 0;
+  const started = performance.now();
+  while (!aborted && performance.now() - started < 10_000) {
+    if (settled()) {
+      aborted = performance.now();
+      for (const video of videos()) {
+        video.removeAttribute('src');
+        video.load();
+      }
+    } else {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+  }
+  expect(aborted).toBeGreaterThan(0);
+  // Released by the abort itself, long before the cap.
+  await expect.poll(holding, { timeout: HOLD_CAP_MS / 2, interval: 50 }).toBe(false);
+  expect(performance.now() - aborted).toBeLessThan(HOLD_CAP_MS / 2);
+  await expect
+    .poll(() => host!.textContent, { timeout: 5_000 })
+    .toContain('Waiting for video file');
 });
 
 it('keeps an episode the person picks while the new source opens', async () => {
@@ -334,6 +447,80 @@ it('a superseded swap whose reload finishes first neither lands nor resumes', as
   }
   expect(b.dataReads.includes('end')).toBe(true);
   expect(early).toBe(false);
+  await expect.poll(playing, { timeout: 10_000 }).toBe(true);
+});
+
+it('a newer swap that fails while an earlier one reloads lets that one finish: retire, land, then resume', async () => {
+  vi.spyOn(console, 'error').mockImplementation(() => undefined);
+  const dispose = vi.spyOn(LeRobotDataLoader.prototype, 'dispose');
+  await openAtFrame(30);
+  host!.querySelector<HTMLElement>('button[aria-label="Play/pause"]')!.click();
+  await expect.poll(playing, { timeout: 10_000 }).toBe(true);
+  const first = dispose.mock.contexts.length;
+  // B commits quickly, then its episode data is slow; C fails to open meanwhile.
+  const b = new Slow(FRAME_CODED, { infoMs: 200, dataMs: 3000 });
+  root!.render(<LeRobotViewer dataSource={b} language="en" />);
+  await expect.poll(() => b.dataReads.includes('start'), { timeout: 10_000 }).toBe(true);
+  const c = new Slow(FRAME_CODED, { infoMs: 300, failInfo: true });
+  root!.render(<LeRobotViewer dataSource={c} language="en" />);
+  let early = false;
+  const started = performance.now();
+  while (!b.dataReads.includes('end') && performance.now() - started < 15_000) {
+    if (playing()) early = true;
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+  expect(host!.textContent).toContain('503');
+  // Not before B's data is in, then on it.
+  expect(early).toBe(false);
+  await expect.poll(playing, { timeout: 10_000 }).toBe(true);
+  // C's own loader and, once B landed, the first one: both are disposed.
+  await expect.poll(() => dispose.mock.contexts.length - first, { timeout: 5_000 }).toBe(2);
+  expect(videos()).toHaveLength(2);
+});
+
+it('a landing handed back by a failed newer open says the selection settled once it lands', async () => {
+  vi.spyOn(console, 'error').mockImplementation(() => undefined);
+  await openWatchedAtFrame(30);
+  // B commits, its data is slow; C fails and hands the landing back to B.
+  const b = new Slow(FRAME_CODED, { infoMs: 200, dataMs: 2000 });
+  root!.render(watched(b));
+  await expect.poll(() => b.dataReads.includes('start'), { timeout: 10_000 }).toBe(true);
+  root!.render(watched(new Slow(FRAME_CODED, { infoMs: 200, failInfo: true })));
+  await expect.poll(() => host!.textContent, { timeout: 10_000 }).toContain('503');
+  await expect.poll(() => b.dataEndAt !== undefined, { timeout: 15_000 }).toBe(true);
+  await expect.poll(() => settledSince(b.dataEndAt), { timeout: 10_000 }).toBe(true);
+  expect(slider()?.getAttribute('aria-valuenow')).toBe('30');
+});
+
+it('after a hand-back, a newer open defers that landing again', async () => {
+  vi.spyOn(console, 'error').mockImplementation(() => undefined);
+  await openAtFrame(30);
+  host!.querySelector<HTMLElement>('button[aria-label="Play/pause"]')!.click();
+  await expect.poll(playing, { timeout: 10_000 }).toBe(true);
+  // B commits, its data is slow; C fails and hands the landing back to B.
+  const b = new Slow(FRAME_CODED, { infoMs: 200, dataMs: 2500 });
+  root!.render(<LeRobotViewer dataSource={b} language="en" />);
+  await expect.poll(() => b.dataReads.includes('start'), { timeout: 10_000 }).toBe(true);
+  root!.render(
+    <LeRobotViewer
+      dataSource={new Slow(FRAME_CODED, { infoMs: 200, failInfo: true })}
+      language="en"
+    />,
+  );
+  await expect.poll(() => host!.textContent, { timeout: 10_000 }).toContain('503');
+  // D opens before B's data is in: B waits for D again.
+  expect(b.dataReads.includes('end')).toBe(false);
+  const d = new Slow(FRAME_CODED, { infoMs: 4000, dataMs: 300 });
+  root!.render(<LeRobotViewer dataSource={d} language="en" />);
+  let early = false;
+  const started = performance.now();
+  while (!d.dataReads.includes('end') && performance.now() - started < 20_000) {
+    if (playing()) early = true;
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+  expect(b.dataReads.includes('end')).toBe(true);
+  expect(early).toBe(false);
+  // Then it plays, on D's data.
   await expect.poll(playing, { timeout: 10_000 }).toBe(true);
 });
 

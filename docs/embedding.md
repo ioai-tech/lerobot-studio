@@ -411,6 +411,54 @@ export function CustomWelcome({ language }: { language: string }) {
 
 If you show an export button, wire `onExport` yourself. This package does not include the standalone app's export dialog.
 
+## Start loading early
+
+Every open first waits for the Parquet reader (a WebAssembly module of about 1.2 MB brotli, 1.6 MB gzip) and the viewer's layout and loader code. Call `preloadLeRobotViewer()` as soon as you know a viewer will open, so that this work overlaps your own, such as signing URLs or reading the source:
+
+```ts
+import { preloadLeRobotViewer } from '@ioai/lerobot-studio';
+
+// On the viewer's route, before its data source is ready…
+preloadLeRobotViewer();
+
+// …or when a person points at a link that opens a viewer.
+link.addEventListener('pointerenter', () => preloadLeRobotViewer(), { once: true });
+```
+
+- It loads the layout and loader code and starts one Parquet worker, which downloads and compiles the WASM in the background. The next viewer to open adopts that worker. If none opens within 30 s, the worker is terminated.
+- Nothing is compiled on your page. Repeated calls share the same work.
+- It never throws, and it does nothing during server rendering.
+- If loading fails, the viewer reports it when it opens, as `PARQUET_ENGINE_UNAVAILABLE` with the cause. The next open tries again.
+- The viewer also starts this work itself when it mounts. Calling the function earlier only moves the start forward.
+
+## Workers, WebAssembly and Content Security Policy
+
+The Parquet reader runs in module workers. The package ships the worker scripts and the WASM as real files next to its JavaScript (`dist-lib/assets/parquet.worker-<hash>.js`, `parquet_wasm_bg-<hash>.wasm`) and refers to them with `new URL(..., import.meta.url)`. Vite, webpack 5, Turbopack (Next.js) and Rollup emit them with their own hashed names under your base path; you configure nothing.
+
+- **One download, compiled in the workers.** Your page never fetches or compiles the WASM. Each worker fetches it (the browser's HTTP cache serves the second worker and later visits) and compiles it while it streams when the server sends `Content-Type: application/wasm`; with another type it still works, a little slower.
+- **Cache it for good.** The file name changes with its content, so serve the bundler's assets with `Cache-Control: public, max-age=31536000, immutable`.
+- **A failure has a name.** A worker script that is blocked or missing, or a WASM that cannot be downloaded or compiled, ends the open with the error code `PARQUET_ENGINE_UNAVAILABLE` (`onFatalError`), naming the cause. It is never reported as an invalid dataset, and the viewer never waits forever.
+- **Export** writes Parquet in a worker too.
+
+**Content Security Policy.** What each policy needs:
+
+| Policy on                                                                                       | Needs                                                                                                                     |
+| ----------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| Your page                                                                                       | `worker-src` (or `script-src`) allowing the worker scripts' origin, usually `'self'`. No `'wasm-unsafe-eval'`, no `data:` |
+| The worker scripts, if your server sends them a CSP (for example one header for every response) | `script-src 'wasm-unsafe-eval'`, and `connect-src` allowing the WASM's origin (`'self'`, or your CDN)                     |
+
+A browser applies to a worker the policy sent with the worker's own script, not the page's. If your server sends no CSP with static files, the workers need nothing.
+
+**Serve the WASM yourself.** If your bundler does not rewrite `new URL(..., import.meta.url)`, or you serve the file from a CDN, copy `node_modules/@ioai/lerobot-studio/dist-lib/assets/parquet_wasm_bg-<hash>.wasm` to your static files and tell the viewer before it opens:
+
+```ts
+import { setParquetWasmUrl } from '@ioai/lerobot-studio';
+
+setParquetWasmUrl('https://cdn.example.com/lerobot/parquet_wasm_bg-3f9a1c.wasm');
+```
+
+Keep the hash (or your own content hash) in the name and serve it as `application/wasm` with a long-lived cache. A CDN on another origin must allow CORS for your page. Call it before `preloadLeRobotViewer()`. A later change drops idle workers (the prewarmed one, export's) so they start again on the new URL; a viewer already open keeps its workers. It takes an absolute or relative URL string (relative to the page), a `URL`, or `null` for the packaged file; any other value throws a `TypeError` whose message starts with `INVALID_PARQUET_WASM_URL`.
+
 ## Next.js
 
 Load the viewer from a Client Component and disable SSR:
@@ -465,5 +513,6 @@ For segments, review and change ops, see [API — Segments and review](./api.md#
 - The viewer's root is a labelled `region` landmark (never `main`), so it can sit inside your page's own `main`.
 - Each camera's declared codec (`info.features[key].info["video.codec"]`) is checked before loading. If the browser cannot decode it, the camera shows a notice naming the codec instead of a broken player.
 - For a remote archive, check CORS and HTTP Range headers.
-- In Next.js, keep the viewer in a Client Component with `ssr: false`.
+- In Next.js, keep the viewer in a Client Component with `ssr: false`. It needs no `next.config` entry for the package: `next build` (Turbopack or webpack) emits the workers and the WASM, also under a `basePath`.
+- For a page or worker Content Security Policy, see [Workers, WebAssembly and Content Security Policy](#workers-webassembly-and-content-security-policy).
 - For built-in export, use the standalone application. Welcome-page helpers only help you pick data and build a local `DataSource`.

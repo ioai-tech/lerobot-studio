@@ -1,7 +1,8 @@
 /**
  * ParquetImage Worker
  *
- * 从主线程接收预加载的 WASM ArrayBuffer 进行初始化。
+ * The page sends the parquet WASM's URL; the worker downloads and compiles it
+ * itself (see parquetWasmModule.ts).
  *
  * 设计要点（memory-safe 版本）：
  * 1. 加载 Parquet 文件后，仅保留 **图像列 Arrow Vector** 作为原始 JPEG 字节来源，
@@ -16,7 +17,8 @@
  */
 
 import * as Comlink from 'comlink';
-import init, { readParquet } from 'parquet-wasm';
+import { readParquet } from 'parquet-wasm';
+import { announceStarted, handleInitMessage, initParquetWasm } from './parquetWasmModule';
 import { tableFromIPC, Vector } from 'apache-arrow';
 import type { ParquetImageWorkerAPI } from '@/core';
 import {
@@ -25,16 +27,6 @@ import {
   renderTiffDepthPreview,
   sniffImageFormat,
 } from '@/core';
-
-let wasmInitialized = false;
-let wasmInitPromise: Promise<void> | null = null;
-
-let wasmBufferResolve: ((buf: ArrayBuffer) => void) | null = null;
-let wasmBufferReject: ((err: Error) => void) | null = null;
-const wasmBufferSignal = new Promise<ArrayBuffer>((resolve, reject) => {
-  wasmBufferResolve = resolve;
-  wasmBufferReject = reject;
-});
 
 interface FileCache {
   filePath: string;
@@ -106,15 +98,7 @@ let preloadEpisodeKey: string | null = null;
 self.onmessage = async (event: MessageEvent) => {
   const { type } = event.data as { type: string };
 
-  if (type === 'init-wasm') {
-    wasmBufferResolve?.(event.data.wasmBuffer as ArrayBuffer);
-    return;
-  }
-
-  if (type === 'init-wasm-error') {
-    wasmBufferReject?.(new Error(`Main thread failed to load WASM: ${String(event.data.message)}`));
-    return;
-  }
+  if (handleInitMessage(event.data, (message) => self.postMessage(message))) return;
 
   if (type === 'preload-episode') {
     // 保留消息兼容上层代码；当前仅记录 episode 并做少量前向预解码。
@@ -284,23 +268,8 @@ function scheduleLookahead(
   })();
 }
 
-async function initWasm(): Promise<void> {
-  if (wasmInitialized) return;
-  if (wasmInitPromise) return wasmInitPromise;
-
-  wasmInitPromise = (async () => {
-    try {
-      const wasmBuffer = await wasmBufferSignal;
-      await init(wasmBuffer);
-      wasmInitialized = true;
-    } catch (e) {
-      console.error('Worker: Failed to initialize WASM', e);
-      wasmInitPromise = null;
-      throw e;
-    }
-  })();
-
-  return wasmInitPromise;
+function initWasm(): Promise<void> {
+  return initParquetWasm();
 }
 
 function extractImageBytes(val: unknown): Uint8Array | null {
@@ -453,3 +422,4 @@ const api: ParquetImageWorkerAPI = {
 };
 
 Comlink.expose(api);
+announceStarted((message) => self.postMessage(message));

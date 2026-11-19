@@ -89,6 +89,12 @@ export interface ParquetWorkerAPI {
   /**
    * 清除文件缓存
    */
+  /**
+   * Write an Arrow IPC stream as Parquet bytes (export). `'snappy'` compresses
+   * the columns; without it the writer's defaults apply.
+   */
+  writeParquet(ipcStream: Uint8Array, compression?: 'snappy'): Promise<Uint8Array>;
+
   clearCache(): Promise<void>;
 }
 

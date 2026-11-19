@@ -79,7 +79,9 @@ export default defineConfig({
         assetFileNames: (assetInfo) =>
           assetInfo.name?.endsWith('.css')
             ? 'lerobot-studio.css'
-            : assetInfo.name || '[name][extname]',
+            : assetInfo.name?.endsWith('.wasm')
+              ? 'assets/[name]-[hash][extname]'
+              : assetInfo.name || '[name][extname]',
       },
     },
     cssCodeSplit: false,

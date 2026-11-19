@@ -1,55 +1,57 @@
 'use client';
 
-import { LeRobotViewer, type DataSource } from '@ioai/lerobot-studio';
+import { LeRobotViewer, setParquetWasmUrl, type DataSource } from '@ioai/lerobot-studio';
 
-const files: Record<string, string> = {
-  'meta/info.json': JSON.stringify({
-    codebase_version: 'v2.1',
-    robot_type: 'next-consumer-fixture',
-    total_episodes: 1,
-    total_frames: 1,
-    total_tasks: 1,
-    total_videos: 0,
-    chunks_size: 1000,
-    fps: 30,
-    features: {
-      timestamp: { dtype: 'float32', shape: [1], names: null },
-    },
-  }),
-  'meta/episodes.jsonl': '{"episode_index":0,"length":1,"tasks":["smoke test"]}\n',
-  'meta/tasks.jsonl': '{"task_index":0,"task":"smoke test"}\n',
-};
+// A LeRobot v3 dataset under `public/dataset/` (the package's test fixture is
+// copied there by scripts/verify-npm-consumer.mjs), under the app's basePath.
+const BASE_PATH = process.env.NEXT_PUBLIC_BASE_PATH ?? '';
+const DATASET = `${BASE_PATH}/dataset/`;
+const FILES = [
+  'meta/info.json',
+  'meta/tasks.parquet',
+  'meta/episodes/chunk-000/file-000.parquet',
+  'data/chunk-000/file-000.parquet',
+  'videos/observation.images.cam/chunk-000/file-000.mp4',
+  'videos/observation.images.cam/chunk-000/file-001.mp4',
+];
+
+// `?wasm=self-hosted`: serve the parquet WASM yourself (a copy under
+// `public/`) instead of the file Next emitted from the package.
+if (new URLSearchParams(location.search).get('wasm') === 'self-hosted') {
+  setParquetWasmUrl(`${BASE_PATH}/self-hosted/parquet.wasm`);
+}
+
+async function read(filePath: string): Promise<Response> {
+  // Optional files the dataset does not have are missing, without a request.
+  if (!FILES.includes(filePath)) throw new Error(`Not in the dataset: ${filePath}`);
+  const response = await fetch(`${DATASET}${filePath}`);
+  if (!response.ok) throw new Error(`HTTP ${response.status} for ${filePath}`);
+  return response;
+}
 
 const dataSource: DataSource = {
   async exists(filePath) {
-    return filePath in files;
+    return FILES.includes(filePath);
   },
   async readText(filePath) {
-    const value = files[filePath];
-    if (value === undefined) throw new Error(`Fixture path not found: ${filePath}`);
-    return value;
+    return (await read(filePath)).text();
   },
   async readBytes(filePath) {
-    return new TextEncoder().encode(await this.readText(filePath));
+    return new Uint8Array(await (await read(filePath)).arrayBuffer());
   },
-  async getObjectUrl(filePath, mimeType = 'application/octet-stream') {
-    return URL.createObjectURL(new Blob([await this.readText(filePath)], { type: mimeType }));
+  async getObjectUrl(filePath) {
+    return `${DATASET}${filePath}`;
   },
   clear() {},
   async listPaths() {
-    return Object.keys(files);
+    return FILES;
   },
 };
 
 export default function ViewerCanvas() {
   return (
     <main>
-      <LeRobotViewer
-        dataSource={dataSource}
-        language="en"
-        showPlaybackBar={false}
-        showSidebar={false}
-      />
+      <LeRobotViewer dataSource={dataSource} language="en" />
     </main>
   );
 }

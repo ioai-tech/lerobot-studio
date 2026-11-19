@@ -124,6 +124,20 @@ usage, React/React DOM `^19.0.0`, ESM import, CSS loading, workers, and WASM.
 Server rendering, React Server Components, CommonJS, and Node.js execution are
 outside the package contract.
 
+`verify:npm-consumer` packs the tarball and checks that it holds exactly one
+hashed `dist-lib/assets/parquet_wasm_bg-<hash>.wasm`, referenced once as
+`new URL("assets/…", import.meta.url)`, with no `wasmUrl-*.js` chunk and no
+base64 WASM in any JavaScript. It then builds the Vite example and serves it
+from a sub-path, and runs the Next.js example with `next build` and
+`next start` under a `basePath`, built once with Turbopack and once with
+`next build --webpack`. In Chromium, each one opens the
+`tests/fixtures/datasets/lerobotv3` dataset until a chart is drawn from its
+Parquet. Each must download the WASM once, as `application/wasm`, from the
+bundler's URL, and the page itself must compile no WebAssembly. A second run
+of the Vite and the Turbopack example sets `setParquetWasmUrl` to a
+self-hosted copy.
+`VERIFY_NEXT_EXAMPLE=0` skips Next.js.
+
 ### Docker npm consumer gate
 
 CI also runs an isolated Docker build that packs the library from the repository,
@@ -146,7 +160,9 @@ unavailable, the runner validates the Dockerfile structure and falls back to
 The Docker consumers install **only** the packed tarball (never `file:../..` or
 `src/`), pin React 19.2.8, type-check public API imports, build with Vite and
 Next App Router (client-only/`ssr: false`), and assert the Vite bundle is
-servable from a non-root mount path.
+servable from a non-root mount path, including its one hashed WASM file as
+`application/wasm`. Every Dockerfile stage uses the Node major in `.nvmrc`; the
+runner checks this before building.
 
 ## Compatibility work
 

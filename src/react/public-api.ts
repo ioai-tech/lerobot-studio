@@ -22,6 +22,7 @@ import {
 } from '../platform/datasource/RemoteManifestDataSource';
 
 export { LeRobotViewer, LeRobotViewerContent } from './components/LeRobotViewer';
+export { preloadLeRobotViewer } from './preload';
 export type {
   LeRobotViewerError,
   LeRobotViewerErrorCode,
@@ -106,6 +107,7 @@ export type {
   SegmentSubtask,
 } from '../core/annotation/types';
 export { applyChange } from '../core/annotation/reducer';
+export { setParquetWasmUrl } from '../platform/workers/wasmConfig';
 
 /** Create a viewer data source for a local ZIP, TAR, or TAR.GZ archive. */
 export function createArchiveDataSourceFromFile(file: File): DataSource {

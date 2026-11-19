@@ -411,6 +411,54 @@ export function CustomWelcome({ language }: { language: string }) {
 
 如果要显示导出按钮，自己接 `onExport`。本包不包含独立应用里的导出对话框。
 
+## 提前开始加载
+
+每次打开都要先等 Parquet 读取器（一个 WebAssembly 模块，约 1.2 MB brotli、1.6 MB gzip），以及查看器的布局和加载器代码。一旦知道将要打开查看器，就调用 `preloadLeRobotViewer()`，让这些工作与宿主自己的工作（签名 URL、读取数据源）同时进行：
+
+```ts
+import { preloadLeRobotViewer } from '@ioai/lerobot-studio';
+
+// 在查看器的路由中、数据源就绪之前……
+preloadLeRobotViewer();
+
+// ……或在用户指向一个会打开查看器的链接时。
+link.addEventListener('pointerenter', () => preloadLeRobotViewer(), { once: true });
+```
+
+- 它加载布局和加载器代码，并启动一个 Parquet Worker，由该 Worker 在后台下载并编译 WASM。下一个打开的查看器会接管这个 Worker。30 秒内没有查看器打开时，该 Worker 会被终止。
+- 页面上不编译任何东西。重复调用共享同一份工作。
+- 这个函数从不抛出异常，服务端渲染时不做任何事。
+- 加载失败时，查看器在打开时报告 `PARQUET_ENGINE_UNAVAILABLE` 及其原因。下次打开会重试。
+- 查看器挂载时也会自行开始这项工作。更早调用只是把开始时间提前。
+
+## Worker、WebAssembly 与内容安全策略
+
+Parquet 读取器运行在模块 Worker 中。本包把 Worker 脚本和 WASM 作为真实文件放在自身 JavaScript 旁边（`dist-lib/assets/parquet.worker-<hash>.js`、`parquet_wasm_bg-<hash>.wasm`），并用 `new URL(..., import.meta.url)` 引用。Vite、webpack 5、Turbopack（Next.js）和 Rollup 会以各自的哈希文件名、在你的 base path 下输出它们，无需任何配置。
+
+- **只下载一次，在 Worker 中编译。** 页面从不获取或编译 WASM。每个 Worker 自行获取（第二个 Worker 和之后的访问由浏览器 HTTP 缓存提供），服务器返回 `Content-Type: application/wasm` 时边下载边编译；返回其他类型时仍可工作，只是稍慢。
+- **长期缓存。** 文件名随内容变化，因此请以 `Cache-Control: public, max-age=31536000, immutable` 提供打包器输出的资源。
+- **失败有名字。** Worker 脚本被拦截或缺失，或 WASM 无法下载或编译时，本次打开以错误码 `PARQUET_ENGINE_UNAVAILABLE`（`onFatalError`）结束，并注明原因。它不会被报告为数据集无效，查看器也不会无限等待。
+- **导出**同样在 Worker 中写 Parquet。
+
+**内容安全策略（CSP）。** 各策略需要：
+
+| 策略所在                                                    | 需要                                                                                                                  |
+| ----------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| 你的页面                                                    | `worker-src`（或 `script-src`）允许 Worker 脚本的来源，通常是 `'self'`。不需要 `'wasm-unsafe-eval'`，也不需要 `data:` |
+| Worker 脚本（若服务器为其发送 CSP，例如对所有响应统一加头） | `script-src 'wasm-unsafe-eval'`，以及允许 WASM 来源（`'self'` 或你的 CDN）的 `connect-src`                            |
+
+浏览器对 Worker 应用的是随 Worker 脚本本身下发的策略，而不是页面的策略。如果服务器不为静态文件发送 CSP，Worker 无需任何设置。
+
+**自行托管 WASM。** 如果你的打包器不改写 `new URL(..., import.meta.url)`，或你从 CDN 提供该文件，请把 `node_modules/@ioai/lerobot-studio/dist-lib/assets/parquet_wasm_bg-<hash>.wasm` 复制到你的静态文件中，并在查看器打开前告诉它：
+
+```ts
+import { setParquetWasmUrl } from '@ioai/lerobot-studio';
+
+setParquetWasmUrl('https://cdn.example.com/lerobot/parquet_wasm_bg-3f9a1c.wasm');
+```
+
+文件名中保留哈希（或你自己的内容哈希），以 `application/wasm` 和长期缓存提供。其他来源的 CDN 必须对你的页面允许 CORS。请在 `preloadLeRobotViewer()` 之前调用。之后再更改时，空闲的 Worker（预热的那个、导出用的那个）会被关闭，下次以新 URL 重新启动；已经打开的查看器保留它的 Worker。参数可以是绝对或相对 URL 字符串（相对于页面）、`URL` 对象，或表示使用包内文件的 `null`；其他值会抛出消息以 `INVALID_PARQUET_WASM_URL` 开头的 `TypeError`。
+
 ## Next.js
 
 在 Client Component 中加载查看器，并关闭 SSR：
@@ -465,5 +513,6 @@ const LeRobotViewer = dynamic(
 - 查看器的根元素是带标签的 `region` 地标（不是 `main`），可以放在宿主页面自己的 `main` 里。
 - 加载前会检查每个相机声明的编码（`info.features[key].info["video.codec"]`）。浏览器无法解码时，该相机显示注明编码的提示，而不是一个坏掉的播放器。
 - 使用远程压缩包时，请检查 CORS 和 HTTP Range 响应头。
-- 在 Next.js 中，请将查看器置于 Client Component，并使用 `ssr: false`。
+- 在 Next.js 中，请将查看器置于 Client Component，并使用 `ssr: false`。本包无需任何 `next.config` 配置：`next build`（Turbopack 或 webpack）会输出 Worker 与 WASM，在 `basePath` 下同样如此。
+- 页面或 Worker 的内容安全策略见 [Worker、WebAssembly 与内容安全策略](#worker、webassembly-与内容安全策略)。
 - 需要内置导出时，请使用独立应用。欢迎页组件只负责选数据和构造本地 `DataSource`。

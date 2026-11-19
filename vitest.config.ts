@@ -40,7 +40,8 @@ export default defineConfig({
         'src/platform/datasource/sampleDatasets.ts',
         // Browser-only worker/WASM entry points are covered by browser integration tests.
         'src/platform/workers/**',
-        'src/platform/export/parquetWasmLoader.ts',
+        // Thin worker client; covered by the browser export tests.
+        'src/platform/export/parquetWriteClient.ts',
       ],
       thresholds: {
         statements: 70,

@@ -1,4 +1,5 @@
 import * as arrow from 'apache-arrow';
+import { writeParquetBytes } from './parquetWriteClient';
 import type { LeRobotInfo, EpisodeMetadata, SubtaskTable } from '@/core';
 import { SUBTASK_INDEX_FEATURE, SUBTASK_INDEX_FEATURE_KEY } from '@/core';
 import type { ExportAdapter } from '@/core';
@@ -499,12 +500,7 @@ async function writeV3Episodes(
       new arrow.List(new arrow.Field('item', new arrow.Utf8(), true)),
     ),
   });
-  const wasmModule = await import('./parquetWasmLoader').then((m) => m.getParquetWasm());
-  const ipcBytes = arrow.tableToIPC(table, 'stream');
-  const ipcCopy = new Uint8Array(ipcBytes.length);
-  ipcCopy.set(ipcBytes);
-  const wasmTable = wasmModule.Table.fromIPCStream(ipcCopy);
-  const parquetBytes = wasmModule.writeParquet(wasmTable);
+  const parquetBytes = await writeParquetBytes(arrow.tableToIPC(table, 'stream'));
 
   await adapter.createDirectory('meta/episodes/chunk-000');
   adapter.writeFile('meta/episodes/chunk-000/file-000.parquet', parquetBytes);
@@ -580,12 +576,7 @@ async function writeV3Tasks(
       new Map([...baseTable.schema.metadata, ['pandas', pandasMetadata]]),
     );
     const table = new arrow.Table(schema, baseTable.batches);
-    const wasmModule = await import('./parquetWasmLoader').then((m) => m.getParquetWasm());
-    const ipcBytes = arrow.tableToIPC(table, 'stream');
-    const ipcCopy = new Uint8Array(ipcBytes.length);
-    ipcCopy.set(ipcBytes);
-    const wasmTable = wasmModule.Table.fromIPCStream(ipcCopy);
-    const parquetBytes = wasmModule.writeParquet(wasmTable);
+    const parquetBytes = await writeParquetBytes(arrow.tableToIPC(table, 'stream'));
     adapter.writeFile('meta/tasks.parquet', parquetBytes);
   }
 
@@ -650,12 +641,7 @@ async function writeV3Subtasks(
     new Map([...baseTable.schema.metadata, ['pandas', pandasMetadata]]),
   );
   const table = new arrow.Table(schema, baseTable.batches);
-  const wasmModule = await import('./parquetWasmLoader').then((m) => m.getParquetWasm());
-  const ipcBytes = arrow.tableToIPC(table, 'stream');
-  const ipcCopy = new Uint8Array(ipcBytes.length);
-  ipcCopy.set(ipcBytes);
-  const wasmTable = wasmModule.Table.fromIPCStream(ipcCopy);
-  const parquetBytes = wasmModule.writeParquet(wasmTable);
+  const parquetBytes = await writeParquetBytes(arrow.tableToIPC(table, 'stream'));
   adapter.writeFile('meta/subtasks.parquet', parquetBytes);
 
   onProgress?.({
