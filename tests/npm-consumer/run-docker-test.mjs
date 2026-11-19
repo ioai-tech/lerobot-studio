@@ -13,17 +13,18 @@ function dockerAvailable() {
   return result.status === 0;
 }
 
+/** Every stage uses the Node major in .nvmrc, the one CI and contributors use. */
 function assertDockerfileSyntax() {
   const dockerfileContents = readFileSync(dockerfile, 'utf8');
-  if (
-    !/^FROM node:24-bookworm-slim(?:@sha256:[a-f0-9]{64})? AS pack-builder$/m.test(
-      dockerfileContents,
-    )
-  ) {
-    throw new Error('npm-consumer Dockerfile is missing the pack-builder stage');
-  }
-  if (!/^FROM node:24-bookworm-slim(?:@sha256:[a-f0-9]{64})? AS test$/m.test(dockerfileContents)) {
-    throw new Error('npm-consumer Dockerfile is missing the test stage');
+  const nodeMajor = readFileSync(path.join(root, '.nvmrc'), 'utf8').trim().replace(/^v/, '');
+  const stage = (name) =>
+    new RegExp(`^FROM node:${nodeMajor}-bookworm-slim(?:@sha256:[a-f0-9]{64})? AS ${name}$`, 'm');
+  for (const name of ['pack-builder', 'vite-consumer', 'next-consumer', 'test']) {
+    if (!stage(name).test(dockerfileContents)) {
+      throw new Error(
+        `npm-consumer Dockerfile stage ${name} must use node:${nodeMajor}-bookworm-slim (.nvmrc)`,
+      );
+    }
   }
   if (!dockerfileContents.includes('--from=lerobot')) {
     throw new Error('npm-consumer Dockerfile must copy the repo via the lerobot build context');
@@ -48,7 +49,6 @@ async function runDockerBuild() {
 }
 
 async function fallbackWithoutDocker() {
-  assertDockerfileSyntax();
   console.warn(
     'Docker is unavailable; validating Dockerfile structure and running verify:npm-consumer',
   );
@@ -59,6 +59,7 @@ async function fallbackWithoutDocker() {
 }
 
 try {
+  assertDockerfileSyntax();
   if (dockerAvailable()) {
     await runDockerBuild();
     console.log('npm consumer Docker image passed build --target test');

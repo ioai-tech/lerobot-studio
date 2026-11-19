@@ -262,7 +262,8 @@ describe('browser: segments, review and change ops', () => {
     );
     await waitForSegments(host);
     // Host copy replaces built-in messages; standalone-app copy cannot be replaced.
-    expect(host.textContent).toContain('0 of 2 reviewed');
+    // The segment list loads on demand: wait for it.
+    await expect.poll(() => host.textContent, { timeout: 10_000 }).toContain('0 of 2 reviewed');
     expect(host.textContent).toContain('2 takes');
     expect(host.textContent).not.toContain('INTERNAL COPY');
     await selectWithKeys(host, 1);

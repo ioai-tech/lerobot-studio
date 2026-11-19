@@ -27,6 +27,8 @@ import '@ioai/lerobot-studio/style.css';
 
 For a custom welcome page, use `LeRobotStudioProvider` with `LeRobotViewerContent`, `DatasetSourceSelector`, `SampleDatasetCard`, `Pagination`, and `useDragAndDrop`. See [Embedding](./embedding.md).
 
+`preloadLeRobotViewer()` starts the viewer's code and a Parquet worker before a data source exists ([start loading early](./embedding.md#start-loading-early)). `setParquetWasmUrl(url)` serves the Parquet reader's WASM from your own URL ([serve the WASM yourself](./embedding.md#workers-webassembly-and-content-security-policy)). A reader that cannot load ends an open with the `onFatalError` code `PARQUET_ENGINE_UNAVAILABLE`.
+
 `auxiliarySeries` adds time series from separate parquet files to the charts ([extra time series](./embedding.md#plot-extra-time-series)).
 
 The viewer supports in-session episode changes when the dataset allows them. `onExport` is a callback for your host UI; it does not export anything by itself.

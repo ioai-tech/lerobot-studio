@@ -123,7 +123,8 @@ const VideoPanelContent: React.FC<VideoPanelProps> = ({ params }) => {
       const canvas = holdRef.current;
       if (!canvas) return;
       holdLoadStartedRef.current = false;
-      if (canvas.style.display === 'block') return; // a retry keeps the held frame and its cap
+      // A newer URL while a frame is held (another swap) keeps that frame and its cap.
+      if (canvas.style.display === 'block') return;
       if (video.readyState < 2 || video.videoWidth <= 0) return;
       canvas.width = video.videoWidth;
       canvas.height = video.videoHeight;

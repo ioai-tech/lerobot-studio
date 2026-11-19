@@ -1,57 +1,50 @@
 import { LeRobotViewer, type DataSource } from '@ioai/lerobot-studio';
 
-const files = new Map([
-  [
-    'meta/info.json',
-    JSON.stringify({
-      codebase_version: 'v2.1',
-      robot_type: 'npm-consumer-fixture',
-      total_episodes: 1,
-      total_frames: 1,
-      total_tasks: 1,
-      total_videos: 0,
-      chunks_size: 1000,
-      fps: 30,
-      features: {
-        timestamp: { dtype: 'float32', shape: [1], names: null },
-      },
-    }),
-  ],
-  ['meta/episodes.jsonl', '{"episode_index":0,"length":1,"tasks":["smoke test"]}\n'],
-  ['meta/tasks.jsonl', '{"task_index":0,"task":"smoke test"}\n'],
-]);
+// A LeRobot v3 dataset served next to the page (the package's test fixture is
+// copied to `dataset/` by scripts/verify-npm-consumer.mjs). Relative URLs keep
+// the app working under any mount path.
+const DATASET = new URL('dataset/', document.baseURI);
+const FILES = [
+  'meta/info.json',
+  'meta/tasks.parquet',
+  'meta/episodes/chunk-000/file-000.parquet',
+  'data/chunk-000/file-000.parquet',
+  'videos/observation.images.cam/chunk-000/file-000.mp4',
+  'videos/observation.images.cam/chunk-000/file-001.mp4',
+];
+
+async function read(filePath: string): Promise<Response> {
+  // Optional files the dataset does not have are missing, without a request.
+  if (!FILES.includes(filePath)) throw new Error(`Not in the dataset: ${filePath}`);
+  const response = await fetch(new URL(filePath, DATASET));
+  if (!response.ok) throw new Error(`HTTP ${response.status} for ${filePath}`);
+  return response;
+}
 
 const dataSource: DataSource = {
   async exists(filePath) {
-    return files.has(filePath);
+    return FILES.includes(filePath);
   },
   async readText(filePath) {
     if (filePath === 'meta/info.json') window.__LEROBOT_CONSUMER__.infoRead = true;
-    const value = files.get(filePath);
-    if (value === undefined) throw new Error(`Fixture path not found: ${filePath}`);
-    return value;
+    return (await read(filePath)).text();
   },
   async readBytes(filePath) {
-    return new TextEncoder().encode(await this.readText(filePath));
+    return new Uint8Array(await (await read(filePath)).arrayBuffer());
   },
-  async getObjectUrl(filePath, mimeType = 'application/octet-stream') {
-    return URL.createObjectURL(new Blob([await this.readText(filePath)], { type: mimeType }));
+  async getObjectUrl(filePath) {
+    return new URL(filePath, DATASET).href;
   },
   clear() {},
   async listPaths() {
-    return [...files.keys()];
+    return FILES;
   },
 };
 
 export function App() {
   return (
     <main data-npm-consumer-mounted="true">
-      <LeRobotViewer
-        dataSource={dataSource}
-        language="en"
-        showPlaybackBar={false}
-        showSidebar={false}
-      />
+      <LeRobotViewer dataSource={dataSource} language="en" />
     </main>
   );
 }

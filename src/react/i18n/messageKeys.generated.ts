@@ -57,6 +57,7 @@ export type LeRobotMessageKey =
   | 'loading.message.processCharts'
   | 'errors.generic'
   | 'errors.loadFailed'
+  | 'errors.parquetEngineUnavailable'
   | 'errors.details'
   | 'errorBoundary.title'
   | 'errorBoundary.description'

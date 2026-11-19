@@ -1,95 +1,216 @@
 /**
- * Worker 管理器 - 使用 Vite 原生外置 module Worker
+ * Starts the Parquet workers and tells each where the parquet WASM is.
  *
- * Worker 使用相对模块 URL，WASM 保留为单份按需 data URL chunk，因此不依赖部署根路径。
- * WASM 由主线程预加载为 ArrayBuffer，再通过 postMessage Transfer 传递给 Worker。
- *
- * Worker 侧使用 Promise 等待（而非轮询），彻底消除竞态条件：
- * 无论主线程多快/多慢完成 fetch，Worker 都会等到 buffer 到达后再初始化。
+ * - Worker scripts and the WASM are real files next to this chunk, referenced
+ *   with `new URL(..., import.meta.url)`, so Vite, webpack, Turbopack and
+ *   Rollup emit them with hashed names under any base path.
+ * - The page never fetches or compiles the WASM: each worker downloads it
+ *   (one HTTP download, shared through the HTTP cache) and stream-compiles it
+ *   (see parquetWasmModule.ts). A host may serve it elsewhere with
+ *   `setParquetWasmUrl`.
+ * - A worker that cannot serve calls (its script blocked or missing, a
+ *   message that cannot be read, the WASM failing to load) fails every pending
+ *   and later call with a named PARQUET_ENGINE_UNAVAILABLE error, never a
+ *   call that waits forever.
+ * - `prewarmParquetWorker` (behind `preloadLeRobotViewer`) starts one worker
+ *   early so the download and compile overlap the host's own work; the next
+ *   loader adopts it, and an unadopted one is terminated after a short idle.
  */
 
 import * as Comlink from 'comlink';
 import type { ParquetWorkerAPI, ParquetImageWorkerAPI } from '@/core';
+import { parquetEngineError } from '../../core/workers/engineError';
+import type { InitParquetWasmMessage, ParquetWorkerStatusMessage } from './parquetWasmModule';
 
 import parquetWorkerUrl from './parquet.worker?worker&url';
 import parquetImageWorkerUrl from './parquetImage.worker?worker&url';
 
-// WASM 预加载缓存（Promise 形式，多个 worker 共享同一份 fetch）
-let wasmBufferPromise: Promise<ArrayBuffer> | null = null;
-const workerRegistry = new WeakMap<Comlink.Remote<unknown>, Worker>();
+import { wasmUrl as packagedWasmUrl } from './wasmUrl';
+import { parquetWasmUrlOverride } from './wasmConfig';
+
+/** A started worker: its guarded remote, the raw Worker (null if it never started), and its failure. */
+interface WorkerHandle<T> {
+  remote: Comlink.Remote<T>;
+  raw: Worker | null;
+  /** Rejects with the named error once the worker can no longer serve calls; never resolves. */
+  failed: Promise<never>;
+  /** The failure, once there is one. */
+  failure(): Error | null;
+  /** The WASM URL this worker was given. */
+  wasmUrl: string;
+}
+
+const handles = new WeakMap<object, WorkerHandle<unknown>>();
+
+/** How long a prewarmed worker waits for a loader before it is terminated. */
+export const SPARE_WORKER_IDLE_MS = 30_000;
+let spare: { handle: WorkerHandle<ParquetWorkerAPI>; timer: ReturnType<typeof setTimeout> } | null =
+  null;
+
+/** The parquet WASM URL the workers fetch: the host's override, or the packaged file. */
+export function resolveParquetWasmUrl(): string {
+  // Absolute: a worker resolves relative URLs against its own script, not the page.
+  return new URL(parquetWasmUrlOverride() ?? packagedWasmUrl, globalThis.location?.href).href;
+}
+
+function describe(cause: unknown): string {
+  return cause instanceof Error ? `${cause.name}: ${cause.message}` : String(cause);
+}
 
 /**
- * 预加载 WASM 文件为 ArrayBuffer（带缓存）
+ * A remote whose calls reject with the worker's failure: at once when it has
+ * failed, and as soon as it fails while a call is pending.
  */
-async function loadWasmBuffer(): Promise<ArrayBuffer> {
-  if (!wasmBufferPromise) {
-    // Library mode places this data URL in its own lazy chunk. Keeping one
-    // package-local copy is relocatable across Vite, Next, and arbitrary bases.
-    wasmBufferPromise = import('./wasmUrl')
-      .then(({ wasmUrl }) => fetch(wasmUrl))
-      .then((response) => {
-        if (!response.ok) throw new Error(`Failed to fetch WASM: ${response.status}`);
-        return response.arrayBuffer();
-      })
-      .catch((err) => {
-        wasmBufferPromise = null; // 重置以便重试
-        throw err;
-      });
+function guard<T>(
+  remote: Comlink.Remote<T> | null,
+  failed: Promise<never>,
+  failure: () => Error | null,
+): Comlink.Remote<T> {
+  const target = (remote ?? {}) as object;
+  return new Proxy(target, {
+    get(object, property) {
+      if (typeof property === 'symbol') {
+        return remote ? Reflect.get(object, property) : () => undefined;
+      }
+      if (property === 'then') return undefined; // not a thenable
+      return (...args: unknown[]) => {
+        const current = failure();
+        if (current || !remote) return Promise.reject(current ?? new Error('worker not started'));
+        const call = (Reflect.get(object, property) as (...a: unknown[]) => Promise<unknown>)(
+          ...args,
+        );
+        return Promise.race([call, failed]);
+      };
+    },
+  }) as Comlink.Remote<T>;
+}
+
+function spawn<T>(scriptUrl: string, label: string): WorkerHandle<T> {
+  const wasmUrl = resolveParquetWasmUrl();
+  let failure: Error | null = null;
+  let rejectFailed: (error: Error) => void = () => undefined;
+  const failed = new Promise<never>((_, reject) => {
+    rejectFailed = reject;
+  });
+  failed.catch(() => undefined); // observed by each call, not here
+  const fail = (detail: string) => {
+    if (failure) return;
+    failure = parquetEngineError(detail);
+    rejectFailed(failure);
+  };
+
+  let worker: Worker | null = null;
+  try {
+    worker = new Worker(scriptUrl, { type: 'module' });
+  } catch (error) {
+    fail(`the ${label} worker could not start: ${describe(error)}`);
   }
-  // 返回副本以便可以 Transfer（Transfer 会转移所有权）
-  const buffer = await wasmBufferPromise;
-  return buffer.slice(0);
-}
-
-/**
- * 向 Worker 发送 WASM buffer，出错时通知 worker 以便快速失败
- */
-function sendWasmToWorker(worker: Worker): void {
-  loadWasmBuffer()
-    .then((buffer) => {
-      worker.postMessage({ type: 'init-wasm', wasmBuffer: buffer }, [buffer]);
-    })
-    .catch((err) => {
-      worker.postMessage({ type: 'init-wasm-error', message: String(err) });
+  if (worker) {
+    let started = false;
+    worker.addEventListener('message', (event: MessageEvent) => {
+      const data = event.data as ParquetWorkerStatusMessage | null;
+      if (data?.type === 'parquet-worker-started') started = true;
+      else if (data?.type === 'parquet-wasm' && !data.ok) fail(data.message);
     });
+    worker.addEventListener('error', (event: Event) => {
+      // After the worker's code ran, an error event is an uncaught error in a
+      // handler; the call it belonged to reports it.
+      if (started) return;
+      const detail = (event as Partial<ErrorEvent>).message;
+      const message = detail ? `: ${detail}` : '';
+      fail(
+        `the ${label} worker script could not load (missing, or blocked by a Content-Security-Policy worker-src)${message}`,
+      );
+    });
+    worker.addEventListener('messageerror', () =>
+      fail(`a message from the ${label} worker could not be read`),
+    );
+    const init: InitParquetWasmMessage = { type: 'init-wasm', url: wasmUrl };
+    worker.postMessage(init);
+  }
+  const remote = guard(worker ? Comlink.wrap<T>(worker) : null, failed, () => failure);
+  const handle: WorkerHandle<T> = { remote, raw: worker, failed, failure: () => failure, wasmUrl };
+  handles.set(remote as object, handle as WorkerHandle<unknown>);
+  return handle;
+}
+
+function usableSpare(): WorkerHandle<ParquetWorkerAPI> | null {
+  if (!spare || spare.handle.failure()) return null;
+  return spare.handle.wasmUrl === resolveParquetWasmUrl() ? spare.handle : null;
+}
+
+function dropSpare(): void {
+  if (!spare) return;
+  clearTimeout(spare.timer);
+  const { remote } = spare.handle;
+  spare = null;
+  terminateWorker(remote as Comlink.Remote<unknown>);
 }
 
 /**
- * 创建 Parquet Worker 实例并传递 WASM ArrayBuffer
+ * Start one Parquet worker ahead of a loader, so it downloads and compiles
+ * the WASM meanwhile. The next `createParquetWorker` adopts it; if none does
+ * within `SPARE_WORKER_IDLE_MS`, it is terminated. A spare that fails is
+ * dropped: the loader starts its own worker and reports that one's error.
  */
-export function createParquetWorker(): Comlink.Remote<ParquetWorkerAPI> {
-  const worker = new Worker(parquetWorkerUrl, { type: 'module' });
-  sendWasmToWorker(worker);
-  const remote = Comlink.wrap<ParquetWorkerAPI>(worker);
-  workerRegistry.set(remote as Comlink.Remote<unknown>, worker);
-  return remote;
+export function prewarmParquetWorker(): void {
+  if (typeof Worker === 'undefined' || usableSpare()) return;
+  dropSpare();
+  const handle = spawn<ParquetWorkerAPI>(parquetWorkerUrl, 'Parquet');
+  spare = { handle, timer: setTimeout(dropSpare, SPARE_WORKER_IDLE_MS) };
+  handle.failed.catch(() => {
+    if (spare?.handle === handle) dropSpare();
+  });
 }
 
 /**
- * 创建 ParquetImage Worker 实例并传递 WASM ArrayBuffer。
- * 同时返回 Comlink remote 和原始 Worker 对象，
- * 原始 Worker 用于 raw postMessage（预加载/帧传输），绕过 Comlink Promise 开销。
+ * A Parquet worker for one data loader: the prewarmed one when there is a
+ * usable one, unless `adoptPrewarmed` is false (export keeps its own).
+ */
+export function createParquetWorker(
+  options: { adoptPrewarmed?: boolean } = {},
+): Comlink.Remote<ParquetWorkerAPI> {
+  if (options.adoptPrewarmed === false) {
+    return spawn<ParquetWorkerAPI>(parquetWorkerUrl, 'Parquet').remote;
+  }
+  const adopted = usableSpare();
+  if (adopted && spare) {
+    clearTimeout(spare.timer);
+    spare = null;
+    return adopted.remote;
+  }
+  dropSpare();
+  return spawn<ParquetWorkerAPI>(parquetWorkerUrl, 'Parquet').remote;
+}
+
+/**
+ * A ParquetImage worker: the guarded Comlink remote, and the raw Worker for
+ * the frame protocol (raw postMessage, without Comlink's promise per frame).
+ * `failed` rejects with the named error when the worker can no longer answer,
+ * so raw requests in flight can fail too.
  */
 export function createParquetImageWorker(): {
   remote: Comlink.Remote<ParquetImageWorkerAPI>;
-  raw: Worker;
+  raw: Worker | null;
+  failed: Promise<never>;
 } {
-  const worker = new Worker(parquetImageWorkerUrl, { type: 'module' });
-  sendWasmToWorker(worker);
-  const remote = Comlink.wrap<ParquetImageWorkerAPI>(worker);
-  workerRegistry.set(remote as Comlink.Remote<unknown>, worker);
-  return { remote, raw: worker };
+  const { remote, raw, failed } = spawn<ParquetImageWorkerAPI>(
+    parquetImageWorkerUrl,
+    'ParquetImage',
+  );
+  return { remote, raw, failed };
 }
 
-/**
- * 释放 Worker 资源
- */
+/** Release a worker made here. */
 export function terminateWorker(worker: Comlink.Remote<unknown>): void {
-  // 释放 Comlink 代理
-  worker[Comlink.releaseProxy]();
-  const rawWorker = workerRegistry.get(worker);
-  if (rawWorker) {
-    rawWorker.terminate();
-    workerRegistry.delete(worker);
+  const handle = handles.get(worker as object);
+  try {
+    worker[Comlink.releaseProxy]();
+  } catch {
+    // A worker that never started has no proxy to release.
+  }
+  if (handle) {
+    handle.raw?.terminate();
+    handles.delete(worker as object);
   }
 }

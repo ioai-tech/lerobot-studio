@@ -26,22 +26,43 @@ if (!Number.isFinite(scale) || scale <= 0 || scale > 1) {
 // 463.2 KiB / 139.3 KiB) and adds parquet range reads, with footer and
 // file-version checks, to the lazy DataLoader (web 50,958 / 14,934, from
 // 37.5 KiB / 10.5 KiB; library 62,355 / 16,563).
+//
+// 2026-11-19 review (the parquet WASM is a real file, compiled in workers):
+// - Library Worker/WASM: the group is now only
+//   dist-lib/assets/parquet_wasm_bg-<hash>.wasm (4,951,555 / 1,684,501), no
+//   longer the 6.6 MB base64 data: URL chunk (c801b91 6,602,220 / 2,296,411);
+//   ceiling 6.80 MB / 2.36 MB -> 5.10 MB / 1.735 MB (~3%). The gate now also
+//   fails on any wasmUrl-*.js chunk or more than one WASM file.
+// - Web Worker/WASM: the same file plus the 61-byte chunk holding its URL
+//   (4,951,616 / 1,684,580); ceiling 5.14 MB / 1.745 MB -> 5.10 MB / 1.735 MB.
+// - npm tarball: 7,775,196 unpacked / 2,428,881 .tgz (c801b91 9.42 MB /
+//   3.03 MB); ceiling 9.67 MB / 3.115 MB -> 8.02 MB / 2.505 MB (~3%).
+// - DataLoader (library 64,259 / 17,075, web 52,487 / 15,357; c801b91
+//   64,029 / 16,938 and 52,308 / 15,281): it now reports a Parquet reader
+//   that cannot load as the named PARQUET_ENGINE_UNAVAILABLE instead of an
+//   invalid file, and frees a read slot when a host's readBytes throws; it
+//   left under 0.1% headroom, so the ceilings reset to ~3%:
+//   64,300 / 17,100 -> 66,200 / 17,600 and 52,500 / 15,400 -> 54,100 / 15,800.
+// - Unchanged ceilings with their current artifacts: library entry 440,600 /
+//   136,134 (preloadLeRobotViewer, setParquetWasmUrl, the new error code and
+//   its message; c801b91 435,721 / 134,749); library Workers 447,748 /
+//   103,186 (each worker now downloads and compiles the WASM itself).
 const budgets = {
   libEntry: { raw: 448_000, gzip: 138_500 },
   libCss: { raw: 360_000, gzip: 107_000 },
   webInitialJs: { raw: 2_465_000, gzip: 699_000 },
   webInitialCss: { raw: 199_000, gzip: 24_700 },
-  libDataLoader: { raw: 64_300, gzip: 17_100 },
-  webDataLoader: { raw: 52_500, gzip: 15_400 },
+  libDataLoader: { raw: 66_200, gzip: 17_600 },
+  webDataLoader: { raw: 54_100, gzip: 15_800 },
   libDockview: { raw: 638_000, gzip: 149_500 },
   webDockview: { raw: 92_800, gzip: 27_600 },
-  libWorkerWasm: { raw: 6_800_000, gzip: 2_360_000 },
+  libWorkerWasm: { raw: 5_100_000, gzip: 1_735_000 },
   libWorkers: { raw: 459_000, gzip: 105_600 },
-  webWorkerWasm: { raw: 5_140_000, gzip: 1_745_000 },
+  webWorkerWasm: { raw: 5_100_000, gzip: 1_735_000 },
   webWorkers: { raw: 459_000, gzip: 105_600 },
   largestLibJs: { raw: 638_000, gzip: 149_500 },
   largestWebJs: { raw: 1_186_000, gzip: 332_000 },
-  npmTarball: { raw: 9_670_000, gzip: 3_115_000 },
+  npmTarball: { raw: 8_020_000, gzip: 2_505_000 },
 };
 
 const failures = [];
@@ -218,6 +239,18 @@ async function main() {
   );
 
   if (libWorkerWasm.length === 0) failures.push('No library Worker/WASM artifacts found.');
+  const libWasmFiles = libFiles.filter((file) =>
+    /^parquet_wasm_bg-[\w-]+\.wasm$/.test(path.basename(file)),
+  );
+  if (libWasmFiles.length !== 1) {
+    failures.push(
+      `Expected one library parquet_wasm_bg-<hash>.wasm; found ${libWasmFiles.length}.`,
+    );
+  }
+  const inlinedWasm = libFiles.filter((file) => /^wasmUrl-[\w-]+\.js$/.test(path.basename(file)));
+  if (inlinedWasm.length) {
+    failures.push(`The library inlines the WASM again (${path.basename(inlinedWasm[0])}).`);
+  }
   if (libWorkers.length !== 2)
     failures.push(`Expected two library Workers; found ${libWorkers.length}.`);
 
@@ -294,7 +327,7 @@ async function main() {
   }
 
   console.log(
-    '\nNote: library Workers are external and share one lazy package-local WASM payload.',
+    '\nNote: Workers are external; each downloads and compiles the one hashed WASM file itself.',
   );
 
   if (failures.length > 0) {

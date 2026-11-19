@@ -29,34 +29,6 @@ function normalizeBase(input?: string) {
   return v;
 }
 
-function wasmPreloadPlugin(): Plugin {
-  let configBase = '/';
-  return {
-    name: 'wasm-preload',
-    configResolved(config) {
-      configBase = config.base;
-    },
-    transformIndexHtml: {
-      order: 'post',
-      handler(_html, ctx) {
-        if (!ctx.bundle) return;
-        return Object.keys(ctx.bundle)
-          .filter((f) => f.endsWith('.wasm'))
-          .map((fileName) => ({
-            tag: 'link',
-            attrs: {
-              rel: 'preload',
-              as: 'fetch',
-              crossorigin: 'anonymous',
-              href: `${configBase}${fileName}`,
-            },
-            injectTo: 'head' as const,
-          }));
-      },
-    },
-  };
-}
-
 function htmlEnvPlugin(replacements: Record<string, string>): Plugin {
   return {
     name: 'html-env-plugin',
@@ -84,7 +56,6 @@ export default defineConfig(() => {
   return {
     base,
     plugins: [
-      wasmPreloadPlugin(),
       htmlEnvPlugin({
         SITE_URL: siteUrl,
         BASE_PATH: basePath,

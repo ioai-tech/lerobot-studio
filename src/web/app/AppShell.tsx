@@ -16,6 +16,7 @@ import {
   ViewerLayout,
   useLeRobotData,
   useLeRobotUi,
+  preloadLeRobotViewer,
 } from '@';
 import { resolveDroppedItem, type SampleDataset } from '@/platform';
 import { SourceController } from '../services/SourceController';
@@ -98,6 +99,10 @@ export function AppShell() {
 
   // 启用全局键盘快捷键
   useKeyboardShortcuts(true);
+
+  // Start the loader code and a Parquet worker (the WASM download and compile)
+  // while the welcome screen or a deep link's source is being resolved.
+  useEffect(() => preloadLeRobotViewer(), []);
 
   // 更新 HTML lang 属性和 SEO 元信息
   useEffect(() => {

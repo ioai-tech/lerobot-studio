@@ -5,9 +5,10 @@ import tailwindcss from '@tailwindcss/vite';
 import { playwright } from '@vitest/browser-playwright';
 import { localDatasetPlugin } from './scripts/vite/localDatasetPlugin.ts';
 import { logNetworkFailures } from './scripts/vite/browserNetworkLog.ts';
+import { wasmTestControlPlugin } from './scripts/vite/wasmTestControlPlugin.ts';
 
 export default defineConfig({
-  plugins: [react(), tailwindcss(), localDatasetPlugin()],
+  plugins: [react(), tailwindcss(), localDatasetPlugin(), wasmTestControlPlugin()],
   publicDir: false,
   server: { fs: { allow: [path.resolve(import.meta.dirname)] } },
   resolve: {

@@ -105,14 +105,27 @@ export class ParquetImageServiceImpl {
   private async getWorker(): Promise<Remote<ParquetImageWorkerAPI>> {
     this.assertActive();
     if (!this.worker) {
-      const { remote, raw } = createParquetImageWorker();
+      const { remote, raw, failed } = createParquetImageWorker();
       this.worker = remote;
       this.rawWorker = raw;
-      this.bindRawWorkerMessages(raw);
+      if (raw) this.bindRawWorkerMessages(raw);
+      // A worker that can no longer answer fails the raw requests in flight
+      // too (the Comlink calls fail on their own).
+      failed.catch((error: Error) => this.failRawRequests(error));
       await this.worker.init();
       this.assertActive();
     }
     return this.worker;
+  }
+
+  private failRawRequests(error: Error): void {
+    const preloads = [...this.pendingPreloadCallbacks.values()];
+    const bitmaps = [...this.pendingBitmapCallbacks.values()];
+    this.pendingPreloadCallbacks.clear();
+    this.pendingBitmapCallbacks.clear();
+    preloads.forEach((callback) => callback.reject(error));
+    // A miss: the caller falls back to the on-demand path, which reports the error.
+    bitmaps.forEach((callback) => callback.resolve(null));
   }
 
   /** 绑定 raw postMessage 监听，处理预加载和帧获取响应 */

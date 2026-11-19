@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { tableFromIPC } from 'apache-arrow';
 import { Input, BlobSource, ALL_FORMATS, CanvasSink } from 'mediabunny';
 import { ExportService, LeRobotDataLoader } from '@/platform';
-import { getParquetWasm } from '../../src/platform/export/parquetWasmLoader';
+import { getPageParquetWasm as getParquetWasm } from './pageParquet';
 import { InMemoryExportAdapter } from '../helpers/inMemoryExportAdapter';
 import { FetchDataSource } from './fixtures';
 
