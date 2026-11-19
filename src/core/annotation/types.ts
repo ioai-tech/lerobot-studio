@@ -8,6 +8,12 @@
 /** `to_review`: proposed and not yet confirmed by a person. */
 export type ReviewState = 'to_review' | 'confirmed';
 
+/**
+ * How a segment is shown and counted: `excluded` when the host marks it
+ * excluded (it wins over the review state), else its review state.
+ */
+export type SegmentReviewDisplay = ReviewState | 'excluded';
+
 /** A labelled range inside a segment (inclusive episode frames). */
 export interface SegmentSubtask {
   /** Inclusive first frame within the episode. */
@@ -54,6 +60,14 @@ export interface Segment {
   origin: SegmentOrigin;
   /** Host badge, read-only for the viewer. */
   status?: SegmentStatus;
+  /**
+   * Host fact: the range is excluded (rejected, left out of what the host
+   * builds from it). The viewer draws it greyed and hatched with the Excluded
+   * text, never as confirmed or to review, and leaves it out of review progress,
+   * the To review filter and Confirm all. Editing and confirming never change
+   * it; a split keeps it on both halves.
+   */
+  excluded?: boolean;
   /** When true the viewer refuses every edit of this segment. */
   readOnly?: boolean;
 }

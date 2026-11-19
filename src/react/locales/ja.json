@@ -870,6 +870,7 @@
     "track": "セグメント",
     "trackSegment": "セグメント {{n}}",
     "progress": "{{confirmed}} / {{total}} 確認済み",
+    "progressExcluded": "除外 {{count}} 件",
     "progressLabel": "レビューの進捗",
     "filter": {
       "label": "表示",
@@ -883,7 +884,8 @@
     "row": "セグメント {{n}}、{{time}}、{{review}}",
     "review": {
       "toReview": "要レビュー",
-      "confirmed": "確認済み"
+      "confirmed": "確認済み",
+      "excluded": "除外"
     },
     "origin": {
       "suggested": "提案",

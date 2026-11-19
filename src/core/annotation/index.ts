@@ -12,6 +12,7 @@ export type {
   SegmentFieldValue,
   SegmentOrigin,
   SegmentPatch,
+  SegmentReviewDisplay,
   SegmentStatus,
   SegmentSubtask,
 } from './types';
@@ -49,15 +50,19 @@ export {
 export {
   clipSubtasksToRange,
   createManualSegment,
+  effectiveSegmentFilter,
   fieldOptionForKey,
   hasSegmentIssue,
   matchesSegmentFilter,
   nearerEdge,
   newSegmentRangeAt,
   nextUncoveredFrame,
+  offeredSegmentFilters,
   reviewProgress,
   segmentAtFrame,
+  segmentFilterCounts,
   segmentNumber,
+  segmentReviewDisplay,
   uncoveredRanges,
 } from './queries';
 export {

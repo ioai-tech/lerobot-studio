@@ -12,7 +12,12 @@ import {
   nextUncoveredFrame,
   outTimeToFrame,
   parseSegmentTime,
+  effectiveSegmentFilter,
+  matchesSegmentFilter,
+  offeredSegmentFilters,
   reviewProgress,
+  segmentFilterCounts,
+  segmentReviewDisplay,
   uncoveredRanges,
   type AnnotationField,
   type EpisodeMetadata,
@@ -95,10 +100,45 @@ describe('segment queries', () => {
     expect(nextUncoveredFrame([seg('all', 0, 99)], 5, 100)).toBeNull();
   });
 
-  it('progress counts every segment of the document', () => {
+  it('progress counts every segment of the document that is not excluded', () => {
     expect(
       reviewProgress({ episodes: { 0: { segments }, 3: { segments: [seg('c', 0, 1)] } } }),
-    ).toEqual({ confirmed: 2, total: 3 });
+    ).toEqual({ confirmed: 2, total: 3, excluded: 0 });
+  });
+
+  it('an excluded segment is never confirmed or to review, whatever its review state', () => {
+    const confirmedThenExcluded = seg('x', 60, 69, { excluded: true });
+    const proposedThenExcluded = seg('y', 70, 79, { review: 'to_review', excluded: true });
+    expect(segmentReviewDisplay(confirmedThenExcluded)).toBe('excluded');
+    expect(segmentReviewDisplay(proposedThenExcluded)).toBe('excluded');
+    expect(segmentReviewDisplay(seg('k', 0, 1, { excluded: false }))).toBe('confirmed');
+    expect(segmentReviewDisplay(seg('t', 0, 1, { review: 'to_review' }))).toBe('to_review');
+    // Its own bucket: never in "N / M confirmed".
+    expect(
+      reviewProgress({
+        episodes: { 0: { segments: [...segments, confirmedThenExcluded, proposedThenExcluded] } },
+      }),
+    ).toEqual({ confirmed: 1, total: 2, excluded: 2 });
+    expect(matchesSegmentFilter(proposedThenExcluded, 'to_review')).toBe(false);
+    expect(matchesSegmentFilter(proposedThenExcluded, 'all')).toBe(true);
+  });
+
+  it('Issues is offered only when 0 < issues < all (H-1712)', () => {
+    const warn = { severity: 'warn' as const, label: 'Check' };
+    const everyWarn = [seg('a', 0, 9, { status: warn }), seg('b', 10, 19, { status: warn })];
+    const someWarn = [seg('a', 0, 9, { status: warn }), seg('b', 10, 19)];
+    const noneWarn = [seg('a', 0, 9), seg('b', 10, 19)];
+    expect(segmentFilterCounts(everyWarn)).toEqual({ all: 2, to_review: 0, issues: 2 });
+    expect(offeredSegmentFilters(segmentFilterCounts(everyWarn))).toEqual(['all', 'to_review']);
+    expect(offeredSegmentFilters(segmentFilterCounts(noneWarn))).toEqual(['all', 'to_review']);
+    expect(offeredSegmentFilters(segmentFilterCounts(someWarn))).toEqual([
+      'all',
+      'to_review',
+      'issues',
+    ]);
+    expect(effectiveSegmentFilter('issues', ['all', 'to_review'])).toBe('all');
+    expect(effectiveSegmentFilter('issues', ['all', 'to_review', 'issues'])).toBe('issues');
+    expect(effectiveSegmentFilter('to_review', ['all', 'to_review'])).toBe('to_review');
   });
 
   it('nearer edge and subtask clipping', () => {

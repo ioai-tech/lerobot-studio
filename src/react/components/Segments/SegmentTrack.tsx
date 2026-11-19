@@ -1,7 +1,8 @@
 import React, { useCallback, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { frameAtFraction, frameRangeStyle, type Segment } from '@/core';
+import { frameAtFraction, frameRangeStyle, segmentReviewDisplay, type Segment } from '@/core';
 import { cn } from '@/ui';
+import { REVIEW_TEXT, TRACK_LOOK } from './reviewDisplay';
 
 type Range = { startFrame: number; endFrame: number };
 
@@ -105,23 +106,23 @@ export const SegmentTrack: React.FC<SegmentTrackProps> = ({
         const range = draft?.id === segment.id ? draft.range : segment;
         const position = frameRangeStyle(range.startFrame, range.endFrame, totalFrames);
         const selected = segment.id === selectedId;
-        const toReview = segment.review === 'to_review';
+        const display = segmentReviewDisplay(segment);
         const label = t('segments.trackSegment', { n: index + 1 });
+        const reviewText = t(REVIEW_TEXT[display]);
         return (
           <div key={segment.id} role="listitem" className="absolute inset-y-0" style={position}>
             <button
               type="button"
               className={cn(
                 'h-full w-full min-w-1 overflow-hidden rounded-sm border px-1 text-left text-[10px] leading-4 font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
-                toReview
-                  ? 'border-amber-500/70 bg-amber-400/25 text-foreground bg-[repeating-linear-gradient(135deg,transparent_0_4px,rgba(245,158,11,0.18)_4px_8px)]'
-                  : 'border-primary/60 bg-primary/25 text-foreground',
+                TRACK_LOOK[display],
                 selected && 'ring-2 ring-primary ring-offset-1 ring-offset-background',
                 segment.status?.severity === 'fail' && 'border-destructive',
               )}
-              aria-label={label}
+              aria-label={`${label}, ${reviewText}`}
               aria-pressed={selected}
-              title={`${label} · ${t(toReview ? 'segments.review.toReview' : 'segments.review.confirmed')}`}
+              data-review={display}
+              title={`${label} · ${reviewText}`}
               onClick={(event) => {
                 event.stopPropagation();
                 onSelect(segment.id);

@@ -21,6 +21,7 @@ import {
   inTimeToFrame,
   outTimeToFrame,
   segmentNumber,
+  segmentReviewDisplay,
   type AnnotationField,
   type Segment,
 } from '@/core';
@@ -36,6 +37,7 @@ import { shortcutKeys, type SegmentShortcutId } from '../../hooks/segmentShortcu
 import { TimeField } from './TimeField';
 import { useNoticeText } from './annotationText';
 import { onRadioGroupKeyDown, radioTabIndex } from './radioGroup';
+import { BADGE_LOOK, REVIEW_TEXT } from './reviewDisplay';
 
 function Kbd({ children }: { children: React.ReactNode }) {
   return (
@@ -418,9 +420,8 @@ export const SegmentInspector: React.FC = () => {
     }
   };
 
-  const reviewLabel = segment
-    ? t(segment.review === 'to_review' ? 'segments.review.toReview' : 'segments.review.confirmed')
-    : '';
+  const display = segment ? segmentReviewDisplay(segment) : null;
+  const reviewLabel = display ? t(REVIEW_TEXT[display]) : '';
 
   return (
     <section
@@ -438,12 +439,7 @@ export const SegmentInspector: React.FC = () => {
           <span className="flex items-center gap-1.5 self-center text-xs font-medium">
             <span className="font-mono">#{number}</span>
             <span
-              className={cn(
-                'rounded px-1.5 py-0.5 text-[10px]',
-                segment.review === 'to_review'
-                  ? 'bg-amber-400/25 text-amber-800 dark:text-amber-300'
-                  : 'bg-primary/15 text-primary',
-              )}
+              className={cn('rounded px-1.5 py-0.5 text-[10px]', display && BADGE_LOOK[display])}
             >
               {reviewLabel}
             </span>

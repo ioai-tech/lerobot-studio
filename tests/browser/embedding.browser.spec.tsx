@@ -436,6 +436,137 @@ describe('browser: embedding — host chrome', () => {
     expect(description).toContain('Joint jump');
   });
 
+  it('an excluded segment is greyed and hatched, never drawn or counted as confirmed (H-1708)', async () => {
+    const warn = { severity: 'warn' as const, label: 'Check' };
+    await mount(
+      1280,
+      800,
+      viewer({
+        annotation: {
+          value: {
+            episodes: {
+              0: {
+                segments: [
+                  // Confirmed earlier, then excluded: the case drawn as Confirmed before.
+                  seg('a', 0, 119, {
+                    review: 'confirmed',
+                    origin: { kind: 'manual' },
+                    excluded: true,
+                  }),
+                  seg('b', 120, 239, {
+                    review: 'confirmed',
+                    origin: { kind: 'manual' },
+                    status: warn,
+                  }),
+                  seg('c', 240, 359, { excluded: true }),
+                ],
+              },
+            },
+          },
+        },
+      }),
+    );
+    await videosReady(2);
+    await pause();
+    const track = () =>
+      Array.from(
+        host.querySelectorAll<HTMLButtonElement>('[data-testid="lerobot-segment-track"] button'),
+      );
+    await expect.poll(() => track().length).toBe(3);
+    const [first, second, third] = track();
+    expect(first.getAttribute('aria-label')).toBe('Segment 1, Excluded');
+    expect(first.title).toContain('Excluded');
+    expect(first.title).not.toContain('Confirmed');
+    expect(second.getAttribute('aria-label')).toBe('Segment 2, Confirmed');
+    expect(third.getAttribute('aria-label')).toBe('Segment 3, Excluded');
+    // Not the confirmed (primary) look: a dashed border and the grey hatch.
+    const look = getComputedStyle(first);
+    expect(look.borderStyle).toBe('dashed');
+    expect(look.backgroundImage).toContain('repeating-linear-gradient');
+    expect(look.backgroundColor).not.toBe(getComputedStyle(second).backgroundColor);
+    expect(look.borderColor).not.toBe(getComputedStyle(second).borderColor);
+
+    const list = host.querySelector('[data-testid="lerobot-segment-list"]')!;
+    const rows = Array.from(list.querySelectorAll<HTMLButtonElement>('li > button'));
+    expect(rows.map((row) => row.getAttribute('data-review'))).toEqual([
+      'excluded',
+      'confirmed',
+      'excluded',
+    ]);
+    expect(rows[0].getAttribute('aria-label')).toMatch(/, Excluded$/);
+    expect(rows[0].textContent).toContain('Excluded');
+    expect(rows[0].querySelector('.lucide-circle-check')).toBeNull();
+    expect(rows[0].querySelector('.lucide-ban')).not.toBeNull();
+    // Progress counts the kept segment only; excluded ones are their own count.
+    expect(host.querySelector('[data-testid="lerobot-segment-progress"]')?.textContent).toContain(
+      '1 / 1 confirmed · 2 excluded',
+    );
+    // To review leaves the excluded suggestion out.
+    expect(page.getByRole('radio', { name: /To review/ }).element().textContent).toContain('0');
+    await expectNoBlockingA11yViolations(list as HTMLElement);
+  });
+
+  it('Issues is offered only when it narrows the list (H-1712)', async () => {
+    const warn = { severity: 'warn' as const, label: 'Recording check' };
+    const every: AnnotationDocument = {
+      episodes: {
+        0: {
+          segments: [
+            seg('a', 0, 119, { status: warn }),
+            seg('b', 120, 239, { status: warn }),
+            seg('c', 240, 359, { status: warn }),
+          ],
+        },
+      },
+    };
+    await mount(1280, 800, viewer({ annotation: { value: every } }));
+    await videosReady(2);
+    await pause();
+    const radios = () =>
+      Array.from(host.querySelectorAll('[data-testid="lerobot-segment-list"] [role="radio"]')).map(
+        (radio) => radio.textContent,
+      );
+    await expect.poll(radios).toEqual(['All 3', 'To review 3']);
+    root.render(
+      viewer({
+        annotation: {
+          value: {
+            episodes: {
+              0: {
+                segments: [
+                  seg('a', 0, 119, { status: warn }),
+                  seg('b', 120, 239),
+                  seg('c', 240, 359),
+                ],
+              },
+            },
+          },
+        },
+      }),
+    );
+    await expect.poll(radios).toEqual(['All 3', 'To review 3', 'Issues 1']);
+    await userEvent.click(page.getByRole('radio', { name: /Issues/ }));
+    expect(host.querySelectorAll('[data-testid="lerobot-segment-list"] li')).toHaveLength(1);
+    // The issue goes away: Issues is no longer offered and the list shows All again.
+    root.render(
+      viewer({
+        annotation: {
+          value: {
+            episodes: {
+              0: { segments: [seg('a', 0, 119), seg('b', 120, 239), seg('c', 240, 359)] },
+            },
+          },
+        },
+      }),
+    );
+    await expect.poll(radios).toEqual(['All 3', 'To review 3']);
+    expect(host.querySelectorAll('[data-testid="lerobot-segment-list"] li')).toHaveLength(3);
+    expect(
+      host.querySelector('[data-testid="lerobot-segment-list"] [role="radio"][aria-checked="true"]')
+        ?.textContent,
+    ).toBe('All 3');
+  });
+
   it('theme tokens set the root variables, with dark overrides only in dark', async () => {
     const themeTokens = {
       primary: 'rgb(29, 78, 216)',

@@ -10,7 +10,10 @@ import {
   getEpisodeSegments,
   isNoopPatch,
   markersOfEpisode,
+  effectiveSegmentFilter,
   matchesSegmentFilter,
+  offeredSegmentFilters,
+  segmentFilterCounts,
   nearerEdge,
   newSegmentRangeAt,
   nextUncoveredFrame,
@@ -850,8 +853,18 @@ export function useSegmentAnnotation({
       selectedEpisodeIndex == null
         ? []
         : episodeSegments
-            .filter((segment) => segment.review === 'to_review' && !segment.readOnly)
-            .filter((segment) => matchesSegmentFilter(segment, filter, episodeMarkers))
+            .filter((segment) => !segment.readOnly)
+            .filter((segment) => matchesSegmentFilter(segment, 'to_review', episodeMarkers))
+            .filter((segment) =>
+              matchesSegmentFilter(
+                segment,
+                effectiveSegmentFilter(
+                  filter,
+                  offeredSegmentFilters(segmentFilterCounts(episodeSegments, episodeMarkers)),
+                ),
+                episodeMarkers,
+              ),
+            )
             .map((segment) => ({ episodeIndex: selectedEpisodeIndex, id: segment.id })),
     [episodeMarkers, episodeSegments, filter, selectedEpisodeIndex],
   );

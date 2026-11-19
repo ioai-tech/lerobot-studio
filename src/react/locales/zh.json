@@ -862,6 +862,7 @@
     "track": "分段",
     "trackSegment": "分段 {{n}}",
     "progress": "已确认 {{confirmed}} / {{total}}",
+    "progressExcluded": "已排除 {{count}} 个",
     "progressLabel": "审核进度",
     "filter": {
       "label": "显示",
@@ -875,7 +876,8 @@
     "row": "分段 {{n}}，{{time}}，{{review}}",
     "review": {
       "toReview": "待审核",
-      "confirmed": "已确认"
+      "confirmed": "已确认",
+      "excluded": "已排除"
     },
     "origin": {
       "suggested": "建议",

@@ -862,6 +862,7 @@
     "track": "Segments",
     "trackSegment": "Segment {{n}}",
     "progress": "{{confirmed}} / {{total}} confirmed",
+    "progressExcluded": "{{count}} excluded",
     "progressLabel": "Review progress",
     "filter": {
       "label": "Show",
@@ -875,7 +876,8 @@
     "row": "Segment {{n}}, {{time}}, {{review}}",
     "review": {
       "toReview": "To review",
-      "confirmed": "Confirmed"
+      "confirmed": "Confirmed",
+      "excluded": "Excluded"
     },
     "origin": {
       "suggested": "Suggested",
