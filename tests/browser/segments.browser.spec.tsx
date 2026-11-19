@@ -368,7 +368,14 @@ describe('browser: segments, review and change ops', () => {
     expect(log.value().episodes[0].segments.map((item) => item.review)).toEqual([
       'to_review',
       'confirmed',
-    ]);
+    ]); // A on a segment that is already confirmed sends nothing either.
+    viewerRoot(host).focus();
+    await press('j');
+    await expect.poll(() => inspector().textContent ?? '').toContain('#2');
+    expect(confirmButton().disabled).toBe(true);
+    await press('a');
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    expect(log.changes).toHaveLength(1);
   });
 
   it('Shift+A uses the filter in effect: a hidden Issues filter is All, and stays All', async () => {
