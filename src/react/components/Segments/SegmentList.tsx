@@ -110,7 +110,7 @@ export const SegmentList: React.FC<{ episodeIndex: number; showTitle?: boolean }
                   'h-6 rounded-md border px-2 text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50',
                   filter === option
                     ? 'border-primary bg-primary/10 text-foreground'
-                    : 'border-transparent text-muted-foreground hover:bg-accent',
+                    : 'border-transparent text-muted-foreground hover:bg-accent hover:text-foreground',
                 )}
                 onClick={() => segments.setFilter(option)}
               >
