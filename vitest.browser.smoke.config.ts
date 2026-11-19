@@ -27,6 +27,10 @@ const browserInstances = (
 export default defineConfig({
   plugins: [react(), tailwindcss()],
   publicDir: false,
+  // parquet-wasm is imported only by the worker modules, which the start-up
+  // dependency scan does not reach. Without this, its first use re-optimizes
+  // and reloads the dev server mid-session (a test file then fails to import).
+  optimizeDeps: { include: ['parquet-wasm'] },
   server: { fs: { allow: [path.resolve(import.meta.dirname)] } },
   resolve: {
     alias: {
