@@ -11,6 +11,7 @@ import { useTranslation } from '../i18n/reactI18nextCompat';
 import { useTheme } from '../contexts/ThemeContext';
 import { useThemeTokens } from '../contexts/themeTokens';
 import type { LeRobotThemeTokens } from '../contexts/hostTypes';
+import { useFocusRecovery } from '../hooks/useFocusRecovery';
 
 /** Applies host theme tokens for the resolved light / dark scheme. */
 function ThemeTokens({
@@ -111,6 +112,8 @@ export const LeRobotStudioProvider: React.FC<LeRobotStudioProviderProps> = ({
   wrapRoot = true,
 }) => {
   const [rootEl, setRootEl] = useState<HTMLElement | null>(null);
+  // Keys keep working after the focused control goes away (a delete, a merge, an undo).
+  useFocusRecovery(rootEl);
 
   return (
     <I18nProvider forcedLanguage={language} messages={messages}>

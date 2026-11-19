@@ -123,7 +123,11 @@ export const SegmentList: React.FC<{ episodeIndex: number; showTitle?: boolean }
       ) : visible.length === 0 ? (
         <p className="px-3 pb-3 text-xs text-muted-foreground">{t('segments.emptyFilter')}</p>
       ) : (
-        <ul className="min-h-0 overflow-y-auto pb-1" aria-label={t('segments.title')}>
+        <ul
+          className="min-h-0 overflow-y-auto pb-1"
+          aria-label={t('segments.title')}
+          data-focus-group=""
+        >
           {visible.map(({ segment, number }) => {
             const selected = segment.id === segments.selectedSegmentId;
             const display = segmentReviewDisplay(segment);
@@ -148,6 +152,7 @@ export const SegmentList: React.FC<{ episodeIndex: number; showTitle?: boolean }
                   )}
                   data-review={display}
                   aria-current={selected ? 'true' : undefined}
+                  data-focus-item=""
                   aria-label={t('segments.row', { n: number, time, review: reviewText })}
                   aria-describedby={describedBy}
                   onClick={() => segments.selectSegment(segment.id)}

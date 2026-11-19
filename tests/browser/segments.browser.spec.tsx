@@ -415,6 +415,163 @@ describe('browser: segments, review and change ops', () => {
     expect(checked()).toBe('All 2');
   });
 
+  describe('focus stays in the viewer when the focused control goes away (s10 F-01)', () => {
+    const rows = () =>
+      Array.from(
+        host.querySelectorAll<HTMLButtonElement>(
+          '[data-testid="lerobot-segment-list"] li > button',
+        ),
+      );
+    const inspectorText = () =>
+      host.querySelector('[data-testid="lerobot-segment-inspector"]')?.textContent ?? '';
+    const inspectorButton = (label: string) =>
+      host.querySelector<HTMLButtonElement>(
+        `[data-testid="lerobot-segment-inspector"] button[title^="${label} ("]`,
+      )!;
+    const focusInViewer = () => viewerRoot(host).contains(document.activeElement);
+    const three = () => ({
+      episodes: {
+        0: {
+          segments: [
+            seg('a', 0, 0, { review: 'confirmed', origin: { kind: 'manual' } }),
+            seg('b', 1, 1, { review: 'confirmed', origin: { kind: 'manual' } }),
+            seg('c', 2, 2, { review: 'confirmed', origin: { kind: 'manual' } }),
+          ],
+        },
+      },
+    });
+
+    it('R on a clicked list row: focus moves to the next row; J and Ctrl+Z work at once', async () => {
+      const log: HostLog = { changes: [], value: () => ({ episodes: {} }) };
+      root.render(<Host log={log} initial={three()} />);
+      await waitForSegments(host);
+      await userEvent.click(rows()[0]!);
+      await expect.poll(inspectorText).toContain('#1');
+      await press('r');
+      await expect.poll(() => log.value().episodes[0].segments.length).toBe(2);
+      // The next row (b, now #1) has focus, inside the viewer.
+      await expect.poll(focusInViewer).toBe(true);
+      expect(document.activeElement).toBe(rows()[0]);
+      await press('j');
+      await expect.poll(inspectorText).toContain('#2');
+      await press('{Control>}z{/Control}');
+      await expect.poll(() => log.value().episodes[0].segments.length).toBe(3);
+      expect(log.changes.at(-1)?.op).toBe('restore');
+    });
+
+    it('the last row deleted by the Delete button: focus goes to the previous row, then to the viewer', async () => {
+      const log: HostLog = { changes: [], value: () => ({ episodes: {} }) };
+      root.render(<Host log={log} initial={three()} />);
+      await waitForSegments(host);
+      // The last row: no next one, so the previous one takes focus.
+      await userEvent.click(rows()[2]!);
+      await expect.poll(inspectorText).toContain('#3');
+      rows()[2]!.focus();
+      await press('r');
+      await expect.poll(() => log.value().episodes[0].segments.length).toBe(2);
+      await expect.poll(() => document.activeElement).toBe(rows()[1]);
+      // The Delete button itself goes away with the last segment: the viewer root keeps focus.
+      await press('r');
+      await press('r');
+      await expect.poll(() => log.value().episodes[0].segments.length).toBe(0);
+      expect(focusInViewer() || document.activeElement === viewerRoot(host)).toBe(true);
+      await press('{Control>}z{/Control}');
+      await expect.poll(() => log.value().episodes[0].segments.length).toBe(1);
+      // And through the button: select it, press Delete, keys still reach the viewer.
+      await userEvent.click(rows()[0]!);
+      await userEvent.click(inspectorButton('Delete'));
+      await expect.poll(() => log.value().episodes[0].segments.length).toBe(0);
+      await expect
+        .poll(() => document.activeElement === viewerRoot(host) || focusInViewer())
+        .toBe(true);
+      await press('{Control>}z{/Control}');
+      await expect.poll(() => log.value().episodes[0].segments.length).toBe(1);
+    });
+
+    it('a merge that removes the focused row keeps keys working; the Merge button keeps focus', async () => {
+      const log: HostLog = { changes: [], value: () => ({ episodes: {} }) };
+      root.render(<Host log={log} initial={three()} />);
+      await waitForSegments(host);
+      // Focus on row b, selection on a: M merges b into a and removes the focused row.
+      await userEvent.click(rows()[1]!);
+      await expect.poll(inspectorText).toContain('#2');
+      await press('k');
+      await expect.poll(inspectorText).toContain('#1');
+      await press('m');
+      await expect.poll(() => log.value().episodes[0].segments.length).toBe(2);
+      await expect.poll(() => document.activeElement).toBe(rows()[1]);
+      await press('{Control>}z{/Control}');
+      await expect.poll(() => log.value().episodes[0].segments.length).toBe(3);
+      expect(log.changes.at(-1)?.op).toBe('unmerge');
+      // Merge with next by the button: the button stays, and so does focus.
+      await userEvent.click(rows()[0]!);
+      await userEvent.click(inspectorButton('Merge with next'));
+      await expect.poll(() => log.value().episodes[0].segments.length).toBe(2);
+      expect(document.activeElement).toBe(inspectorButton('Merge with next'));
+      await press('{Control>}z{/Control}');
+      await expect.poll(() => log.value().episodes[0].segments.length).toBe(3);
+    });
+
+    it('a host removal and an undo that remove the focused row keep focus on the list', async () => {
+      const log: HostLog = { changes: [], value: () => ({ episodes: {} }) };
+      root.render(
+        <Host
+          log={log}
+          initial={{
+            episodes: {
+              0: {
+                segments: [
+                  seg('a', 0, 0, { review: 'confirmed', origin: { kind: 'manual' } }),
+                  seg('b', 1, 1, { review: 'confirmed', origin: { kind: 'manual' } }),
+                ],
+              },
+            },
+          }}
+        />,
+      );
+      await waitForSegments(host);
+      // G then N adds a segment on the uncovered frame; its row gets focus by a click.
+      await press('g');
+      await press('n');
+      await expect.poll(() => log.value().episodes[0].segments.length).toBe(3);
+      await userEvent.click(rows()[2]!);
+      // Undo removes the focused row: the previous row takes focus.
+      await press('{Control>}z{/Control}');
+      await expect.poll(() => log.value().episodes[0].segments.length).toBe(2);
+      await expect.poll(() => document.activeElement).toBe(rows()[1]);
+      // The host removes the focused segment (Exclude or delete from its own list).
+      await userEvent.click(rows()[0]!);
+      log.setValue!({
+        episodes: {
+          0: { segments: [seg('b', 1, 1, { review: 'confirmed', origin: { kind: 'manual' } })] },
+        },
+      });
+      await expect.poll(() => rows().length).toBe(1);
+      await expect.poll(() => document.activeElement).toBe(rows()[0]);
+      // Keys reach the viewer at once: J selects the remaining segment.
+      await press('j');
+      await expect.poll(inspectorText).toContain('#1');
+    });
+
+    it('a button disabled under focus (Confirm once confirmed) leaves focus in the viewer', async () => {
+      const log: HostLog = { changes: [], value: () => ({ episodes: {} }) };
+      root.render(
+        <Host
+          log={log}
+          initial={{ episodes: { 0: { segments: [seg('a', 0, 0), seg('b', 1, 2)] } } }}
+        />,
+      );
+      await waitForSegments(host);
+      await userEvent.click(rows()[1]!);
+      await expect.poll(inspectorText).toContain('#2');
+      await userEvent.click(inspectorButton('Confirm'));
+      await expect.poll(() => inspectorButton('Confirm').disabled).toBe(true);
+      await expect.poll(focusInViewer).toBe(true);
+      await press('k');
+      await expect.poll(inspectorText).toContain('#1');
+    });
+  });
+
   it('a refusing host keeps its value: each refusal drops its change and its undo step', async () => {
     const log: HostLog = { changes: [], value: () => ({ episodes: {} }) };
     root.render(

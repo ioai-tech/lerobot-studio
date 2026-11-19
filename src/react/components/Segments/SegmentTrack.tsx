@@ -100,6 +100,7 @@ export const SegmentTrack: React.FC<SegmentTrackProps> = ({
       className="relative h-5 w-full rounded-md bg-muted/50"
       role="list"
       aria-label={t('segments.track')}
+      data-focus-group=""
       data-testid="lerobot-segment-track"
     >
       {segments.map((segment, index) => {
@@ -121,6 +122,7 @@ export const SegmentTrack: React.FC<SegmentTrackProps> = ({
               )}
               aria-label={`${label}, ${reviewText}`}
               aria-pressed={selected}
+              data-focus-item=""
               data-review={display}
               title={`${label} · ${reviewText}`}
               onClick={(event) => {

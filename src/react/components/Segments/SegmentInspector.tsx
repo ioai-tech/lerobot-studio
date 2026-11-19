@@ -328,13 +328,8 @@ function StatusLine() {
           size="xs"
           variant="link"
           className="h-5 px-0"
-          onClick={(event) => {
-            // The link disappears after undo: keep focus in the viewer so keys keep working.
-            event.currentTarget
-              .closest<HTMLElement>('.lerobot-root')
-              ?.focus({ preventScroll: true });
-            segments.undo();
-          }}
+          // The link disappears after undo; useFocusRecovery keeps focus in the viewer.
+          onClick={() => segments.undo()}
         >
           {t('segments.actions.undo')}
         </Button>
