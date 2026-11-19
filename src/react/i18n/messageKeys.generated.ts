@@ -689,6 +689,7 @@ export type LeRobotMessageKey =
   | 'segments.notice.subtaskOutside'
   | 'segments.notice.subtaskNeedsSegment'
   | 'segments.notice.suggestionsApplied'
+  | 'segments.notice.excludedNotConfirmed'
   | 'segments.refusal.EPISODE_UNKNOWN'
   | 'segments.refusal.SEGMENT_NOT_FOUND'
   | 'segments.refusal.SEGMENT_ID_TAKEN'

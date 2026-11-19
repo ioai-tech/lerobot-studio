@@ -2,13 +2,10 @@ import React, { useId, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { AlertTriangle, Ban, CircleDot, CircleCheck, Lock } from 'lucide-react';
 import {
-  effectiveSegmentFilter,
   frameToInTime,
   frameToOutTime,
   getEpisodeSegments,
   matchesSegmentFilter,
-  offeredSegmentFilters,
-  segmentFilterCounts,
   segmentIssueMarkers,
   segmentReviewDisplay,
   reviewProgress,
@@ -73,10 +70,9 @@ export const SegmentList: React.FC<{ episodeIndex: number; showTitle?: boolean }
   );
   const { markersOf } = segments;
   const episodeMarkers = useMemo(() => markersOf(episodeIndex), [episodeIndex, markersOf]);
-  const counts = useMemo(() => segmentFilterCounts(all, episodeMarkers), [all, episodeMarkers]);
-  // Issues is offered only when it narrows the list (H-1712); a filter not offered shows All.
-  const offered = offeredSegmentFilters(counts);
-  const filter = effectiveSegmentFilter(segments.filter, offered);
+  // The list is shown for the selected episode: the hook's filter in effect, counts and
+  // offered filters (Issues only when it narrows the list, H-1712) are that episode's.
+  const { filter, filterCounts: counts, offeredFilters: offered } = segments;
   const visible = all
     .map((segment, index) => ({ segment, number: index + 1 }))
     .filter(({ segment }) => matchesSegmentFilter(segment, filter, episodeMarkers));

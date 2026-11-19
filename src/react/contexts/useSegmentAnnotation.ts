@@ -14,6 +14,7 @@ import {
   matchesSegmentFilter,
   offeredSegmentFilters,
   segmentFilterCounts,
+  segmentReviewDisplay,
   nearerEdge,
   newSegmentRangeAt,
   nextUncoveredFrame,
@@ -748,12 +749,19 @@ export function useSegmentAnnotation({
     [canEdit, dispatch],
   );
 
+  /** A: confirm the selected segment. The same rule as Confirm all: only a to-review one, never an excluded one. */
   const confirmSelected = useCallback(() => {
     if (!canEdit) return false;
     const found = requireSelected();
     if (!found) return false;
+    const display = segmentReviewDisplay(found.segment);
+    if (display === 'excluded') {
+      showNotice('segments.notice.excludedNotConfirmed');
+      return false;
+    }
+    if (display !== 'to_review') return false;
     return confirmIds([{ episodeIndex: found.episodeIndex, id: found.segment.id }]);
-  }, [canEdit, confirmIds, requireSelected]);
+  }, [canEdit, confirmIds, requireSelected, showNotice]);
 
   const setFieldValue = useCallback(
     (fieldId: string, fieldValue: string | string[] | null) => {
@@ -847,7 +855,23 @@ export function useSegmentAnnotation({
     () => markersOf(selectedEpisodeIndex),
     [markersOf, selectedEpisodeIndex],
   );
-  /** To-review segments of the selected episode that the current filter shows (Shift+A). */
+  /** How many segments of the selected episode each filter shows, and the filters offered. */
+  const filterCounts = useMemo(
+    () => segmentFilterCounts(episodeSegments, episodeMarkers),
+    [episodeMarkers, episodeSegments],
+  );
+  const offeredFilters = useMemo(() => offeredSegmentFilters(filterCounts), [filterCounts]);
+  /**
+   * The filter in effect: the one value the list and Shift+A read. A filter
+   * that is no longer offered (Issues once no segment, or every one, has an
+   * issue) falls back to All, and the stored choice is reset to All so it does
+   * not come back silently when an issue appears later.
+   */
+  const effectiveFilter = effectiveSegmentFilter(filter, offeredFilters);
+  useEffect(() => {
+    if (effectiveFilter !== filter) setFilter(effectiveFilter);
+  }, [effectiveFilter, filter]);
+  /** To-review segments of the selected episode that the filter in effect shows (Shift+A). */
   const toReviewInView = useMemo(
     () =>
       selectedEpisodeIndex == null
@@ -855,18 +879,9 @@ export function useSegmentAnnotation({
         : episodeSegments
             .filter((segment) => !segment.readOnly)
             .filter((segment) => matchesSegmentFilter(segment, 'to_review', episodeMarkers))
-            .filter((segment) =>
-              matchesSegmentFilter(
-                segment,
-                effectiveSegmentFilter(
-                  filter,
-                  offeredSegmentFilters(segmentFilterCounts(episodeSegments, episodeMarkers)),
-                ),
-                episodeMarkers,
-              ),
-            )
+            .filter((segment) => matchesSegmentFilter(segment, effectiveFilter, episodeMarkers))
             .map((segment) => ({ episodeIndex: selectedEpisodeIndex, id: segment.id })),
-    [episodeMarkers, episodeSegments, filter, selectedEpisodeIndex],
+    [effectiveFilter, episodeMarkers, episodeSegments, selectedEpisodeIndex],
   );
   const shownSaveState = saveState ?? null;
   /**
@@ -906,7 +921,10 @@ export function useSegmentAnnotation({
       episodeSegments,
       selectedSegmentId,
       selected,
-      filter,
+      /** The filter in effect (a filter not offered reads All). */
+      filter: effectiveFilter,
+      filterCounts,
+      offeredFilters,
       setFilter,
       loop,
       loopRange,
@@ -966,7 +984,9 @@ export function useSegmentAnnotation({
       episodeSegments,
       selectedSegmentId,
       selected,
-      filter,
+      effectiveFilter,
+      filterCounts,
+      offeredFilters,
       loop,
       loopRange,
       toggleLoop,

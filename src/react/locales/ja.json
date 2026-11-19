@@ -970,7 +970,8 @@
       "subtaskInvalid": "サブタスクは重複できません。",
       "subtaskOutside": "サブタスクは 1 つのセグメント内に収める必要があります。",
       "subtaskNeedsSegment": "先にセグメントを追加してください。サブタスクはセグメントに属します。",
-      "suggestionsApplied": "{count} 件の提案セグメントをレビュー用に追加しました。"
+      "suggestionsApplied": "{count} 件の提案セグメントをレビュー用に追加しました。",
+      "excludedNotConfirmed": "除外されたセグメントは確認できません。"
     },
     "refusal": {
       "EPISODE_UNKNOWN": "このエピソードはデータセットにありません。",

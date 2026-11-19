@@ -676,7 +676,7 @@ export const SegmentInspector: React.FC = () => {
               label={t('segments.actions.confirm')}
               icon={<Check />}
               onClick={segments.confirmSelected}
-              disabled={!editable || segment?.review !== 'to_review'}
+              disabled={!editable || display !== 'to_review'}
               variant="default"
             />
           </span>

@@ -59,7 +59,12 @@ function seg(
   };
 }
 
-type HostLog = { changes: AnnotationChange[]; value: () => AnnotationDocument };
+type HostLog = {
+  changes: AnnotationChange[];
+  value: () => AnnotationDocument;
+  /** Replace the host value (another writer saved). */
+  setValue?: (doc: AnnotationDocument) => void;
+};
 
 /**
  * A host that persists changes after `delayMs` (late answers) or refuses
@@ -85,6 +90,10 @@ function Host({
   const valueRef = useRef(value);
   const next = useRef(0);
   log.value = () => valueRef.current;
+  log.setValue = (doc) => {
+    valueRef.current = doc;
+    setValue(doc);
+  };
   const onChange = useCallback(
     (change: AnnotationChange, meta: { changeId: string }) => {
       log.changes.push(change);
@@ -327,6 +336,75 @@ describe('browser: segments, review and change ops', () => {
     await new Promise((resolve) => setTimeout(resolve, 150));
     await press(' ');
     expect(document.querySelector('[role="dialog"]')).toBeNull();
+  });
+
+  it('an excluded proposal is never confirmed: Confirm and A refuse it, Shift+A confirms only the others', async () => {
+    const log: HostLog = { changes: [], value: () => ({ episodes: {} }) };
+    root.render(
+      <Host
+        log={log}
+        initial={{
+          episodes: { 0: { segments: [seg('a', 0, 0, { excluded: true }), seg('b', 1, 2)] } },
+        }}
+      />,
+    );
+    await waitForSegments(host);
+    await selectWithKeys(host, 1);
+    const inspector = () => host.querySelector('[data-testid="lerobot-segment-inspector"]')!;
+    const confirmButton = () =>
+      inspector().querySelector<HTMLButtonElement>('button[title^="Confirm ("]')!;
+    expect(inspector().textContent).toContain('Excluded');
+    expect(inspector().textContent).not.toContain('To review');
+    expect(confirmButton().disabled).toBe(true);
+    await press('a');
+    await expect.poll(() => status(host)).toContain('An excluded segment is not confirmed.');
+    expect(log.changes).toEqual([]);
+    // Confirm all counts and confirms the to-review segment only.
+    await press('{Shift>}a{/Shift}');
+    await expect.element(page.getByRole('dialog')).toBeVisible();
+    await userEvent.click(page.getByRole('button', { name: /Confirm 1 segment$/ }));
+    await expect.poll(() => log.changes.length).toBe(1);
+    expect(log.changes[0]).toEqual({ op: 'confirm', episodeIndex: 0, ids: ['b'] });
+    expect(log.value().episodes[0].segments.map((item) => item.review)).toEqual([
+      'to_review',
+      'confirmed',
+    ]);
+  });
+
+  it('Shift+A uses the filter in effect: a hidden Issues filter is All, and stays All', async () => {
+    const warn = { severity: 'warn' as const, label: 'Check' };
+    const log: HostLog = { changes: [], value: () => ({ episodes: {} }) };
+    root.render(
+      <Host
+        log={log}
+        initial={{
+          episodes: { 0: { segments: [seg('a', 0, 0, { status: warn }), seg('b', 1, 2)] } },
+        }}
+      />,
+    );
+    await waitForSegments(host);
+    await userEvent.click(page.getByRole('radio', { name: /Issues/ }));
+    const checked = () =>
+      host.querySelector('[data-testid="lerobot-segment-list"] [role="radio"][aria-checked="true"]')
+        ?.textContent;
+    await expect.poll(checked).toBe('Issues 1');
+    // The issue goes away (another writer saved): Issues is no longer offered.
+    log.setValue!({ episodes: { 0: { segments: [seg('a', 0, 0), seg('b', 1, 2)] } } });
+    await expect.poll(checked).toBe('All 2');
+    viewerRoot(host).focus();
+    await press('{Shift>}a{/Shift}');
+    await expect.element(page.getByRole('dialog')).toBeVisible();
+    await userEvent.click(page.getByRole('button', { name: /Confirm 2 segments$/ }));
+    await expect.poll(() => log.changes.length).toBe(1);
+    expect(log.changes[0]).toEqual({ op: 'confirm', episodeIndex: 0, ids: ['a', 'b'] });
+    // A new issue later does not bring the old Issues choice back by itself.
+    log.setValue!({
+      episodes: { 0: { segments: [seg('a', 0, 0, { status: warn }), seg('b', 1, 2)] } },
+    });
+    await expect
+      .poll(() => host.querySelector('[data-testid="lerobot-segment-list"]')?.textContent ?? '')
+      .toContain('Issues 1');
+    expect(checked()).toBe('All 2');
   });
 
   it('a refusing host keeps its value: each refusal drops its change and its undo step', async () => {
