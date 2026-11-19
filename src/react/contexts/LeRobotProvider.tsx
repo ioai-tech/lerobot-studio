@@ -427,6 +427,15 @@ export const LeRobotDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
     pendingSelectionRef.current = null;
     announceIfSettled();
   }, [announceIfSettled]);
+  /**
+   * A swap that ends without a landing (its open failed with nothing else
+   * waiting, or its reload failed or was superseded): nothing is pending any
+   * more, so say so, as a landing does.
+   */
+  const settleWithoutLanding = useCallback(() => {
+    if (pendingSelectionRef.current !== null) clearPendingSelection();
+    else announceIfSettled();
+  }, [clearPendingSelection, announceIfSettled]);
   const setPendingSelection = useCallback(
     (selection: PendingSelection | null) => {
       if (selection === null) clearPendingSelection();
@@ -773,6 +782,7 @@ export const LeRobotDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
           } else {
             if (swapResumeRef.current) setPlayingRef.current(true);
             swapResumeRef.current = false;
+            settleWithoutLanding();
           }
         } else {
           failTask(taskId, msg);
@@ -791,6 +801,7 @@ export const LeRobotDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
     },
     [
       clearPendingSelection,
+      settleWithoutLanding,
       upsertTask,
       completeTask,
       failTask,
@@ -1013,11 +1024,14 @@ export const LeRobotDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
       retire();
       swapResumeRef.current = false;
       const { loaded, fps } = swap.reload;
-      if (!loaded) return;
+      if (!loaded) {
+        settleWithoutLanding();
+        return;
+      }
       const { landing } = swap;
       applyLanding(landing, landing.episodeIndex, landing.requireLength, fps);
     },
-    [retire, applyLanding],
+    [retire, applyLanding, settleWithoutLanding],
   );
   const landSwapRef = useRef(landSwap);
   landSwapRef.current = landSwap;
