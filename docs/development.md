@@ -25,7 +25,7 @@ Node 24 is required (`.nvmrc`). This repository is a single npm package with two
 | `npm run check:bundle-size` | Enforce npm and Web bundle size budgets         |
 | `npm run typecheck`         | Type-check application and library sources      |
 | `npm run test:unit`         | Run Node-based Vitest tests                     |
-| `npm run test:browser`      | Run Playwright browser tests                    |
+| `npm run test:browser`      | Run Playwright browser tests (needs `ffmpeg`)   |
 | `npm run fixtures:generate` | Recreate synthetic LeRobot fixtures             |
 
 ## Official local datasets

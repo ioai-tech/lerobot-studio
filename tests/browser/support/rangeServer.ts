@@ -11,6 +11,7 @@
  * media responses: how many are open now, the most at once, and each one.
  */
 import { execFileSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 import http from 'node:http';
 import type { AddressInfo } from 'node:net';
@@ -49,9 +50,38 @@ declare module 'vitest' {
 }
 
 /** 12 s of 320x240 noise at 30 fps: about 32 MB, so a paused reader stays busy for seconds. */
+const FFMPEG_ARGS = [
+  '-hide_banner',
+  '-loglevel',
+  'error',
+  '-y',
+  '-f',
+  'lavfi',
+  '-i',
+  "nullsrc=s=320x240:r=30:d=12,geq=lum='random(1)*255':cb=128:cr=128",
+  '-c:v',
+  'libx264',
+  '-preset',
+  'ultrafast',
+  '-crf',
+  '1',
+  '-g',
+  '30',
+  '-keyint_min',
+  '30',
+  '-bf',
+  '0',
+  '-pix_fmt',
+  'yuv420p',
+  '-movflags',
+  '+faststart',
+];
+
 function videoFile(): string | null {
   const dir = path.join(os.tmpdir(), 'lerobot-studio-range-server');
-  const file = path.join(dir, 'noise-12s.mp4');
+  // Keyed by the encode arguments: a changed recipe never reuses an old file.
+  const key = createHash('sha256').update(JSON.stringify(FFMPEG_ARGS)).digest('hex').slice(0, 16);
+  const file = path.join(dir, `noise-12s-${key}.mp4`);
   if (fs.existsSync(file) && fs.statSync(file).size > 16 * 1024 * 1024) return file;
   fs.mkdirSync(dir, { recursive: true });
   const partial = `${file}.${process.pid}.part.mp4`;
@@ -63,37 +93,7 @@ function videoFile(): string | null {
     console.warn('ffmpeg not found: the range-server browser tests are skipped');
     return null;
   }
-  execFileSync(
-    'ffmpeg',
-    [
-      '-hide_banner',
-      '-loglevel',
-      'error',
-      '-y',
-      '-f',
-      'lavfi',
-      '-i',
-      "nullsrc=s=320x240:r=30:d=12,geq=lum='random(1)*255':cb=128:cr=128",
-      '-c:v',
-      'libx264',
-      '-preset',
-      'ultrafast',
-      '-crf',
-      '1',
-      '-g',
-      '30',
-      '-keyint_min',
-      '30',
-      '-bf',
-      '0',
-      '-pix_fmt',
-      'yuv420p',
-      '-movflags',
-      '+faststart',
-      partial,
-    ],
-    { stdio: 'inherit' },
-  );
+  execFileSync('ffmpeg', [...FFMPEG_ARGS, partial], { stdio: 'inherit' });
   fs.renameSync(partial, file);
   return file;
 }

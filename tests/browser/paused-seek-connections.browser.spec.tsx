@@ -120,7 +120,9 @@ async function seek(fraction: number): Promise<number> {
  * free; one that reads ahead holds its connection for the whole file.
  */
 async function expectReadersIdle() {
-  await expect.poll(async () => (await stats()).open, { timeout: 8_000 }).toBe(0);
+  // A bounded read ends about 2 s after the frame is in; reading ahead what is
+  // left of the file takes 9 s or more at this server's rate.
+  await expect.poll(async () => (await stats()).open, { timeout: 5_000 }).toBe(0);
 }
 
 // A seek reads about a second of video at the seek point; the server sends
@@ -144,8 +146,10 @@ describe.skipIf(!provided)('cameras on one slow storage host', () => {
       // A person looks, then scrubs: the cameras are still reading.
       await pause(1500);
       expect(await seek(0.9)).toBeLessThan(SEEK_BUDGET_MS);
-      await expectReadersIdle();
       expect(await seek(0.3)).toBeLessThan(SEEK_BUDGET_MS);
+      // 8.4 s of file lies ahead of 0.3: a camera that reads ahead is still
+      // reading when the check ends; one that reads the shown frame has let go.
+      await expectReadersIdle();
     });
   }
 
@@ -153,11 +157,11 @@ describe.skipIf(!provided)('cameras on one slow storage host', () => {
     await openPaused(6);
     playPause().click();
     await expect.poll(playing, { timeout: 10_000 }).toBe(true);
-    await pause(1500);
+    await pause(2000);
     playPause().click();
     await expect.poll(playing, { timeout: 10_000 }).toBe(false);
-    await pause(500);
-    expect(await seek(0.9)).toBeLessThan(SEEK_BUDGET_MS);
+    // Paused near 2 s with 10 s of file ahead: the readers stop without a seek.
     await expectReadersIdle();
+    expect(await seek(0.3)).toBeLessThan(SEEK_BUDGET_MS);
   });
 });
