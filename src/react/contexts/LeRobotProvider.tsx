@@ -383,9 +383,6 @@ export const LeRobotDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
    * playhead lands on the asked frame instead of running past it.
    */
   const pendingSelectionRef = useRef<PendingSelection | null>(null);
-  const setPendingSelection = useCallback((selection: PendingSelection | null) => {
-    pendingSelectionRef.current = selection;
-  }, []);
   /**
    * True while a landing is being applied: the selection is not reported
    * (nor autoplayed) until segment, frame and play state are in, together.
@@ -395,6 +392,35 @@ export const LeRobotDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
   const hasPendingSelection = useCallback(
     () => pendingSelectionRef.current !== null || landingRef.current,
     [],
+  );
+  /**
+   * Told whenever no selection is pending any more (landed or dropped), so a
+   * selection report held back meanwhile is made then, also when no frame
+   * notification follows.
+   */
+  const settledListenersRef = useRef(new Set<() => void>());
+  const subscribeSelectionSettled = useCallback((listener: () => void) => {
+    settledListenersRef.current.add(listener);
+    return () => {
+      settledListenersRef.current.delete(listener);
+    };
+  }, []);
+  const announceIfSettled = useCallback(() => {
+    if (hasPendingSelection()) return;
+    settledListenersRef.current.forEach((listener) => listener());
+  }, [hasPendingSelection]);
+  /** Drop the pending selection without landing it. */
+  const clearPendingSelection = useCallback(() => {
+    if (pendingSelectionRef.current === null) return;
+    pendingSelectionRef.current = null;
+    announceIfSettled();
+  }, [announceIfSettled]);
+  const setPendingSelection = useCallback(
+    (selection: PendingSelection | null) => {
+      if (selection === null) clearPendingSelection();
+      else pendingSelectionRef.current = selection;
+    },
+    [clearPendingSelection],
   );
   const getPendingSelection = useCallback(() => pendingSelectionRef.current, []);
   const segmentsRef = useRef(segments);
@@ -427,29 +453,38 @@ export const LeRobotDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
     if (!landingRef.current) return;
     landingRef.current = false;
     notifyFrameSubscribers(frameIndexRef.current);
-  }, [landedTick, notifyFrameSubscribers]);
+    announceIfSettled();
+  }, [landedTick, notifyFrameSubscribers, announceIfSettled]);
   useEffect(() => {
     const pending = pendingSelectionRef.current;
     if (!pending || pending.episodeIndex == null || isLoading) return;
     if (selectedEpisodeIndex != null && selectedEpisodeIndex !== pending.episodeIndex) {
       // The person (or a failed load) went elsewhere first: the link no longer applies.
-      pendingSelectionRef.current = null;
+      clearPendingSelection();
       return;
     }
     if (selectedEpisodeIndex !== pending.episodeIndex) return;
     if (currentFrames.length === 0) {
       // The episode failed to load: nothing to land on.
-      if (error) pendingSelectionRef.current = null;
+      if (error) clearPendingSelection();
       return;
     }
     pendingSelectionRef.current = null;
     applyLanding(pending, selectedEpisodeIndex, currentFrames.length, info?.fps || 30);
-  }, [currentFrames.length, error, info?.fps, isLoading, selectedEpisodeIndex, applyLanding]);
+  }, [
+    currentFrames.length,
+    error,
+    info?.fps,
+    isLoading,
+    selectedEpisodeIndex,
+    applyLanding,
+    clearPendingSelection,
+  ]);
 
   const reset = useCallback(async () => {
     // 清理旧资源，回到欢迎页；bump generation 使在途 initialize 失效
     initGenerationRef.current += 1;
-    pendingSelectionRef.current = null;
+    clearPendingSelection();
     episodeLoadRef.current = null;
     try {
       if (dataLoaderRef.current) {
@@ -498,6 +533,7 @@ export const LeRobotDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
     setLastValidationReport(null);
     setHealthDialogOpen(false);
   }, [
+    clearPendingSelection,
     notifyFrameSubscribers,
     clearLoading,
     clearPendingFeatureLoads,
@@ -541,7 +577,7 @@ export const LeRobotDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
       // state: the landing itself is decided at commit, from what is shown.
       const carried = keepView ? pendingSelectionRef.current : null;
       if (keepView) {
-        pendingSelectionRef.current = null;
+        clearPendingSelection();
         swapResumeRef.current =
           swapResumeRef.current || carried?.resume === true || isPlayingRef.current;
       } else {
@@ -729,6 +765,7 @@ export const LeRobotDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
       }
     },
     [
+      clearPendingSelection,
       upsertTask,
       completeTask,
       failTask,
@@ -1009,7 +1046,7 @@ export const LeRobotDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
       );
       if (target == null) {
         // Another timeline (or a link to something gone): open as usual.
-        pendingSelectionRef.current = null;
+        clearPendingSelection();
       } else {
         pendingSelectionRef.current = { ...pending, episodeIndex: target };
         firstEpisodeIndex = target;
@@ -1025,6 +1062,7 @@ export const LeRobotDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
 
     return () => window.clearTimeout(timer);
   }, [
+    clearPendingSelection,
     selectedEpisodeIndex,
     dataLoader,
     info,
@@ -1059,6 +1097,7 @@ export const LeRobotDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
       setPendingSelection,
       hasPendingSelection,
       getPendingSelection,
+      subscribeSelectionSettled,
     }),
     [
       info,
@@ -1083,6 +1122,7 @@ export const LeRobotDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
       setPendingSelection,
       hasPendingSelection,
       getPendingSelection,
+      subscribeSelectionSettled,
     ],
   );
 

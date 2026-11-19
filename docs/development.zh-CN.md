@@ -48,6 +48,18 @@ hf download lerobot/outdoor-depth --type=dataset --local-dir /data/lerobot/outdo
 
 `libero_10_subtask` 体积较大（含视频）。浏览器 e2e 使用第一份 parquet 的精简切片；Node 测试也会直接加载官方目录。`pusht-subtask` 足够小，可以完整提供。
 
+## 浏览器测试与主机网络
+
+浏览器测试会打印测试浏览器未能完成的每个请求及其网络错误，以及每个 5xx 响应（例如 `[browser network] GET http://localhost:63315/... failed: net::ERR_NETWORK_CHANGED`）。若某个测试文件因 "Failed to fetch dynamically imported module" 失败，请先找这一行。
+
+如果主机网络在运行期间变化（容器网卡被创建和删除），Chromium 会以 `net::ERR_NETWORK_CHANGED` 中止正在进行的请求，localhost 也不例外。测试只需要 localhost，因此可在独立的网络命名空间中运行：
+
+```bash
+pasta --config-net -- sh -c 'npm run test:browser'
+```
+
+在允许非特权用户命名空间的主机上，`unshare -rn sh -c 'ip link set lo up && npm run test:browser'` 效果相同。
+
 ## Bundle 大小门禁
 
 运行大小门禁前先构建两个目标：

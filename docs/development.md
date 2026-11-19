@@ -48,6 +48,18 @@ hf download lerobot/outdoor-depth --type=dataset --local-dir /data/lerobot/outdo
 
 `libero_10_subtask` is large (videos). Browser e2e serves a slim first-parquet slice; Node tests also load the official folder directly. `pusht-subtask` is small enough to serve in full.
 
+## Browser tests and the host network
+
+The browser suite prints every request the test browser could not complete, with its network error, and every 5xx answer (for example `[browser network] GET http://localhost:63315/... failed: net::ERR_NETWORK_CHANGED`). When a test file fails with "Failed to fetch dynamically imported module", look for that line first.
+
+On a host whose network changes during a run (container interfaces created and removed), Chromium aborts requests in flight, localhost included, with `net::ERR_NETWORK_CHANGED`. The suite needs only localhost, so run it in a network namespace of its own:
+
+```bash
+pasta --config-net -- sh -c 'npm run test:browser'
+```
+
+`unshare -rn sh -c 'ip link set lo up && npm run test:browser'` does the same where unprivileged user namespaces are allowed.
+
 ## Bundle size gate
 
 Build both targets before running the size gate:
