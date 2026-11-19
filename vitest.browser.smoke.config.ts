@@ -8,6 +8,8 @@ const smokeTests = [
   'tests/browser/browser-compatibility.browser.spec.tsx',
   'tests/browser/frontend-experience.browser.spec.tsx',
   'tests/browser/read-only-episodes.browser.spec.tsx',
+  // Focus recovery differs by engine (Chromium: focusout; Firefox: the MutationObserver).
+  'tests/browser/focus-recovery.browser.spec.tsx',
   'tests/browser/ui-primitives.browser.spec.tsx',
 ];
 const supportedBrowsers = ['chromium', 'firefox', 'webkit'] as const;

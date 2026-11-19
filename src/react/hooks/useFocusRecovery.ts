@@ -69,7 +69,10 @@ export function useFocusRecovery(root: HTMLElement | null): void {
       // Focus already went somewhere real (a dialog returning it, a click): leave it.
       const detached = !active || active === document.body || active === document.documentElement;
       if (!detached && active !== place.element) return;
-      recoveryTarget(place, root).focus({ preventScroll: true });
+      const target = recoveryTarget(place, root);
+      target.focus({ preventScroll: true });
+      // A row of a long list may sit outside its scrolled view.
+      if (target !== root) target.scrollIntoView?.({ block: 'nearest' });
     };
 
     const onFocusIn = (event: FocusEvent) => {
@@ -77,7 +80,13 @@ export function useFocusRecovery(root: HTMLElement | null): void {
       last = target instanceof HTMLElement && target !== root ? focusedPlace(target) : null;
     };
     const onFocusOut = (event: FocusEvent) => {
-      if (event.relatedTarget) return; // onFocusIn records the next place
+      const next = event.relatedTarget;
+      if (next) {
+        // Inside the viewer onFocusIn records the next place; a person who left the
+        // viewer is never pulled back, so nothing is remembered for later.
+        if (!(next instanceof Node && root.contains(next))) last = null;
+        return;
+      }
       // Removal can blur before the mutation is observed: decide once the DOM settles.
       queueMicrotask(() => {
         if (!last || last.element !== event.target) return;
