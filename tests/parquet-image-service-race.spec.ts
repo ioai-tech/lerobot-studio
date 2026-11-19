@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { DataSource } from '@/platform';
 
-const { mockWorker, createParquetImageWorker, terminateWorker } = vi.hoisted(() => {
+const { mockWorker, createParquetImageWorker, terminateWorker, failWorker } = vi.hoisted(() => {
   const mockWorker = {
     init: vi.fn(async () => {}),
     loadFile: vi.fn(async (_filePath: string, _buffer: ArrayBuffer, columns?: string[]) => ({
@@ -11,13 +11,22 @@ const { mockWorker, createParquetImageWorker, terminateWorker } = vi.hoisted(() 
     getImageCached: vi.fn(async () => new Uint8Array([255, 216, 255]).buffer),
     clearCache: vi.fn(async () => {}),
   };
+  // Each worker's `failed` promise, rejected by `failWorker` as the real one is
+  // when the worker can no longer answer.
+  const failures: Array<(error: Error) => void> = [];
   return {
     mockWorker,
-    createParquetImageWorker: vi.fn(() => ({
-      remote: mockWorker,
-      raw: { addEventListener: vi.fn(), removeEventListener: vi.fn(), postMessage: vi.fn() },
-    })),
+    createParquetImageWorker: vi.fn(() => {
+      const failed = new Promise<never>((_, reject) => failures.push(reject));
+      failed.catch(() => undefined);
+      return {
+        remote: mockWorker,
+        raw: { addEventListener: vi.fn(), removeEventListener: vi.fn(), postMessage: vi.fn() },
+        failed,
+      };
+    }),
     terminateWorker: vi.fn(),
+    failWorker: (error: Error) => failures.splice(0).forEach((reject) => reject(error)),
   };
 });
 
@@ -128,5 +137,30 @@ describe('ParquetImageService concurrency', () => {
     expect(createParquetImageWorker).toHaveBeenCalledTimes(2);
     await Promise.all([first.dispose(), second.dispose()]);
     expect(terminateWorker).toHaveBeenCalledTimes(2);
+  });
+
+  it('fails raw requests in flight when the worker can no longer answer', async () => {
+    const dataSource: DataSource = {
+      exists: async () => true,
+      readText: async () => '',
+      readBytes: async () => new Uint8Array([1, 2, 3]),
+      getObjectUrl: async () => 'blob:source',
+      clear: () => {},
+    };
+    const service = createParquetImageService();
+    service.setDataSource(dataSource);
+
+    const preload = service.preloadEpisode('camera', 0, 10, 'episode-0');
+    await vi.waitFor(() => expect(createParquetImageWorker).toHaveBeenCalledTimes(1));
+    await Promise.resolve();
+    const bitmap = service.getFrameBitmap('camera', 0, 0);
+
+    const error = new Error('PARQUET_ENGINE_UNAVAILABLE: the Parquet reader could not be loaded');
+    failWorker(error);
+
+    await expect(preload).rejects.toBe(error);
+    // A bitmap miss: the caller falls back to the on-demand path.
+    await expect(bitmap).resolves.toBeNull();
+    await service.dispose();
   });
 });

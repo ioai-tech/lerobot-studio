@@ -1,4 +1,12 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
+
+// Transform the module once up front: each test imports it fresh with its own
+// mocks, and a cold first transform under coverage on a busy host can outlast
+// one test's timeout (and leave a late import that skips the next test's mocks).
+beforeAll(async () => {
+  await import('../src/react/preload');
+  vi.resetModules();
+}, 60_000);
 
 afterEach(() => {
   vi.unstubAllGlobals();

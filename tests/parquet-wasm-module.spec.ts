@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 
 const init = vi.fn(async () => undefined);
 vi.mock('parquet-wasm', () => ({ default: init }));
@@ -26,6 +26,14 @@ async function load() {
     });
   return { ...module, posted, post: (m: unknown) => posted.push(m), settled };
 }
+
+// Transform the module once up front: each test imports it fresh (after
+// resetModules), and a cold first transform under coverage on a busy host can
+// outlast one test's timeout.
+beforeAll(async () => {
+  await import('../src/platform/workers/parquetWasmModule');
+  vi.resetModules();
+}, 60_000);
 
 describe('the worker-side parquet WASM load', () => {
   it('stream-compiles a response served as application/wasm, then starts the module', async () => {

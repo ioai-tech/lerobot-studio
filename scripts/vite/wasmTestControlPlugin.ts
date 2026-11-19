@@ -10,8 +10,9 @@ import type { Plugin } from 'vite';
  * - `GET /__wasm-test?mode=<mode>[&reset=1]` sets the mode and answers
  *   `{ mode, wasmRequests, selfHostedRequests }` (counts since the last reset).
  *   Modes: `normal`; `corrupt` (the WASM answers with bytes that do not
- *   compile); `missing` (404); `worker-csp` (worker scripts are sent with a
- *   Content-Security-Policy that allows scripts but not 'wasm-unsafe-eval').
+ *   compile); `missing` (404); `worker-csp` (worker scripts are sent, never
+ *   cached, with a Content-Security-Policy that allows scripts but not
+ *   'wasm-unsafe-eval').
  * - `GET /__wasm-test/self-hosted.wasm` serves the real WASM, as a host's own
  *   copy would be (counted as `selfHostedRequests`).
  */
@@ -67,6 +68,15 @@ export function wasmTestControlPlugin(): Plugin {
           // What a host's site-wide policy does to the worker scripts: they
           // may run and import, but not compile WebAssembly.
           res.setHeader('Content-Security-Policy', "script-src 'self' 'unsafe-inline'");
+          // Never cache this copy: Vite would answer a later request with a
+          // 304, the browser keeps a cached response's headers on a 304, and
+          // the policy would follow the worker into later test files.
+          const setHeader = res.setHeader.bind(res);
+          res.setHeader = (name, value) => {
+            const header = name.toLowerCase();
+            if (header === 'etag') return res;
+            return setHeader(name, header === 'cache-control' ? 'no-store' : value);
+          };
         }
         next();
       });

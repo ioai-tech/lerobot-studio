@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 /** A stand-in Worker: records what the page posts, lets a test emit events. */
 class FakeWorker extends EventTarget {
@@ -46,6 +46,14 @@ afterEach(() => {
 const load = () => import('../src/platform/workers/workerManager');
 const config = () => import('../src/platform/workers/wasmConfig');
 const ENGINE = /^PARQUET_ENGINE_UNAVAILABLE: /;
+
+// Transform the module once up front: each test imports it fresh (after
+// resetModules), and a cold first transform under coverage on a busy host can
+// outlast one test's timeout.
+beforeAll(async () => {
+  await import('../src/platform/workers/workerManager');
+  vi.resetModules();
+}, 60_000);
 
 describe('workerManager', () => {
   it('starts a module worker and posts it the absolute WASM URL, nothing else', async () => {
