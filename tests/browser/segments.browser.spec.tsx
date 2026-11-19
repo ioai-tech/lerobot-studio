@@ -245,6 +245,17 @@ describe('browser: segments, review and change ops', () => {
       'Suggested 0.33',
       'Check warnings 1',
     ]);
+    // A badge never breaks inside, however narrow the row: whole badges wrap instead.
+    for (const badge of badges()) {
+      expect(getComputedStyle(badge).whiteSpace, badge.textContent ?? '').toBe('nowrap');
+    }
+    // The inspector's Excluded badge reads as a state, not as struck-out (deleted) text.
+    await selectWithKeys(host, 1);
+    const inspectorBadge = Array.from(
+      host.querySelectorAll<HTMLElement>('[data-testid="lerobot-segment-inspector"] span'),
+    ).find((span) => span.childElementCount === 0 && span.textContent === 'Excluded');
+    expect(inspectorBadge).toBeDefined();
+    expect(getComputedStyle(inspectorBadge!).textDecorationLine).not.toContain('line-through');
   });
 
   it('a refusing host keeps its value: each refusal drops its change and its undo step', async () => {
@@ -409,6 +420,33 @@ describe('browser: segments, review and change ops', () => {
     expect(document.querySelector('[role="dialog"]')).toBeNull();
     expect(host.querySelector('[data-testid="lerobot-segment-track"]')).toBeNull();
     expect(host.querySelector('[data-testid="lerobot-segment-list"]')).toBeNull();
+  });
+
+  it('with the segment UI on, J / K never step episodes, even from <body> (s10 F-12)', async () => {
+    const reports: Array<number | null> = [];
+    const value: AnnotationDocument = {
+      episodes: { 0: { segments: [seg('a', 0, 0), seg('b', 1, 2)] }, 1: { segments: [] } },
+    };
+    root.render(
+      <LeRobotViewer
+        dataSource={new FetchDataSource(FIXTURE)}
+        language="en"
+        annotation={{ value, onChange: () => undefined }}
+        fields={fields}
+        onSelectionChange={(selection) => reports.push(selection.episodeIndex)}
+      />,
+    );
+    await waitForSegments(host);
+    await expect.poll(() => reports.at(-1)).toBe(0);
+    (document.activeElement as HTMLElement | null)?.blur();
+    expect(viewerRoot(host).contains(document.activeElement)).toBe(false);
+    await press('j');
+    await press('j');
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    expect(reports.at(-1)).toBe(0);
+    await press('k');
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    expect(reports.at(-1)).toBe(0);
   });
 
   it('J / K step episodes in a viewer without segments, as ↓ / ↑ do (s10 F-12)', async () => {

@@ -252,8 +252,9 @@ export const useKeyboardShortcuts = (enabled: boolean = true) => {
       if (isPlaybackShortcutBlocked(target, e.key)) return;
 
       // One key map (s10 F-12): J / K step to the next / previous item. With the
-      // segment UI on they step segments (above); otherwise episodes, as ↓ / ↑ do.
-      const key = episodeStepKey(e) ?? e.key;
+      // segment UI on they are segment keys only (above), never an episode step,
+      // wherever focus is; with it off they step episodes, as ↓ / ↑ do.
+      const key = (segmentsRef.current.active ? null : episodeStepKey(e)) ?? e.key;
       const preventDefaultKeys = ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', ' '];
       if (preventDefaultKeys.includes(key)) {
         e.preventDefault();
