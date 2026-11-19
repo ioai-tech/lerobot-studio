@@ -43,17 +43,26 @@ export interface RangeServerStats {
 
 declare module 'vitest' {
   export interface ProvidedContext {
-    rangeServer: RangeServerInfo;
+    /** Null where ffmpeg is missing outside CI: the tests that need it are skipped. */
+    rangeServer: RangeServerInfo | null;
   }
 }
 
 /** 12 s of 320x240 noise at 30 fps: about 32 MB, so a paused reader stays busy for seconds. */
-function videoFile(): string {
+function videoFile(): string | null {
   const dir = path.join(os.tmpdir(), 'lerobot-studio-range-server');
   const file = path.join(dir, 'noise-12s.mp4');
   if (fs.existsSync(file) && fs.statSync(file).size > 16 * 1024 * 1024) return file;
   fs.mkdirSync(dir, { recursive: true });
   const partial = `${file}.${process.pid}.part.mp4`;
+  try {
+    execFileSync('ffmpeg', ['-version'], { stdio: 'ignore' });
+  } catch {
+    // CI installs ffmpeg for the browser suite: a missing one there is an error, never a skip.
+    if (process.env.CI) throw new Error('ffmpeg is required for the range-server browser tests');
+    console.warn('ffmpeg not found: the range-server browser tests are skipped');
+    return null;
+  }
   execFileSync(
     'ffmpeg',
     [
@@ -99,6 +108,10 @@ function listen(server: http.Server): Promise<string> {
 
 export default async function setup(project: TestProject) {
   const file = videoFile();
+  if (!file) {
+    project.provide('rangeServer', null);
+    return;
+  }
   const size = fs.statSync(file).size;
   const started = Date.now();
   const stats: RangeServerStats = { open: 0, maxOpen: 0, requests: [] };
