@@ -1,11 +1,12 @@
 import { expect } from 'vitest';
 
 /**
- * Stop autoplay deterministically. Fixture episodes last 0.3 s and playback
- * runs on wall time, so sequential autoplay may already be on another episode
- * (or, in edit mode, hold at an episode end) by the time a slow, loaded test
- * host clicks. Pause with the play/pause button (a user pause stops
- * autoplay) and make `episode` current while paused.
+ * Pause deterministically on `episode`. An episode opens paused, but a test
+ * may have started playback: fixture episodes last 0.3 s and playback runs on
+ * wall time, so sequential playback may already be on another episode (or, in
+ * edit mode, hold at an episode end) by the time a slow, loaded test host
+ * clicks. Pause with the play/pause button and make `episode` current while
+ * paused.
  */
 export async function pauseOnEpisode(host: HTMLElement, episode = 0): Promise<void> {
   const playPause = () => host.querySelector<HTMLButtonElement>('button[aria-label="Play/pause"]');

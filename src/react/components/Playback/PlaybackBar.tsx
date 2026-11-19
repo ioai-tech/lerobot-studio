@@ -15,7 +15,7 @@ import { OverlayBand } from '../Timeline/OverlayBand';
 import { LazySegmentInspector } from '../Segments/lazySegments';
 import { LazyEditSubtaskDialog } from '../dialogs/lazyDialogs';
 import { useLoading } from '../../contexts/LoadingContext';
-import { episodeTimeDomain, overlaySegmentsOfEpisode, shouldStartAutoplay } from '@/core';
+import { episodeTimeDomain, overlaySegmentsOfEpisode, shouldPlayShownEpisode } from '@/core';
 import { PlaybackProgressSlider } from './PlaybackProgressSlider';
 import { Button } from '@/ui';
 import { Badge } from '@/ui';
@@ -41,8 +41,14 @@ export const PlaybackBar: React.FC = () => {
     playbackSpeed,
     setPlaybackSpeed,
   } = useLeRobotPlayback();
-  const { info, subscribeFrameIndex, getFrameIndex, isLoading, hasPendingSelection } =
-    useLeRobotData();
+  const {
+    info,
+    subscribeFrameIndex,
+    getFrameIndex,
+    isLoading,
+    hasPendingSelection,
+    takeResumeAfterSelect,
+  } = useLeRobotData();
   const { selectedEpisodeIndex } = useLeRobotSelection();
   const segments = useLeRobotSegments();
   const {
@@ -87,31 +93,38 @@ export const PlaybackBar: React.FC = () => {
   const totalFrames = currentFrames.length;
   const fps = info?.fps || 30;
 
-  // 自动播放逻辑
-  const didAutoPlayRef = useRef<string | null>(null);
+  // The play state of a newly shown episode: opens paused; a selection made while
+  // playing keeps playing (shouldPlayShownEpisode).
+  const settledIdRef = useRef<string | null>(null);
   const userPausedRef = useRef(false);
   useEffect(() => {
+    if (totalFrames <= 0 || isLoading) return;
     const currentId = `${selectedEpisodeIndex}-${totalFrames}`;
-    // A deep link (or a carried selection) lands paused on its frame; it
-    // resumes playback itself when it should.
-    if (totalFrames > 0 && !isLoading && hasPendingSelection()) {
-      didAutoPlayRef.current = currentId;
-      return;
-    }
+    if (settledIdRef.current === currentId) return;
+    settledIdRef.current = currentId;
+    const resumeRequested = takeResumeAfterSelect();
+    // A deep link (or a carried selection) lands on its frame and applies its own play state.
+    if (hasPendingSelection()) return;
     if (
-      shouldStartAutoplay({
+      shouldPlayShownEpisode({
         totalFrames,
         isLoading,
         isPlaying,
         userPaused: userPausedRef.current,
-        currentId,
-        lastAutoPlayId: didAutoPlayRef.current,
+        resumeRequested,
       })
     ) {
-      didAutoPlayRef.current = currentId;
       setPlaying(true);
     }
-  }, [totalFrames, isLoading, isPlaying, setPlaying, selectedEpisodeIndex, hasPendingSelection]);
+  }, [
+    totalFrames,
+    isLoading,
+    isPlaying,
+    setPlaying,
+    selectedEpisodeIndex,
+    hasPendingSelection,
+    takeResumeAfterSelect,
+  ]);
 
   useEffect(() => {
     userPausedRef.current = false;
@@ -121,7 +134,7 @@ export const PlaybackBar: React.FC = () => {
 
   useEffect(() => {
     if (isLoading) {
-      didAutoPlayRef.current = null;
+      settledIdRef.current = null;
     }
   }, [isLoading]);
 
@@ -131,14 +144,6 @@ export const PlaybackBar: React.FC = () => {
     cancelPending();
     setSubtaskDialogOpen(false);
   }, [annotationEnabled, cancelPending, setSubtaskDialogOpen]);
-
-  useEffect(() => {
-    if (isPlaying || isLoading || totalFrames <= 0) return;
-    const currentId = `${selectedEpisodeIndex}-${totalFrames}`;
-    if (didAutoPlayRef.current === currentId) {
-      userPausedRef.current = true;
-    }
-  }, [isPlaying, isLoading, selectedEpisodeIndex, totalFrames]);
 
   const nextMode = () => {
     if (playbackMode === 'sequential') setPlaybackMode('shuffle');

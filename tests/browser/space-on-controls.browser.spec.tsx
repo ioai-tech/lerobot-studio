@@ -33,7 +33,7 @@ it('Space activates a focused button once and toggles playback only when no cont
     await expect.poll(() => nextButton()?.disabled, { timeout: 60_000 }).toBe(false);
 
     // Loop the (three-frame) episode so playback cannot end on its own mid-test,
-    // and pause the autoplay that starts once the episode loads.
+    // and make sure it is paused.
     const modeButton = host.querySelector<HTMLButtonElement>(
       'button[aria-label="Toggle playback mode"]',
     )!;

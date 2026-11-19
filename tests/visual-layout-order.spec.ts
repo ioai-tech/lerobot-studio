@@ -183,6 +183,32 @@ describe('visual auto layout', () => {
     expect(visualAspectRatio(undefined)).toBeCloseTo(4 / 3);
   });
 
+  it('never leaves a camera out while the rows have room (s10 F-09: ALOHA cam_low)', () => {
+    const aloha = [
+      'observation.images.cam_high',
+      'observation.images.cam_left_wrist',
+      'observation.images.cam_low',
+      'observation.images.cam_right_wrist',
+    ];
+    for (const perRow of [2, 3, 4]) {
+      const rows = getAutoLayoutVisualRows(aloha, 6, perRow);
+      expect([...rows.row1, ...rows.row2].sort(), `perRow ${perRow}`).toEqual([...aloha].sort());
+      expect(rows.row1.length).toBeLessThanOrEqual(perRow);
+      expect(rows.row2.length).toBeLessThanOrEqual(perRow);
+    }
+    // Two per row: the scene cameras share the first row, the wrists the second.
+    expect(getAutoLayoutVisualRows(aloha, 6, 2)).toEqual({
+      row1: ['observation.images.cam_high', 'observation.images.cam_low'],
+      row2: ['observation.images.cam_left_wrist', 'observation.images.cam_right_wrist'],
+    });
+    // Up to the capacity (two rows), every camera of any naming is shown.
+    const many = ['top', 'front', 'side', 'left_wrist', 'right_wrist', 'gripper'].map(
+      (name) => `observation.images.${name}`,
+    );
+    const rows = getAutoLayoutVisualRows(many, 6, 3);
+    expect([...rows.row1, ...rows.row2].sort()).toEqual([...many].sort());
+  });
+
   it('stacks panels into one column under 600px of container width', () => {
     expect(isStackedPanelsWidth(390)).toBe(true);
     expect(isStackedPanelsWidth(599)).toBe(true);

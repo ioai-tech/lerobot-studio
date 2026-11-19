@@ -148,27 +148,33 @@ function Notice({ notice }: { notice: LeRobotNotice }) {
             : 'border-border bg-muted/30 text-foreground',
       )}
     >
+      {/* The action sits under the text, so a narrow sidebar never squeezes the text
+          into one word per line beside it (s10 F-11). */}
       <span className="flex min-w-0 items-start gap-1.5">
         <Icon className="mt-px h-3.5 w-3.5 shrink-0" aria-hidden />
-        <span className="min-w-0 flex-1 break-words">{notice.text}</span>
-        {notice.action ? (
-          notice.action.href ? (
-            <a
-              href={notice.action.href}
-              className="shrink-0 font-medium underline underline-offset-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
-            >
-              {notice.action.label}
-            </a>
-          ) : (
-            <button
-              type="button"
-              className="shrink-0 font-medium underline underline-offset-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
-              onClick={() => notice.action?.onSelect?.()}
-            >
-              {notice.action.label}
-            </button>
-          )
-        ) : null}
+        <span className="flex min-w-0 flex-1 flex-col items-start gap-1">
+          <span className="min-w-0 max-w-full break-words" data-host-notice-text>
+            {notice.text}
+          </span>
+          {notice.action ? (
+            notice.action.href ? (
+              <a
+                href={notice.action.href}
+                className="font-medium underline underline-offset-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+              >
+                {notice.action.label}
+              </a>
+            ) : (
+              <button
+                type="button"
+                className="font-medium underline underline-offset-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+                onClick={() => notice.action?.onSelect?.()}
+              >
+                {notice.action.label}
+              </button>
+            )
+          ) : null}
+        </span>
       </span>
       {notice.progress != null ? (
         <span

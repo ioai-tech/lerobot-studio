@@ -170,6 +170,17 @@ function FieldControl({
   const value = segment.values[field.id] ?? null;
   // Unique per viewer instance: two viewers on one page never share a datalist.
   const listId = `${React.useId()}-suggestions`;
+  if (field.kind === 'select' && !editable) {
+    // Read-only shows the chosen value as text, not disabled toggles that look
+    // pressable (s10 F-16), like a read-only text field.
+    const chosen = (field.options ?? []).find((option) => option.value === value);
+    return (
+      <span className="flex min-w-0 items-center gap-1 text-xs" data-field-value={field.id}>
+        <span className="text-muted-foreground">{field.label}</span>
+        <span className="truncate">{chosen?.label ?? '—'}</span>
+      </span>
+    );
+  }
   if (field.kind === 'select') {
     const options = field.options ?? [];
     const anyChecked = options.some((option) => option.value === value);

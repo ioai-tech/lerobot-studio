@@ -1,61 +1,30 @@
 import { describe, expect, it } from 'vitest';
-import { shouldStartAutoplay } from '@/core';
+import { shouldPlayShownEpisode, type ShownEpisodePlayInput } from '@/core';
 
-describe('playback autoplay', () => {
-  it('starts automatically when frames are ready', () => {
-    expect(
-      shouldStartAutoplay({
-        totalFrames: 100,
-        isLoading: false,
-        isPlaying: false,
-        userPaused: false,
-        currentId: '0-100',
-        lastAutoPlayId: null,
-      }),
-    ).toBe(true);
+const shown = (overrides: Partial<ShownEpisodePlayInput> = {}): ShownEpisodePlayInput => ({
+  totalFrames: 100,
+  isLoading: false,
+  isPlaying: false,
+  userPaused: false,
+  resumeRequested: false,
+  ...overrides,
+});
+
+describe('play state of a newly shown episode (s10 F-14)', () => {
+  it('an episode opens paused: nothing starts on its own', () => {
+    expect(shouldPlayShownEpisode(shown())).toBe(false);
   });
 
-  it('does not autoplay after user pauses manually', () => {
-    expect(
-      shouldStartAutoplay({
-        totalFrames: 100,
-        isLoading: false,
-        isPlaying: false,
-        userPaused: true,
-        currentId: '0-100',
-        lastAutoPlayId: null,
-      }),
-    ).toBe(false);
-  });
-
-  it('does not autoplay repeatedly for same episode/frame set', () => {
-    expect(
-      shouldStartAutoplay({
-        totalFrames: 100,
-        isLoading: false,
-        isPlaying: false,
-        userPaused: false,
-        currentId: '0-100',
-        lastAutoPlayId: '0-100',
-      }),
-    ).toBe(false);
+  it('a selection made while playing keeps playing', () => {
+    expect(shouldPlayShownEpisode(shown({ resumeRequested: true }))).toBe(true);
   });
 
   it.each([
     [{ totalFrames: 0 }, 'empty timeline'],
     [{ isLoading: true }, 'loading'],
     [{ isPlaying: true }, 'already playing'],
-  ] as const)('blocks autoplay when %s', (overrides) => {
-    expect(
-      shouldStartAutoplay({
-        totalFrames: 100,
-        isLoading: false,
-        isPlaying: false,
-        userPaused: false,
-        currentId: '0-100',
-        lastAutoPlayId: null,
-        ...overrides,
-      }),
-    ).toBe(false);
+    [{ userPaused: true }, 'the person paused'],
+  ] as const)('never starts when %s', (overrides) => {
+    expect(shouldPlayShownEpisode(shown({ resumeRequested: true, ...overrides }))).toBe(false);
   });
 });

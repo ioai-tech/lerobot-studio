@@ -20,5 +20,5 @@ export const TRACK_LOOK: Record<SegmentReviewDisplay, string> = {
 export const BADGE_LOOK: Record<SegmentReviewDisplay, string> = {
   to_review: 'bg-amber-400/25 text-amber-800 dark:text-amber-300',
   confirmed: 'bg-primary/15 text-primary',
-  excluded: 'bg-muted text-muted-foreground line-through',
+  excluded: 'bg-muted text-muted-foreground',
 };

@@ -88,3 +88,67 @@ it('draws a chart group as soon as its columns arrive; groups still loading keep
     host.remove();
   }
 });
+
+it('a short chart panel never puts legend chips on a plot or its axis; the groups scroll (s10 F-25)', async () => {
+  const host = document.createElement('div');
+  // A 1024 × 768 layout leaves the chart panel about this small.
+  host.style.cssText = 'width:330px;height:190px';
+  document.body.append(host);
+  const root = createRoot(host);
+  const wide = (id: string): ChartGroupData => ({
+    group: {
+      id,
+      title: id,
+      unit: null,
+      kind: 'feature',
+      series: Array.from({ length: 14 }, (_, dimIndex) => ({
+        id: `${id}:${dimIndex}`,
+        label: `proximal_pitch_${dimIndex}_Joint`,
+        dimIndex,
+      })),
+    },
+    x,
+    values: () => Float64Array.from([0, 1, 0, 1]),
+  });
+  const ids = ['action', 'observation.state'];
+  const selected = new Set(ids.flatMap((id) => Array.from({ length: 14 }, (_, i) => `${id}:${i}`)));
+  try {
+    await act(async () =>
+      root.render(
+        <I18nProvider forcedLanguage="en">
+          <FeatureChartGroups
+            groups={ids.map(wide)}
+            selectedIds={selected}
+            onToggleSeries={() => undefined}
+            xRange={[0, 0.3]}
+            getPlayheadTime={() => 0}
+            subscribePlayheadTime={() => () => undefined}
+            onSeekTime={() => undefined}
+            resolvedTheme="light"
+          />
+        </I18nProvider>,
+      ),
+    );
+    const section = (id: string) => host.querySelector<HTMLElement>(`[data-chart-group="${id}"]`)!;
+    await waitFor(() => ids.every((id) => section(id).querySelector('canvas') !== null));
+    for (const [index, id] of ids.entries()) {
+      const box = section(id).getBoundingClientRect();
+      const plot = section(id).querySelector('.uplot')!.getBoundingClientRect();
+      const chips = section(id).querySelector('[role="group"]')!.getBoundingClientRect();
+      // The plot (axes included) stays inside its own group, below its chips.
+      expect(plot.bottom, id).toBeLessThanOrEqual(box.bottom + 0.5);
+      expect(plot.top, id).toBeGreaterThanOrEqual(chips.bottom - 0.5);
+      const next = ids[index + 1];
+      if (next) {
+        // The next group's chips start below this plot's x-axis.
+        const nextChips = section(next).querySelector('[role="group"]')!.getBoundingClientRect();
+        expect(nextChips.top, next).toBeGreaterThanOrEqual(plot.bottom - 0.5);
+      }
+    }
+    const list = host.querySelector<HTMLElement>('[data-testid="chart-groups"]')!;
+    expect(list.scrollHeight).toBeGreaterThan(list.clientHeight);
+  } finally {
+    await act(async () => root.unmount());
+    host.remove();
+  }
+});

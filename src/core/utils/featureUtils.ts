@@ -312,6 +312,18 @@ function getSemanticLayoutVisualRows(
     }
   }
 
+  // A bucket that did not fit where the packing stood (e.g. a scene camera after the
+  // wrist row) still takes any free place: no camera is left out while there is room.
+  const placed = new Set([...row1, ...row2]);
+  for (const key of sortedIds.flatMap((bid) => buckets.get(bid)!)) {
+    if (placed.has(key)) continue;
+    if (row1.length + row2.length >= capacity) break;
+    if (row1.length < maxPerRow) row1.push(key);
+    else if (row2.length < maxPerRow) row2.push(key);
+    else break;
+    placed.add(key);
+  }
+
   trimRowsToCapacity(row1, row2, capacity, maxPerRow);
   return { row1, row2 };
 }
