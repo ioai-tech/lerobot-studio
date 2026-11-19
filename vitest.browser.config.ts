@@ -4,6 +4,7 @@ import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
 import { playwright } from '@vitest/browser-playwright';
 import { localDatasetPlugin } from './scripts/vite/localDatasetPlugin.ts';
+import { logNetworkFailures } from './scripts/vite/browserNetworkLog.ts';
 
 export default defineConfig({
   plugins: [react(), tailwindcss(), localDatasetPlugin()],
@@ -29,8 +30,10 @@ export default defineConfig({
     testTimeout: 300_000,
     hookTimeout: 120_000,
     fileParallelism: false,
+    setupFiles: ['tests/browser/setup/networkLog.ts'],
     browser: {
       enabled: true,
+      commands: { logNetworkFailures },
       provider: playwright(),
       headless: true,
       instances: [{ browser: 'chromium' }],

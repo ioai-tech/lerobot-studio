@@ -53,6 +53,8 @@ export interface LeRobotDataContextType {
   getPendingSelection: () => PendingSelection | null;
   /** True while a selection waits for its episode (autoplay holds; selection reports wait). */
   hasPendingSelection: () => boolean;
+  /** Called whenever no selection is pending any more (it landed or was dropped); returns the unsubscribe. */
+  subscribeSelectionSettled: (listener: () => void) => () => void;
 }
 
 /** Episode / export selection — changes shouldn't re-render video panels */

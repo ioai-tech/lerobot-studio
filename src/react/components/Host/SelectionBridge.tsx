@@ -35,8 +35,14 @@ export function SelectionBridge({
   captureRef: MutableRefObject<() => SelectionCarry | null>;
   onSelectionChange?: (selection: LeRobotSelection) => void;
 }) {
-  const { info, episodes, getFrameIndex, subscribeFrameIndex, hasPendingSelection } =
-    useLeRobotData();
+  const {
+    info,
+    episodes,
+    getFrameIndex,
+    subscribeFrameIndex,
+    hasPendingSelection,
+    subscribeSelectionSettled,
+  } = useLeRobotData();
   const { selectedEpisodeIndex } = useLeRobotSelection();
   const { isPlaying } = useLeRobotPlayback();
   const { selectedSegmentId } = useLeRobotSegments();
@@ -60,12 +66,20 @@ export function SelectionBridge({
   const lastRef = useRef<LeRobotSelection | null>(null);
   const lastAtRef = useRef(0);
   const timerRef = useRef<number | null>(null);
+  /** A report was held back while a selection was on its way. */
+  const heldBackRef = useRef(false);
   const reportRef = useRef<(immediate: boolean) => void>(() => undefined);
 
   reportRef.current = (immediate: boolean) => {
     const callback = onChangeRef.current;
-    // Nothing to report before an episode is open, or while a selection is on its way.
-    if (!callback || selectedEpisodeIndex == null || hasPendingSelection()) return;
+    // Nothing to report before an episode is open, or while a selection is on
+    // its way (held back, and made once it settled).
+    if (!callback || selectedEpisodeIndex == null) return;
+    if (hasPendingSelection()) {
+      heldBackRef.current = true;
+      return;
+    }
+    heldBackRef.current = false;
     const next: LeRobotSelection = {
       episodeIndex: selectedEpisodeIndex,
       segmentId: selectedSegmentId,
@@ -99,6 +113,16 @@ export function SelectionBridge({
   }, [selectedEpisodeIndex, selectedSegmentId]);
 
   useEffect(() => subscribeFrameIndex(() => reportRef.current(false)), [subscribeFrameIndex]);
+
+  // A report held back while a selection was pending is made once it settled,
+  // also when no frame change follows (a swap that lands where it was).
+  useEffect(
+    () =>
+      subscribeSelectionSettled(() => {
+        if (heldBackRef.current) reportRef.current(false);
+      }),
+    [subscribeSelectionSettled],
+  );
 
   useEffect(
     () => () => {
