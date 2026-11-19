@@ -1,37 +1,38 @@
 import React, { useId, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
-import { AlertTriangle, CircleDot, CircleCheck, Lock } from 'lucide-react';
+import { AlertTriangle, Ban, CircleDot, CircleCheck, Lock } from 'lucide-react';
 import {
   frameToInTime,
   frameToOutTime,
   getEpisodeSegments,
-  hasSegmentIssue,
   matchesSegmentFilter,
   segmentIssueMarkers,
+  segmentReviewDisplay,
   reviewProgress,
   type SegmentFilter,
 } from '@/core';
 import { cn } from '@/ui';
 import { useLeRobotData, useLeRobotSegments } from '../../contexts/LeRobotContext';
 import { onRadioGroupKeyDown, radioTabIndex } from './radioGroup';
+import { REVIEW_TEXT } from './reviewDisplay';
 
-const FILTERS: SegmentFilter[] = ['all', 'to_review', 'issues'];
 const FILTER_KEYS: Record<SegmentFilter, string> = {
   all: 'segments.filter.all',
   to_review: 'segments.filter.toReview',
   issues: 'segments.filter.issues',
 };
 
-/** "N / M confirmed" with a bar, over the whole document. */
+/** "N / M confirmed" with a bar, over the document's segments that are not excluded. */
 export function SegmentProgress() {
   const { t } = useTranslation();
   const { doc } = useLeRobotSegments();
-  const { confirmed, total } = reviewProgress(doc);
-  if (total === 0) return null;
+  const { confirmed, total, excluded } = reviewProgress(doc);
+  if (total === 0 && excluded === 0) return null;
   return (
     <div className="flex min-w-0 items-center gap-2" data-testid="lerobot-segment-progress">
       <span className="shrink-0 text-xs text-muted-foreground">
         {t('segments.progress', { confirmed, total })}
+        {excluded > 0 ? ` · ${t('segments.progressExcluded', { count: excluded })}` : ''}
       </span>
       <div
         className="h-1.5 min-w-8 flex-1 overflow-hidden rounded-full bg-muted"
@@ -43,7 +44,7 @@ export function SegmentProgress() {
       >
         <div
           className="h-full rounded-full bg-primary"
-          style={{ width: `${(confirmed / total) * 100}%` }}
+          style={{ width: `${total > 0 ? (confirmed / total) * 100 : 0}%` }}
         />
       </div>
     </div>
@@ -69,17 +70,12 @@ export const SegmentList: React.FC<{ episodeIndex: number; showTitle?: boolean }
   );
   const { markersOf } = segments;
   const episodeMarkers = useMemo(() => markersOf(episodeIndex), [episodeIndex, markersOf]);
-  const counts = useMemo(
-    () => ({
-      all: all.length,
-      to_review: all.filter((item) => item.review === 'to_review').length,
-      issues: all.filter((item) => hasSegmentIssue(item, episodeMarkers)).length,
-    }),
-    [all, episodeMarkers],
-  );
+  // The list is shown for the selected episode: the hook's filter in effect, counts and
+  // offered filters (Issues only when it narrows the list, H-1712) are that episode's.
+  const { filter, filterCounts: counts, offeredFilters: offered } = segments;
   const visible = all
     .map((segment, index) => ({ segment, number: index + 1 }))
-    .filter(({ segment }) => matchesSegmentFilter(segment, segments.filter, episodeMarkers));
+    .filter(({ segment }) => matchesSegmentFilter(segment, filter, episodeMarkers));
 
   return (
     <section
@@ -99,22 +95,22 @@ export const SegmentList: React.FC<{ episodeIndex: number; showTitle?: boolean }
             className="flex flex-wrap gap-1"
             onKeyDown={onRadioGroupKeyDown}
           >
-            {FILTERS.map((filter, index) => (
+            {offered.map((option, index) => (
               <button
-                key={filter}
+                key={option}
                 type="button"
                 role="radio"
-                aria-checked={segments.filter === filter}
-                tabIndex={radioTabIndex(segments.filter === filter, index, true)}
+                aria-checked={filter === option}
+                tabIndex={radioTabIndex(filter === option, index, true)}
                 className={cn(
                   'h-6 rounded-md border px-2 text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50',
-                  segments.filter === filter
+                  filter === option
                     ? 'border-primary bg-primary/10 text-foreground'
-                    : 'border-transparent text-muted-foreground hover:bg-accent',
+                    : 'border-transparent text-muted-foreground hover:bg-accent hover:text-foreground',
                 )}
-                onClick={() => segments.setFilter(filter)}
+                onClick={() => segments.setFilter(option)}
               >
-                {t(FILTER_KEYS[filter])} {counts[filter]}
+                {t(FILTER_KEYS[option])} {counts[option]}
               </button>
             ))}
           </div>
@@ -130,11 +126,9 @@ export const SegmentList: React.FC<{ episodeIndex: number; showTitle?: boolean }
         <ul className="min-h-0 overflow-y-auto pb-1" aria-label={t('segments.title')}>
           {visible.map(({ segment, number }) => {
             const selected = segment.id === segments.selectedSegmentId;
-            const toReview = segment.review === 'to_review';
+            const display = segmentReviewDisplay(segment);
             const time = `${frameToInTime(segment.startFrame, fps)}–${frameToOutTime(segment.endFrame, fps)}`;
-            const reviewText = t(
-              toReview ? 'segments.review.toReview' : 'segments.review.confirmed',
-            );
+            const reviewText = t(REVIEW_TEXT[display]);
             const markerIssues = segmentIssueMarkers(segment, episodeMarkers);
             // The row's label hides its content, so the badges are its description.
             const statusId = segment.status ? `${listId}-status-${number}` : null;
@@ -149,14 +143,19 @@ export const SegmentList: React.FC<{ episodeIndex: number; showTitle?: boolean }
                     selected
                       ? 'border-primary bg-background text-foreground ring-1 ring-inset ring-border'
                       : 'border-transparent text-muted-foreground hover:bg-accent/50 hover:text-foreground',
+                    display === 'excluded' &&
+                      'bg-[repeating-linear-gradient(135deg,transparent_0_6px,rgba(115,115,115,0.10)_6px_12px)]',
                   )}
+                  data-review={display}
                   aria-current={selected ? 'true' : undefined}
                   aria-label={t('segments.row', { n: number, time, review: reviewText })}
                   aria-describedby={describedBy}
                   onClick={() => segments.selectSegment(segment.id)}
                 >
                   <span className="flex min-w-0 items-center gap-1.5 text-xs">
-                    {toReview ? (
+                    {display === 'excluded' ? (
+                      <Ban className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden />
+                    ) : display === 'to_review' ? (
                       <CircleDot className="h-3.5 w-3.5 shrink-0 text-amber-500" aria-hidden />
                     ) : (
                       <CircleCheck className="h-3.5 w-3.5 shrink-0 text-primary" aria-hidden />
@@ -167,15 +166,26 @@ export const SegmentList: React.FC<{ episodeIndex: number; showTitle?: boolean }
                       <Lock className="h-3 w-3 shrink-0" aria-label={t('segments.readOnly')} />
                     ) : null}
                   </span>
-                  <span className="truncate pl-5 text-xs text-foreground/90">
+                  <span
+                    className={cn(
+                      'truncate pl-5 text-xs',
+                      display === 'excluded'
+                        ? 'text-muted-foreground line-through'
+                        : 'text-foreground/90',
+                    )}
+                  >
                     {segment.task ?? (
                       <span className="text-muted-foreground">{t('segments.inheritTask')}</span>
                     )}
                   </span>
-                  {segment.origin.kind === 'suggested' ||
+                  {display === 'excluded' ||
+                  segment.origin.kind === 'suggested' ||
                   segment.status ||
                   markerIssues.length > 0 ? (
                     <span className="flex min-w-0 items-center gap-2 pl-5 text-[10px] text-muted-foreground">
+                      {display === 'excluded' ? (
+                        <span className="font-medium">{reviewText}</span>
+                      ) : null}
                       {segment.origin.kind === 'suggested' ? (
                         <span>
                           {segment.origin.confidence != null

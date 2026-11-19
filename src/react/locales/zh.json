@@ -862,6 +862,7 @@
     "track": "分段",
     "trackSegment": "分段 {{n}}",
     "progress": "已确认 {{confirmed}} / {{total}}",
+    "progressExcluded": "已排除 {{count}} 个",
     "progressLabel": "审核进度",
     "filter": {
       "label": "显示",
@@ -875,7 +876,8 @@
     "row": "分段 {{n}}，{{time}}，{{review}}",
     "review": {
       "toReview": "待审核",
-      "confirmed": "已确认"
+      "confirmed": "已确认",
+      "excluded": "已排除"
     },
     "origin": {
       "suggested": "建议",
@@ -960,7 +962,8 @@
       "subtaskInvalid": "子任务不能重叠。",
       "subtaskOutside": "子任务必须位于一个分段之内。",
       "subtaskNeedsSegment": "请先添加分段：子任务属于分段。",
-      "suggestionsApplied": "已添加 {count} 个建议分段待审核。"
+      "suggestionsApplied": "已添加 {count} 个建议分段待审核。",
+      "excludedNotConfirmed": "已排除的分段不能确认。"
     },
     "refusal": {
       "EPISODE_UNKNOWN": "该片段不在此数据集中。",

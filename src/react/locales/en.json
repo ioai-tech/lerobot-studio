@@ -862,6 +862,7 @@
     "track": "Segments",
     "trackSegment": "Segment {{n}}",
     "progress": "{{confirmed}} / {{total}} confirmed",
+    "progressExcluded": "{{count}} excluded",
     "progressLabel": "Review progress",
     "filter": {
       "label": "Show",
@@ -875,7 +876,8 @@
     "row": "Segment {{n}}, {{time}}, {{review}}",
     "review": {
       "toReview": "To review",
-      "confirmed": "Confirmed"
+      "confirmed": "Confirmed",
+      "excluded": "Excluded"
     },
     "origin": {
       "suggested": "Suggested",
@@ -960,7 +962,8 @@
       "subtaskInvalid": "Subtasks must not overlap.",
       "subtaskOutside": "A subtask must lie inside one segment.",
       "subtaskNeedsSegment": "Add a segment first: subtasks belong to a segment.",
-      "suggestionsApplied": "Added {count, plural, one {# suggested segment} other {# suggested segments}} to review."
+      "suggestionsApplied": "Added {count, plural, one {# suggested segment} other {# suggested segments}} to review.",
+      "excludedNotConfirmed": "An excluded segment is not confirmed."
     },
     "refusal": {
       "EPISODE_UNKNOWN": "This episode is not part of the dataset.",

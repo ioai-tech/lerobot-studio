@@ -5,6 +5,7 @@ import type {
   AnnotationField,
   ReviewState,
   Segment,
+  SegmentReviewDisplay,
   SegmentSubtask,
 } from './types';
 
@@ -73,6 +74,15 @@ export function hasSegmentIssue(
   return segmentIssueMarkers(segment, episodeMarkers).length > 0;
 }
 
+/**
+ * The one rule for how a segment is shown and counted: an excluded segment is
+ * `excluded` whatever its review state (never drawn or counted as confirmed or
+ * to review); any other segment shows its review state.
+ */
+export function segmentReviewDisplay(segment: Segment): SegmentReviewDisplay {
+  return segment.excluded ? 'excluded' : segment.review;
+}
+
 export type SegmentFilter = 'all' | 'to_review' | 'issues';
 
 export function matchesSegmentFilter(
@@ -80,22 +90,67 @@ export function matchesSegmentFilter(
   filter: SegmentFilter,
   episodeMarkers: readonly TimelineMarker[] = [],
 ): boolean {
-  if (filter === 'to_review') return segment.review === 'to_review';
+  if (filter === 'to_review') return segmentReviewDisplay(segment) === 'to_review';
   if (filter === 'issues') return hasSegmentIssue(segment, episodeMarkers);
   return true;
 }
 
-/** "N / M confirmed" over every segment of the document. */
-export function reviewProgress(doc: AnnotationDocument): { confirmed: number; total: number } {
+/** How many segments each filter shows. */
+export function segmentFilterCounts(
+  segments: readonly Segment[],
+  episodeMarkers: readonly TimelineMarker[] = [],
+): Record<SegmentFilter, number> {
+  const counts: Record<SegmentFilter, number> = { all: segments.length, to_review: 0, issues: 0 };
+  for (const segment of segments) {
+    if (matchesSegmentFilter(segment, 'to_review', episodeMarkers)) counts.to_review += 1;
+    if (matchesSegmentFilter(segment, 'issues', episodeMarkers)) counts.issues += 1;
+  }
+  return counts;
+}
+
+/**
+ * The filters worth offering: Issues only when it narrows the list
+ * (`0 < issues < all`). When every segment has an issue (one recording-level
+ * warning reaches them all) or none does, it would show All or nothing.
+ */
+export function offeredSegmentFilters(counts: Record<SegmentFilter, number>): SegmentFilter[] {
+  return counts.issues > 0 && counts.issues < counts.all
+    ? ['all', 'to_review', 'issues']
+    : ['all', 'to_review'];
+}
+
+/** The filter in effect: one that is not offered shows All. */
+export function effectiveSegmentFilter(
+  filter: SegmentFilter,
+  offered: readonly SegmentFilter[],
+): SegmentFilter {
+  return offered.includes(filter) ? filter : 'all';
+}
+
+/**
+ * "N / M confirmed" over the segments of the document that are not excluded;
+ * excluded segments are their own count, never confirmed.
+ */
+export function reviewProgress(doc: AnnotationDocument): {
+  confirmed: number;
+  total: number;
+  excluded: number;
+} {
   let confirmed = 0;
   let total = 0;
+  let excluded = 0;
   for (const entry of Object.values(doc.episodes)) {
     for (const segment of entry?.segments ?? []) {
+      const display = segmentReviewDisplay(segment);
+      if (display === 'excluded') {
+        excluded += 1;
+        continue;
+      }
       total += 1;
-      if (segment.review === 'confirmed') confirmed += 1;
+      if (display === 'confirmed') confirmed += 1;
     }
   }
-  return { confirmed, total };
+  return { confirmed, total, excluded };
 }
 
 /** The edge of a segment nearer to `frame` (ties go to the end). */
