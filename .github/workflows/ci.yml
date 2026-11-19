@@ -86,6 +86,9 @@ jobs:
         run: |
           git diff --exit-code --diff-filter=D -- tests/fixtures
           git diff --exit-code -- tests/fixtures ':(exclude)tests/fixtures/datasets/lerobotv2' ':(exclude)tests/fixtures/datasets/lerobotv3' ':(exclude)tests/fixtures/datasets/lerobotv2-image'
+      - name: Install ffmpeg (after the fixtures, which keep their fallback video)
+        # tests/browser/support/rangeServer.ts encodes its 32 MB camera file with ffmpeg.
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq --no-install-recommends ffmpeg
       - name: Chromium full browser suite
         run: npm run test:browser
       - name: Cross-browser compatibility smoke

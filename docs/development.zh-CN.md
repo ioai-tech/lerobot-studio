@@ -14,19 +14,19 @@ npm run dev
 
 ## 命令
 
-| 命令                        | 用途                                |
-| --------------------------- | ----------------------------------- |
-| `npm run dev`               | 启动 SPA                            |
-| `npm run build`             | 构建 SPA 到 `dist/`                 |
-| `npm run build:lib`         | 构建已发布库到 `dist-lib/`          |
-| `npm run docs:dev`          | 启动 VitePress 文档站点             |
-| `npm run docs:build`        | 构建文档并检查链接                  |
-| `npm run check:docs-i18n`   | 检查 Markdown 中英文配对或显式例外  |
-| `npm run check:bundle-size` | 强制执行 npm 与 Web bundle 大小预算 |
-| `npm run typecheck`         | 类型检查应用与库源码                |
-| `npm run test:unit`         | 运行基于 Node 的 Vitest 测试        |
-| `npm run test:browser`      | 运行 Playwright 浏览器测试          |
-| `npm run fixtures:generate` | 重建合成 LeRobot fixture            |
+| 命令                        | 用途                                      |
+| --------------------------- | ----------------------------------------- |
+| `npm run dev`               | 启动 SPA                                  |
+| `npm run build`             | 构建 SPA 到 `dist/`                       |
+| `npm run build:lib`         | 构建已发布库到 `dist-lib/`                |
+| `npm run docs:dev`          | 启动 VitePress 文档站点                   |
+| `npm run docs:build`        | 构建文档并检查链接                        |
+| `npm run check:docs-i18n`   | 检查 Markdown 中英文配对或显式例外        |
+| `npm run check:bundle-size` | 强制执行 npm 与 Web bundle 大小预算       |
+| `npm run typecheck`         | 类型检查应用与库源码                      |
+| `npm run test:unit`         | 运行基于 Node 的 Vitest 测试              |
+| `npm run test:browser`      | 运行 Playwright 浏览器测试（需 `ffmpeg`） |
+| `npm run fixtures:generate` | 重建合成 LeRobot fixture                  |
 
 ## 官方本地数据集
 
