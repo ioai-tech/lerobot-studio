@@ -193,6 +193,21 @@ describe('workerManager', () => {
       });
     });
 
+    it('drops the prewarmed worker as soon as the host changes the WASM URL', async () => {
+      const { prewarmParquetWorker } = await load();
+      prewarmParquetWorker();
+      (await config()).setParquetWasmUrl('https://cdn.test/p.wasm');
+      expect(FakeWorker.created[0].terminated).toBe(true);
+    });
+
+    it('does not hand over a prewarmed worker that failed in the same tick', async () => {
+      const { prewarmParquetWorker, createParquetWorker } = await load();
+      prewarmParquetWorker();
+      FakeWorker.created[0].emit('error'); // the drop on failure runs only later
+      createParquetWorker();
+      expect(FakeWorker.created).toHaveLength(2);
+    });
+
     it('export workers never take the prewarmed one', async () => {
       const { prewarmParquetWorker, createParquetWorker } = await load();
       prewarmParquetWorker();

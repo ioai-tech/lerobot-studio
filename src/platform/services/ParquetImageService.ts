@@ -78,6 +78,12 @@ export class ParquetImageServiceImpl {
   // 当前预加载的 episode 信息
   private currentPreloadKey: string | null = null;
   private disposed = false;
+  /**
+   * Why the image worker can no longer answer, once it cannot. Every later
+   * call fails with it (raw frame requests miss at once) instead of posting
+   * to a worker that will never reply.
+   */
+  private workerFailure: Error | null = null;
 
   private assertActive(): void {
     if (this.disposed) {
@@ -104,14 +110,18 @@ export class ParquetImageServiceImpl {
 
   private async getWorker(): Promise<Remote<ParquetImageWorkerAPI>> {
     this.assertActive();
+    if (this.workerFailure) throw this.workerFailure;
     if (!this.worker) {
       const { remote, raw, failed } = createParquetImageWorker();
       this.worker = remote;
       this.rawWorker = raw;
       if (raw) this.bindRawWorkerMessages(raw);
       // A worker that can no longer answer fails the raw requests in flight
-      // too (the Comlink calls fail on their own).
-      failed.catch((error: Error) => this.failRawRequests(error));
+      // and every later call (the Comlink calls fail on their own).
+      failed.catch((error: Error) => {
+        this.workerFailure = error;
+        this.failRawRequests(error);
+      });
       await this.worker.init();
       this.assertActive();
     }
@@ -243,6 +253,8 @@ export class ParquetImageServiceImpl {
   ): Promise<void> {
     this.assertActive();
     await this.getWorker();
+    // The worker may have failed while this call waited for it.
+    if (this.workerFailure) throw this.workerFailure;
 
     this.currentPreloadKey = episodeKey;
 
@@ -278,7 +290,8 @@ export class ParquetImageServiceImpl {
     startRow: number,
   ): Promise<ImageBitmap | null> {
     if (this.disposed) return null;
-    if (!this.rawWorker) return null;
+    // A miss: the caller falls back to the on-demand path, which names the failure.
+    if (this.workerFailure || !this.rawWorker) return null;
 
     const reqId = makeReqId();
 

@@ -65,4 +65,32 @@ describe('export Parquet writing', () => {
     await expect(writeParquetBytes(new Uint8Array([1, 2]))).rejects.toThrow('Invalid IPC stream');
     expect(terminateWorker).not.toHaveBeenCalled();
   });
+
+  it('drops an idle worker at once when the host changes the WASM URL', async () => {
+    const { writeParquetBytes } = await import('../src/platform/export/parquetWriteClient');
+    const { setParquetWasmUrl } = await import('../src/platform/workers/wasmConfig');
+    await writeParquetBytes(arrow.tableToIPC(table(), 'stream'));
+    setParquetWasmUrl('https://cdn.test/p.wasm');
+    expect(terminateWorker).toHaveBeenCalledTimes(1);
+    setParquetWasmUrl('https://cdn.test/p.wasm'); // no change, nothing to drop
+    await writeParquetBytes(arrow.tableToIPC(table(), 'stream'));
+    expect(createParquetWorker).toHaveBeenCalledTimes(2);
+    setParquetWasmUrl(null);
+  });
+
+  it('lets writes in flight finish on a changed URL, then drops the worker without the idle wait', async () => {
+    const { writeParquetBytes } = await import('../src/platform/export/parquetWriteClient');
+    const { setParquetWasmUrl } = await import('../src/platform/workers/wasmConfig');
+    let finish: (bytes: Uint8Array) => void = () => undefined;
+    remote.writeParquet.mockImplementationOnce(
+      () => new Promise<Uint8Array>((resolve) => (finish = resolve)),
+    );
+    const write = writeParquetBytes(arrow.tableToIPC(table(), 'stream'));
+    setParquetWasmUrl('https://cdn.test/p.wasm');
+    expect(terminateWorker).not.toHaveBeenCalled();
+    finish(new Uint8Array([1]));
+    await expect(write).resolves.toEqual(new Uint8Array([1]));
+    expect(terminateWorker).toHaveBeenCalledTimes(1);
+    setParquetWasmUrl(null);
+  });
 });

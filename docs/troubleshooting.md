@@ -57,7 +57,7 @@ An open that ends with `PARQUET_ENGINE_UNAVAILABLE` could not start the Parquet 
 
 - **worker script could not load**: the page's Content Security Policy (`worker-src`, or `script-src`) does not allow the worker scripts, or your server does not serve the bundler's assets.
 - **could not compile … Content Security Policy**: your server sends the worker scripts a CSP without `'wasm-unsafe-eval'`. Add it to that policy, or stop sending a CSP with static assets.
-- **HTTP 404** or **could not download**: the WASM file is not served at the URL your bundler emitted (or the one given to `setParquetWasmUrl`), or a cross-origin CDN does not allow CORS.
+- **HTTP 404** or **could not download**: the WASM file is not served at the URL your bundler emitted (or the one given to `setParquetWasmUrl`), a cross-origin CDN does not allow CORS, or a CSP sent with the worker scripts has a `connect-src` that does not allow the WASM's origin (the message then ends in `TypeError: Failed to fetch`).
 - **could not compile … CompileError** without a CSP: the file is corrupt or not the package's WASM (for example an HTML error page).
 
 See [Workers, WebAssembly and Content Security Policy](./embedding.md#workers-webassembly-and-content-security-policy). Retrying opens a new worker, which downloads the file again.

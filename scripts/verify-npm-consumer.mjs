@@ -474,26 +474,38 @@ try {
         NEXT_TELEMETRY_DISABLED: '1',
         NEXT_BASE_PATH,
       };
-      await run(process.execPath, [nextBin, 'build'], { cwd: nextExample, env: nextEnv });
-      const nextMedia = await collectFiles(path.join(nextExample, '.next/static'));
-      const nextWasm = nextMedia.filter((file) => /parquet_wasm_bg[^/\\]*\.wasm$/.test(file));
-      if (nextWasm.length !== 1) {
-        throw new Error(`Next build must emit one parquet WASM file; found ${nextWasm.length}`);
-      }
-      const nextServer = await startNext(nextBin, nextExample, nextEnv);
-      try {
-        await openConsumer(browser, `${nextServer.url}${NEXT_BASE_PATH}`, {
-          label: 'Next consumer (next build + next start, basePath)',
-          wasmPath: (pathname) =>
-            pathname.startsWith(`${NEXT_BASE_PATH}/_next/static/`) &&
-            /\/parquet_wasm_bg[^/]*\.wasm$/.test(pathname),
-        });
-        await openConsumer(browser, `${nextServer.url}${NEXT_BASE_PATH}?wasm=self-hosted`, {
-          label: 'Next consumer with setParquetWasmUrl',
-          wasmPath: (pathname) => pathname === `${NEXT_BASE_PATH}/self-hosted/parquet.wasm`,
-        });
-      } finally {
-        await nextServer.close();
+      // Turbopack (Next 16's default) with the override run, then webpack 5.
+      const nextBuilds = [
+        { bundler: 'Turbopack', args: ['build'], override: true },
+        { bundler: 'webpack', args: ['build', '--webpack'], override: false },
+      ];
+      for (const build of nextBuilds) {
+        await rm(path.join(nextExample, '.next'), { recursive: true, force: true });
+        await run(process.execPath, [nextBin, ...build.args], { cwd: nextExample, env: nextEnv });
+        const nextMedia = await collectFiles(path.join(nextExample, '.next/static'));
+        const nextWasm = nextMedia.filter((file) => /parquet_wasm_bg[^/\\]*\.wasm$/.test(file));
+        if (nextWasm.length !== 1) {
+          throw new Error(
+            `Next ${build.bundler} build must emit one parquet WASM file; found ${nextWasm.length}`,
+          );
+        }
+        const nextServer = await startNext(nextBin, nextExample, nextEnv);
+        try {
+          await openConsumer(browser, `${nextServer.url}${NEXT_BASE_PATH}`, {
+            label: `Next consumer (${build.bundler}: next build + next start, basePath)`,
+            wasmPath: (pathname) =>
+              pathname.startsWith(`${NEXT_BASE_PATH}/_next/static/`) &&
+              /\/parquet_wasm_bg[^/]*\.wasm$/.test(pathname),
+          });
+          if (build.override) {
+            await openConsumer(browser, `${nextServer.url}${NEXT_BASE_PATH}?wasm=self-hosted`, {
+              label: 'Next consumer with setParquetWasmUrl',
+              wasmPath: (pathname) => pathname === `${NEXT_BASE_PATH}/self-hosted/parquet.wasm`,
+            });
+          }
+        } finally {
+          await nextServer.close();
+        }
       }
     } else {
       console.warn('Next App Router consumer skipped because VERIFY_NEXT_EXAMPLE=0');
@@ -505,7 +517,7 @@ try {
 
   console.log(
     `npm tarball passed package, API, type, Vite build + browser, Worker/WASM, setParquetWasmUrl and ${
-      runNext ? 'Next build + start (basePath)' : 'no Next'
+      runNext ? 'Next Turbopack and webpack build + start (basePath)' : 'no Next'
     } checks (${files.length} packed files)`,
   );
 } finally {

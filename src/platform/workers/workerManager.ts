@@ -26,7 +26,7 @@ import parquetWorkerUrl from './parquet.worker?worker&url';
 import parquetImageWorkerUrl from './parquetImage.worker?worker&url';
 
 import { wasmUrl as packagedWasmUrl } from './wasmUrl';
-import { parquetWasmUrlOverride } from './wasmConfig';
+import { onParquetWasmUrlChange, parquetWasmUrlOverride } from './wasmConfig';
 
 /** A started worker: its guarded remote, the raw Worker (null if it never started), and its failure. */
 interface WorkerHandle<T> {
@@ -59,11 +59,14 @@ function describe(cause: unknown): string {
 
 /**
  * A remote whose calls reject with the worker's failure: at once when it has
- * failed, and as soon as it fails while a call is pending.
+ * failed, and as soon as it fails while a call is pending. Each pending call
+ * registers its own rejecter and removes it when it settles, so nothing that
+ * lives as long as the worker holds a call's result (racing every call
+ * against one never-settling promise would keep each result reachable).
  */
 function guard<T>(
   remote: Comlink.Remote<T> | null,
-  failed: Promise<never>,
+  pending: Set<(error: Error) => void>,
   failure: () => Error | null,
 ): Comlink.Remote<T> {
   const target = (remote ?? {}) as object;
@@ -79,7 +82,10 @@ function guard<T>(
         const call = (Reflect.get(object, property) as (...a: unknown[]) => Promise<unknown>)(
           ...args,
         );
-        return Promise.race([call, failed]);
+        return new Promise((resolve, reject) => {
+          pending.add(reject);
+          call.then(resolve, reject).finally(() => pending.delete(reject));
+        });
       };
     },
   }) as Comlink.Remote<T>;
@@ -92,11 +98,16 @@ function spawn<T>(scriptUrl: string, label: string): WorkerHandle<T> {
   const failed = new Promise<never>((_, reject) => {
     rejectFailed = reject;
   });
-  failed.catch(() => undefined); // observed by each call, not here
+  failed.catch(() => undefined); // for the image service's raw requests and the spare
+  const pending = new Set<(error: Error) => void>();
   const fail = (detail: string) => {
     if (failure) return;
-    failure = parquetEngineError(detail);
-    rejectFailed(failure);
+    const error = parquetEngineError(detail);
+    failure = error;
+    rejectFailed(error);
+    const calls = [...pending];
+    pending.clear();
+    calls.forEach((reject) => reject(error));
   };
 
   let worker: Worker | null = null;
@@ -128,7 +139,7 @@ function spawn<T>(scriptUrl: string, label: string): WorkerHandle<T> {
     const init: InitParquetWasmMessage = { type: 'init-wasm', url: wasmUrl };
     worker.postMessage(init);
   }
-  const remote = guard(worker ? Comlink.wrap<T>(worker) : null, failed, () => failure);
+  const remote = guard(worker ? Comlink.wrap<T>(worker) : null, pending, () => failure);
   const handle: WorkerHandle<T> = { remote, raw: worker, failed, failure: () => failure, wasmUrl };
   handles.set(remote as object, handle as WorkerHandle<unknown>);
   return handle;
@@ -146,6 +157,11 @@ function dropSpare(): void {
   spare = null;
   terminateWorker(remote as Comlink.Remote<unknown>);
 }
+
+// A spare given the old URL would never be adopted: drop it at once.
+onParquetWasmUrlChange(() => {
+  if (spare && !usableSpare()) dropSpare();
+});
 
 /**
  * Start one Parquet worker ahead of a loader, so it downloads and compiles

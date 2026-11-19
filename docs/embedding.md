@@ -457,7 +457,7 @@ import { setParquetWasmUrl } from '@ioai/lerobot-studio';
 setParquetWasmUrl('https://cdn.example.com/lerobot/parquet_wasm_bg-3f9a1c.wasm');
 ```
 
-Keep the hash (or your own content hash) in the name and serve it as `application/wasm` with a long-lived cache. A CDN on another origin must allow CORS for your page. Call it before `preloadLeRobotViewer()`; workers started earlier keep the URL they were given.
+Keep the hash (or your own content hash) in the name and serve it as `application/wasm` with a long-lived cache. A CDN on another origin must allow CORS for your page. Call it before `preloadLeRobotViewer()`. A later change drops idle workers (the prewarmed one, export's) so they start again on the new URL; a viewer already open keeps its workers. It takes an absolute or relative URL string (relative to the page), a `URL`, or `null` for the packaged file; any other value throws a `TypeError` whose message starts with `INVALID_PARQUET_WASM_URL`.
 
 ## Next.js
 

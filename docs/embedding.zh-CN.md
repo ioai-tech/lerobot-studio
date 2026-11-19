@@ -457,7 +457,7 @@ import { setParquetWasmUrl } from '@ioai/lerobot-studio';
 setParquetWasmUrl('https://cdn.example.com/lerobot/parquet_wasm_bg-3f9a1c.wasm');
 ```
 
-文件名中保留哈希（或你自己的内容哈希），以 `application/wasm` 和长期缓存提供。其他来源的 CDN 必须对你的页面允许 CORS。请在 `preloadLeRobotViewer()` 之前调用；更早启动的 Worker 会保留它们拿到的 URL。
+文件名中保留哈希（或你自己的内容哈希），以 `application/wasm` 和长期缓存提供。其他来源的 CDN 必须对你的页面允许 CORS。请在 `preloadLeRobotViewer()` 之前调用。之后再更改时，空闲的 Worker（预热的那个、导出用的那个）会被关闭，下次以新 URL 重新启动；已经打开的查看器保留它的 Worker。参数可以是绝对或相对 URL 字符串（相对于页面）、`URL` 对象，或表示使用包内文件的 `null`；其他值会抛出消息以 `INVALID_PARQUET_WASM_URL` 开头的 `TypeError`。
 
 ## Next.js
 

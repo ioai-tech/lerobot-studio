@@ -129,11 +129,13 @@ hashed `dist-lib/assets/parquet_wasm_bg-<hash>.wasm`, referenced once as
 `new URL("assets/…", import.meta.url)`, with no `wasmUrl-*.js` chunk and no
 base64 WASM in any JavaScript. It then builds the Vite example and serves it
 from a sub-path, and runs the Next.js example with `next build` and
-`next start` under a `basePath`. In Chromium, each one opens the
+`next start` under a `basePath`, built once with Turbopack and once with
+`next build --webpack`. In Chromium, each one opens the
 `tests/fixtures/datasets/lerobotv3` dataset until a chart is drawn from its
 Parquet. Each must download the WASM once, as `application/wasm`, from the
 bundler's URL, and the page itself must compile no WebAssembly. A second run
-of each example sets `setParquetWasmUrl` to a self-hosted copy.
+of the Vite and the Turbopack example sets `setParquetWasmUrl` to a
+self-hosted copy.
 `VERIFY_NEXT_EXAMPLE=0` skips Next.js.
 
 ### Docker npm consumer gate
