@@ -6,6 +6,7 @@ import {
   getAutoLayoutVisualRows,
   isStackedPanelsWidth,
   visualAspectRatio,
+  CAMERA_SHARE,
   CHART_MIN_HEIGHT_PX,
   PANEL_HEADER_PX,
 } from '@/core';
@@ -162,6 +163,24 @@ describe('visual auto layout', () => {
     // Tall frames ask for more than the share, up to the chart minimum.
     const tall = cameraAreaHeight({ height: 700, width: 1200, rows: 1, perRow: 2, aspect: 9 / 16 });
     expect(tall).toBe(700 - CHART_MIN_HEIGHT_PX);
+  });
+
+  it('a short panel area keeps the cameras their share; the chart floor gives way (s10 F-31)', () => {
+    // 1024 × 768 with the segment inspector open leaves the panels about 300 px.
+    for (const height of [240, 300, 400]) {
+      const cameras = cameraAreaHeight({ height, width: 696, rows: 1, perRow: 4, aspect: 4 / 3 });
+      expect(cameras, `height ${height}`).toBeGreaterThanOrEqual(Math.floor(height * CAMERA_SHARE));
+      expect(height - cameras, `height ${height}`).toBeGreaterThan(0);
+    }
+    // Tall enough, the charts keep their full floor as before.
+    const roomy = cameraAreaHeight({
+      height: 900,
+      width: 1200,
+      rows: 1,
+      perRow: 2,
+      aspect: 9 / 16,
+    });
+    expect(roomy).toBe(900 - CHART_MIN_HEIGHT_PX);
   });
 
   it('reads the frame aspect from video info, then from the named shape', () => {

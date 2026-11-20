@@ -52,6 +52,11 @@ export type ViewerLayoutProps = {
   sidebar?: ReactNode;
   /** Main empty/welcome content when no dataset is loaded and no active task/error. */
   emptyState?: ReactNode;
+  /**
+   * Shown instead of the loading progress while no dataset is shown: a state
+   * that outranks a running open (offline, where reads may never settle).
+   */
+  blockingState?: ReactNode;
   /** Optional chrome above the sidebar (back/export buttons, etc.). */
   sidebarHeader?: ReactNode;
   /**
@@ -74,6 +79,7 @@ export function ViewerLayout({
   className,
   sidebar,
   emptyState,
+  blockingState,
   sidebarHeader,
   hostChrome,
   showToaster = true,
@@ -138,6 +144,8 @@ export function ViewerLayout({
             ) : null}
             <LazyDockviewLayout />
           </>
+        ) : blockingState ? (
+          blockingState
         ) : activeTask ? (
           <div
             className="w-full h-full flex items-center justify-center text-muted-foreground"

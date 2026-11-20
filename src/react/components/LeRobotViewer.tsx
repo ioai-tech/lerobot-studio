@@ -28,6 +28,7 @@ import type {
 import { HostChrome } from './Host/HostChrome';
 import { SelectionBridge, type SelectionCarry } from './Host/SelectionBridge';
 import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts';
+import { useBrowserOnline } from '../hooks/useBrowserOnline';
 import { ViewerLayout } from '../features/viewer/ViewerLayout';
 import { ErrorState } from './Commons/ErrorState';
 import { preloadLeRobotViewer } from '../preload';
@@ -43,7 +44,12 @@ export type LeRobotViewerErrorCode =
   | 'REMOTE_SOURCE_UNAVAILABLE'
   | 'UNSUPPORTED_ARCHIVE'
   | 'DATASET_LOAD_FAILED'
-  | 'PARQUET_ENGINE_UNAVAILABLE';
+  | 'PARQUET_ENGINE_UNAVAILABLE'
+  /**
+   * The browser is offline and the dataset is not shown yet. Recoverable: the
+   * viewer retries by itself when the browser is back online.
+   */
+  | 'NETWORK_OFFLINE';
 
 /** A fatal viewer error that requires host action or an explicit retry. */
 export interface LeRobotViewerError {
@@ -157,8 +163,17 @@ export function LeRobotViewerContent({
   showPlaybackBar: boolean;
 }) {
   const { t } = useTranslation();
-  const { initialize, error, isLoading, clearError, setPendingSelection, getPendingSelection } =
-    useLeRobotData();
+  const {
+    initialize,
+    error,
+    isLoading,
+    clearError,
+    setPendingSelection,
+    getPendingSelection,
+    info,
+    getErrorCause,
+  } = useLeRobotData();
+  const online = useBrowserOnline();
   const hostChrome = useMemo(() => <HostChrome extensions={extensions} />, [extensions]);
   const { configure } = useLeRobotSegments();
 
@@ -178,22 +193,50 @@ export function LeRobotViewerContent({
   const [resolvedSource, setResolvedSource] = useState<DataSource | null>(null);
   const [resolveError, setResolveError] = useState<LeRobotViewerError | null>(null);
   const [isResolving, setIsResolving] = useState(false);
+  /** Bumped by Retry so a URL source is resolved again (its preflight may have failed). */
+  const [resolveAttempt, setResolveAttempt] = useState(0);
   const lastFatalErrorRef = useRef<string | null>(null);
+  /** No dataset is shown yet: the only time a failure is fatal or offline blocks the view. */
+  const opening = !info;
+  /** Offline while opening: the viewer says so at once (a read may never settle offline). */
+  const offlineWhileOpening = opening && !online;
   const fatalError = useMemo<LeRobotViewerError | null>(
     () =>
-      resolveError ??
-      (error
-        ? {
-            // The Parquet reader (its worker or WASM) could not load: a host
-            // or CSP setup problem, not the data.
-            code: isParquetEngineError(error)
-              ? 'PARQUET_ENGINE_UNAVAILABLE'
-              : 'DATASET_LOAD_FAILED',
-            message: error,
-            recoverable: true,
-          }
-        : null),
-    [error, resolveError],
+      // A load failure with a dataset shown (an episode that cannot load, a
+      // source swap that failed) stays inside the shown viewer as its error
+      // line, never fatal: a host that replaces the viewer on a fatal error
+      // would blank a working view. A URL that cannot be resolved has no such
+      // line and stays fatal.
+      !opening
+        ? resolveError
+        : // An open that failed while the browser is offline is reported as that:
+          // named, recoverable, and retried once the browser is back online (below).
+          // Offline alone is not a failure: `navigator.onLine` can be wrong on a
+          // working network, and a host that unmounts on a fatal error would then
+          // never load (s10 F-32). Until something fails, the viewer only shows its
+          // offline state (`offlineWhileOpening`).
+          ((offlineWhileOpening && (error || resolveError)
+            ? {
+                code: 'NETWORK_OFFLINE' as const,
+                message: t('errors.offline'),
+                recoverable: true,
+                cause: resolveError ?? getErrorCause() ?? error ?? undefined,
+              }
+            : null) ??
+          resolveError ??
+          (error
+            ? {
+                // The Parquet reader (its worker or WASM) could not load: a host
+                // or CSP setup problem, not the data.
+                code: isParquetEngineError(error)
+                  ? 'PARQUET_ENGINE_UNAVAILABLE'
+                  : 'DATASET_LOAD_FAILED',
+                message: error,
+                recoverable: true,
+                cause: getErrorCause() ?? undefined,
+              }
+            : null)),
+    [opening, error, resolveError, offlineWhileOpening, getErrorCause, t],
   );
 
   const normalizeUrl = (raw: string) => {
@@ -281,7 +324,7 @@ export function LeRobotViewerContent({
     return () => {
       cancelled = true;
     };
-  }, [dataSource, t, clearError]);
+  }, [dataSource, t, clearError, resolveAttempt]);
 
   useEffect(() => {
     if (resolvedSource && lastSourceRef.current !== resolvedSource) {
@@ -327,8 +370,18 @@ export function LeRobotViewerContent({
     setResolvedSource(null);
     if (typeof dataSource !== 'string') {
       setResolvedSource(dataSource);
+    } else {
+      setResolveAttempt((attempt) => attempt + 1);
     }
   }, [clearError, resolvedSource, initialize, dataSource]);
+
+  // Back online: an open that failed (most likely for being offline) runs again.
+  const wasOnlineRef = useRef(online);
+  useEffect(() => {
+    const cameBack = online && !wasOnlineRef.current;
+    wasOnlineRef.current = online;
+    if (cameBack && !info && (error || resolveError)) handleRetry();
+  }, [online, info, error, resolveError, handleRetry]);
 
   if (onFatalError && fatalError) {
     // The embedding host owns fatal-error rendering via onFatalError. Keeping a
@@ -372,15 +425,20 @@ export function LeRobotViewerContent({
       </div>
     ) : null;
 
+  const offlineState = (
+    <ErrorState title={t('common.error')} message={t('errors.offline')} onRetry={handleRetry} />
+  );
   const emptyState = fatalError ? (
     <ErrorState
       title={t('common.error')}
       message={
-        fatalError.code === 'PARQUET_ENGINE_UNAVAILABLE'
-          ? t('errors.parquetEngineUnavailable')
-          : t('errors.loadFailed')
+        fatalError.code === 'NETWORK_OFFLINE'
+          ? t('errors.offline')
+          : fatalError.code === 'PARQUET_ENGINE_UNAVAILABLE'
+            ? t('errors.parquetEngineUnavailable')
+            : t('errors.loadFailed')
       }
-      errorDetail={fatalError.message}
+      errorDetail={fatalError.code === 'NETWORK_OFFLINE' ? undefined : fatalError.message}
       onRetry={handleRetry}
     />
   ) : (
@@ -411,6 +469,7 @@ export function LeRobotViewerContent({
         sidebarHeader={sidebarHeader}
         hostChrome={extensions && extensions.length > 0 ? hostChrome : null}
         emptyState={emptyState}
+        blockingState={offlineWhileOpening ? offlineState : null}
         onRetry={handleRetry}
       />
       <SelectionBridge captureRef={captureSelectionRef} onSelectionChange={onSelectionChange} />

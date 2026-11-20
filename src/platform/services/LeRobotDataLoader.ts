@@ -18,6 +18,9 @@ import {
   getValidatorForVersion,
   hasBlockingValidationError,
   isParquetEngineError,
+  isDatasetReadError,
+  isMissingFileError,
+  datasetReadError,
   buildSubtaskTable,
   indicesFromFrameLabels,
   tableFromSubtaskIndices,
@@ -74,6 +77,36 @@ interface FileBytesCache {
 
 /** Metadata files read at once while a dataset opens. */
 const METADATA_READS_IN_FLIGHT = 6;
+
+/**
+ * The source as the metadata readers of an open see it: a text or byte read
+ * that fails for any reason but a missing file is named DATASET_READ_FAILED
+ * (with the original error as its cause) and handed to `onFailure`.
+ */
+function namedReads(source: DataSource, onFailure: (error: Error) => void): DataSource {
+  const name =
+    <A extends unknown[], R>(read: (path: string, ...rest: A) => Promise<R>) =>
+    async (path: string, ...rest: A): Promise<R> => {
+      try {
+        return await read.call(source, path, ...rest);
+      } catch (error) {
+        if (isMissingFileError(error)) throw error;
+        const named = datasetReadError(path, error);
+        onFailure(named);
+        throw named;
+      }
+    };
+  return new Proxy(source, {
+    get(target, property) {
+      const value = Reflect.get(target, property, target) as unknown;
+      if (typeof value !== 'function') return value;
+      if (property === 'readText' || property === 'readBytes') {
+        return name(value as (path: string, ...rest: unknown[]) => Promise<unknown>);
+      }
+      return (value as (...args: unknown[]) => unknown).bind(target);
+    },
+  });
+}
 
 export class LeRobotDataLoader {
   private _dataSource: DataSource;
@@ -182,8 +215,15 @@ export class LeRobotDataLoader {
   }
 
   async initialize(): Promise<LeRobotInfo> {
+    // Every metadata read of the open goes through `metadata`: a file that is
+    // there but could not be read (network, HTTP status) is named
+    // DATASET_READ_FAILED, never folded into a format failure by a validator.
+    let readFailure: Error | null = null;
+    const metadata = namedReads(this._dataSource, (error) => {
+      readFailure ??= error;
+    });
     try {
-      const infoText = await this._dataSource.readText('meta/info.json');
+      const infoText = await metadata.readText('meta/info.json');
       try {
         this.info = JSON.parse(infoText) as LeRobotInfo;
       } catch (e) {
@@ -202,11 +242,13 @@ export class LeRobotDataLoader {
       this.adapter = getAdapterForVersion(this.info.codebase_version);
       // A reader that could not load says nothing about the files: it is
       // reported as itself, never as the validator's "not Parquet".
+      // A reader that could not load, or a file that could not be read, says
+      // nothing about the data: the validator's parse failures never stand for them.
       let engineFailure: unknown = null;
       const helpers = {
         readParquetToIPC: (path: string, columns?: string[]) =>
           this.readParquetByPath(path, columns).catch((error: unknown) => {
-            if (isParquetEngineError(error)) engineFailure ??= error;
+            if (isParquetEngineError(error) || isDatasetReadError(error)) engineFailure ??= error;
             throw error;
           }),
       };
@@ -218,10 +260,12 @@ export class LeRobotDataLoader {
       await this.prefetchMetadata();
       const adapter = this.adapter;
       const validator = getValidatorForVersion(this.info.codebase_version);
-      const report = await validator.validate(this._dataSource, this.info, helpers);
+      const report = await validator.validate(metadata, this.info, helpers);
       if (engineFailure) throw engineFailure;
       this.validationReport = report;
       if (hasBlockingValidationError(report)) {
+        // A required file that could not be read is the reason, not its format.
+        if (readFailure) throw readFailure;
         const messages = report.items
           .filter((i) => i.level === 'error' && !NON_BLOCKING_VALIDATION_CODES.has(i.code ?? ''))
           .map((i) => i.message);
@@ -265,7 +309,7 @@ export class LeRobotDataLoader {
         }
       }
       if (e instanceof Error) {
-        if (e.name === 'NotFoundError') {
+        if (isMissingFileError(e)) {
           throw new Error('Not a valid LeRobot dataset: meta/info.json not found');
         }
         throw e;
@@ -431,7 +475,9 @@ export class LeRobotDataLoader {
   }
 
   private async parseParquetByPath(path: string, columns?: string[]): Promise<Uint8Array> {
-    const bytes = await this.readFileBytesCached(path);
+    const bytes = await this.readFileBytesCached(path).catch((error: unknown) => {
+      throw datasetReadError(path, error);
+    });
     // Metadata tables may also be Arrow IPC (sources that synthesize metadata,
     // such as episode sets, produce IPC directly); Arrow reads it as-is.
     if (isArrowIpc(bytes)) return bytes;

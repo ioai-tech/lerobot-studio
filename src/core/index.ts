@@ -90,6 +90,13 @@ export {
   isParquetEngineError,
   parquetEngineError,
 } from './workers/engineError';
+export {
+  DATASET_READ_FAILED,
+  datasetReadError,
+  isDatasetReadError,
+  isMissingFileError,
+  fileNotFoundError,
+} from './datasource/readError';
 
 export * from './subtask';
 export * from './export/trim';
