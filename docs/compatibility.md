@@ -53,6 +53,6 @@ Authentication, signed URLs, and proxies are configured by the embedding applica
 
 ## Browsers
 
-See [Browser support](./browser.md). Chromium receives full browser coverage; Firefox and WebKit receive smoke coverage. Video playback also depends on codec support.
+See [Browser support](./browser.md). Chromium receives full browser coverage; Firefox receives smoke coverage. Video playback also depends on codec support.
 
 The fixed validation reader is LeRobot `v0.6.1`. A nightly job also checks the upstream `main` branch; it does not block releases.

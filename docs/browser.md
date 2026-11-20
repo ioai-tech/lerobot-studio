@@ -8,9 +8,9 @@ Supported browsers include current Chrome, Edge, Firefox, and Safari. Video code
 
 ## Test coverage
 
-Chromium runs the full browser test suite. Firefox and WebKit run smoke tests covering viewer UI, errors, basic accessibility, read-only version handling, and remote or custom sources.
+Chromium runs the full browser test suite. Firefox runs smoke tests covering viewer UI, errors, basic accessibility, read-only version handling, and remote or custom sources.
 
-| Capability                    | Chromium                             | Firefox / WebKit                   |
+| Capability                    | Chromium                             | Firefox                            |
 | ----------------------------- | ------------------------------------ | ---------------------------------- |
 | Viewer and errors             | Full tests                           | Smoke tests                        |
 | Remote or custom `DataSource` | Yes                                  | Smoke tests                        |

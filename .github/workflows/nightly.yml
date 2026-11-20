@@ -40,7 +40,7 @@ jobs:
         working-directory: official-lerobot
         run: uv sync --extra dataset
       - name: Install browser engines
-        run: npx playwright install --with-deps chromium firefox webkit
+        run: npx playwright install --with-deps chromium firefox
       - run: npm run test:unit
       - name: Chromium full browser suite
         run: npm run test:browser
