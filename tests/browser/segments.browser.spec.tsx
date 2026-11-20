@@ -1,238 +1,28 @@
-import React, { useCallback, useMemo, useRef, useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { page, userEvent } from 'vitest/browser';
 import { LeRobotViewer } from '@/components/LeRobotViewer';
-import {
-  applyChange,
-  type AnnotationChange,
-  type AnnotationDocument,
-  type AnnotationField,
-  type Segment,
-} from '@/core';
-import type { LeRobotAnnotationSaveState } from '@/contexts/annotationTypes';
-import type { LeRobotMessages } from '@/i18n/messageKeys';
+import { type AnnotationDocument } from '@/core';
 import { FetchDataSource } from './fixtures';
 import { pauseOnEpisode } from './playback';
-import { expectNoBlockingA11yViolations } from './a11y';
+import {
+  FIXTURE,
+  type HostLog,
+  expectSegmentUiAccessible,
+  fields,
+  press,
+  seg,
+  selectWithKeys,
+  status,
+  trackCount,
+  viewerRoot,
+  waitForSegments,
+} from './segmentHarness';
+import { Host } from './SegmentHost';
 import '../../src/react/index.css';
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = false;
-
-const FIXTURE = '/tests/fixtures/datasets/lerobotv3';
-const LENGTHS = new Map([
-  [0, 3],
-  [1, 3],
-]);
-const ctx = { episodeLength: (index: number) => LENGTHS.get(index) };
-
-const fields: AnnotationField[] = [
-  {
-    id: 'outcome',
-    label: 'Outcome',
-    kind: 'select',
-    options: [
-      { value: 'success', label: 'Success', key: '1' },
-      { value: 'failure', label: 'Failure', key: '2' },
-      { value: 'partial', label: 'Partial', key: '3' },
-    ],
-  },
-  { id: 'tags', label: 'Tags', kind: 'tags', suggestions: ['clean'] },
-];
-
-function seg(
-  id: string,
-  startFrame: number,
-  endFrame: number,
-  extra: Partial<Segment> = {},
-): Segment {
-  return {
-    id,
-    startFrame,
-    endFrame,
-    task: null,
-    subtasks: [],
-    values: {},
-    review: 'to_review',
-    origin: { kind: 'suggested', confidence: 0.82 },
-    ...extra,
-  };
-}
-
-type HostLog = {
-  changes: AnnotationChange[];
-  value: () => AnnotationDocument;
-  /** Replace the host value (another writer saved). */
-  setValue?: (doc: AnnotationDocument) => void;
-};
-
-/**
- * A host that persists changes after `delayMs` (late answers) or refuses
- * every change when `refuse` is set.
- */
-function Host({
-  initial,
-  log,
-  delayMs = 0,
-  refuse = false,
-  readOnly = false,
-  editable = true,
-}: {
-  initial: AnnotationDocument;
-  log: HostLog;
-  delayMs?: number;
-  refuse?: boolean;
-  readOnly?: boolean;
-  editable?: boolean;
-}) {
-  const [value, setValue] = useState(initial);
-  const [saveState, setSaveState] = useState<LeRobotAnnotationSaveState>({ kind: 'idle' });
-  const valueRef = useRef(value);
-  const next = useRef(0);
-  log.value = () => valueRef.current;
-  log.setValue = (doc) => {
-    valueRef.current = doc;
-    setValue(doc);
-  };
-  const onChange = useCallback(
-    (change: AnnotationChange, meta: { changeId: string }) => {
-      log.changes.push(change);
-      if (refuse) {
-        setSaveState({ kind: 'refused', message: 'Server says no', changeIds: [meta.changeId] });
-        return;
-      }
-      setSaveState({ kind: 'saving' });
-      const answer = () => {
-        const result = applyChange(valueRef.current, change, ctx);
-        if (!result.ok) {
-          setSaveState({
-            kind: 'refused',
-            message: result.refusal.code,
-            changeIds: [meta.changeId],
-          });
-          return;
-        }
-        valueRef.current = result.doc;
-        setValue(result.doc);
-        setSaveState({ kind: 'saved' });
-      };
-      if (delayMs > 0) setTimeout(answer, delayMs);
-      else answer();
-    },
-    [delayMs, log, refuse],
-  );
-  const annotation = useMemo(
-    () =>
-      editable
-        ? {
-            value,
-            onChange,
-            saveState,
-            createSegmentId: () => `new-${++next.current}`,
-          }
-        : { value },
-    [editable, onChange, saveState, value],
-  );
-  return (
-    <LeRobotViewer
-      dataSource={useMemo(() => new FetchDataSource(FIXTURE), [])}
-      language="en"
-      annotation={annotation}
-      readOnly={readOnly}
-      fields={fields}
-      messages={
-        {
-          'segments.progress': '{{confirmed}} of {{total}} reviewed',
-          // Copy outside segments is the host's to rename too.
-          'sidebar.episodesCount': '{count, plural, one {# take} other {# takes}}',
-          // Standalone-app copy is not a host key: ignored.
-          'seo.title': 'INTERNAL COPY',
-        } as LeRobotMessages
-      }
-    />
-  );
-}
-
-/** Wait for the dataset and the segment UI, then stop autoplay so the playhead stays put. */
-async function waitForSegments(host: HTMLElement) {
-  await expect
-    .poll(() => host.querySelector('[data-testid="lerobot-segment-track"]'), { timeout: 60_000 })
-    .not.toBeNull();
-  const playButton = () =>
-    host.querySelector<HTMLButtonElement>(
-      'button.rounded-full:has(> svg.lucide-play, > svg.lucide-pause)',
-    );
-  await expect.poll(() => playButton()?.disabled, { timeout: 60_000 }).toBe(false);
-  // Pause the way a person does, so autoplay stays off for this episode. A
-  // Play icon alone is not "paused": autoplay may not have started yet, and
-  // would start after this returns. So play first if needed, then pause.
-  let pausedByClick = false;
-  await expect
-    .poll(
-      () => {
-        const button = playButton();
-        if (button?.querySelector('.lucide-pause')) {
-          button.click();
-          pausedByClick = true;
-          return false;
-        }
-        if (!pausedByClick) {
-          button?.click();
-          return false;
-        }
-        return button?.querySelector('.lucide-play') != null;
-      },
-      { timeout: 30_000, interval: 200 },
-    )
-    .toBe(true);
-  // Autoplay may have moved the playhead before it stopped (a frame is 0.1 s
-  // here); the key steps count segments from the start.
-  viewerRoot(host).focus();
-  await press('{Home}');
-}
-
-/** Select the segment `n` (1-based, current episode) with J from the start. */
-async function selectWithKeys(host: HTMLElement, n: number) {
-  viewerRoot(host).focus();
-  for (let i = 0; i < n; i++) await press('j');
-  await expect
-    .poll(
-      () => host.querySelector('[data-testid="lerobot-segment-inspector"]')?.textContent ?? '',
-      {
-        timeout: 10_000,
-      },
-    )
-    .toContain(`#${n}`);
-}
-
-function viewerRoot(host: HTMLElement) {
-  return host.querySelector<HTMLElement>('.lerobot-root')!;
-}
-
-async function press(keys: string) {
-  await userEvent.keyboard(keys);
-  await new Promise((resolve) => setTimeout(resolve, 30));
-}
-
-/** Axe on the segment UI this change adds (track, inspector, list). */
-async function expectSegmentUiAccessible(host: HTMLElement) {
-  // A closing dialog keeps the rest of the page aria-hidden until it is gone.
-  await expect.poll(() => document.querySelector('[data-aria-hidden="true"]')).toBeNull();
-  for (const id of ['lerobot-segment-track', 'lerobot-segment-inspector', 'lerobot-segment-list']) {
-    const element = host.querySelector(`[data-testid="${id}"]`);
-    expect(element, id).not.toBeNull();
-    await expectNoBlockingA11yViolations(element!);
-  }
-}
-
-function trackCount(host: HTMLElement) {
-  return () =>
-    host.querySelectorAll('[data-testid="lerobot-segment-track"] [role="listitem"]').length;
-}
-
-function status(host: HTMLElement) {
-  return host.querySelector('[data-testid="lerobot-segment-status"]')?.textContent ?? '';
-}
 
 describe('browser: segments, review and change ops', () => {
   let host: HTMLDivElement;
