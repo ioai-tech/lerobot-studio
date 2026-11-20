@@ -126,7 +126,7 @@ describe('LeRobotDataLoader version handling', () => {
     expect(mocks.loadTasks).not.toHaveBeenCalled();
   });
 
-  it('normalizes missing-file and non-Error initialization failures', async () => {
+  it('names missing-file and failed-read initialization failures', async () => {
     const missing = new DOMException('missing', 'NotFoundError');
     await expect(
       new LeRobotDataLoader(
@@ -138,7 +138,8 @@ describe('LeRobotDataLoader version handling', () => {
       new LeRobotDataLoader(
         source({ readText: vi.fn(async () => Promise.reject('offline')) }),
       ).initialize(),
-    ).rejects.toThrow(/failed to initialize: offline/i);
+      // A file that is there but cannot be read is named as such (s10 F-32).
+    ).rejects.toThrow(/^DATASET_READ_FAILED: could not read meta\/info\.json \(offline\)$/);
   });
 });
 
