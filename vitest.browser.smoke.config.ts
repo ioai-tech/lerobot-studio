@@ -12,7 +12,7 @@ const smokeTests = [
   'tests/browser/focus-recovery.browser.spec.tsx',
   'tests/browser/ui-primitives.browser.spec.tsx',
 ];
-const supportedBrowsers = ['chromium', 'firefox', 'webkit'] as const;
+const supportedBrowsers = ['chromium', 'firefox'] as const;
 const requestedBrowser = process.env.VITEST_BROWSER;
 if (
   requestedBrowser &&

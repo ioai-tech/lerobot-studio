@@ -53,6 +53,6 @@ CI 覆盖 Vite 应用和纯客户端的 Next.js 集成。
 
 ## 浏览器
 
-见 [浏览器支持](./browser)。Chromium 有完整浏览器测试；Firefox 和 WebKit 有冒烟测试。视频播放也取决于浏览器对编解码器的支持。
+见 [浏览器支持](./browser)。Chromium 有完整浏览器测试；Firefox 有冒烟测试。视频播放也取决于浏览器对编解码器的支持。
 
 固定使用 LeRobot `v0.6.1` 读取器验证。Nightly 任务也会检查上游 `main` 分支，但该检查不阻断发布。
