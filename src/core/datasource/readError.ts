@@ -17,3 +17,24 @@ export function isDatasetReadError(error: unknown): boolean {
   const message = error instanceof Error ? error.message : typeof error === 'string' ? error : '';
   return message.startsWith(DATASET_READ_FAILED);
 }
+
+/**
+ * Whether a read failure says the file is not there (HTTP 404, a missing
+ * directory entry): a dataset problem a validator reports, not a failed read.
+ */
+export function isMissingFileError(error: unknown): boolean {
+  for (let current = error, depth = 0; current && depth < 4; depth += 1) {
+    const record = current as {
+      status?: unknown;
+      name?: unknown;
+      message?: unknown;
+      cause?: unknown;
+    };
+    if (record.status === 404 || record.name === 'NotFoundError') return true;
+    if (typeof record.message === 'string' && /(?:->|status|HTTP)\s*404\b/i.test(record.message)) {
+      return true;
+    }
+    current = record.cause;
+  }
+  return false;
+}

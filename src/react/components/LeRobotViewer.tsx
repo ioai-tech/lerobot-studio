@@ -171,6 +171,7 @@ export function LeRobotViewerContent({
     setPendingSelection,
     getPendingSelection,
     info,
+    getErrorCause,
   } = useLeRobotData();
   const online = useBrowserOnline();
   const hostChrome = useMemo(() => <HostChrome extensions={extensions} />, [extensions]);
@@ -195,32 +196,47 @@ export function LeRobotViewerContent({
   /** Bumped by Retry so a URL source is resolved again (its preflight may have failed). */
   const [resolveAttempt, setResolveAttempt] = useState(0);
   const lastFatalErrorRef = useRef<string | null>(null);
+  /** No dataset is shown yet: the only time a failure is fatal or offline blocks the view. */
+  const opening = !info;
+  /** Offline while opening: the viewer says so at once (a read may never settle offline). */
+  const offlineWhileOpening = opening && !online;
   const fatalError = useMemo<LeRobotViewerError | null>(
     () =>
-      // Offline before the dataset is shown: a named, recoverable state at once,
-      // whatever the open is doing (a read may never settle offline), never a
-      // spinner (s10 F-32). Back online, the open is retried (below).
-      (!online && !info
-        ? {
-            code: 'NETWORK_OFFLINE' as const,
-            message: t('errors.offline'),
-            recoverable: true,
-            cause: resolveError ?? error ?? undefined,
-          }
-        : null) ??
-      resolveError ??
-      (error
-        ? {
-            // The Parquet reader (its worker or WASM) could not load: a host
-            // or CSP setup problem, not the data.
-            code: isParquetEngineError(error)
-              ? 'PARQUET_ENGINE_UNAVAILABLE'
-              : 'DATASET_LOAD_FAILED',
-            message: error,
-            recoverable: true,
-          }
-        : null),
-    [error, resolveError, online, info, t],
+      // A load failure with a dataset shown (an episode that cannot load, a
+      // source swap that failed) stays inside the shown viewer as its error
+      // line, never fatal: a host that replaces the viewer on a fatal error
+      // would blank a working view. A URL that cannot be resolved has no such
+      // line and stays fatal.
+      !opening
+        ? resolveError
+        : // An open that failed while the browser is offline is reported as that:
+          // named, recoverable, and retried once the browser is back online (below).
+          // Offline alone is not a failure: `navigator.onLine` can be wrong on a
+          // working network, and a host that unmounts on a fatal error would then
+          // never load (s10 F-32). Until something fails, the viewer only shows its
+          // offline state (`offlineWhileOpening`).
+          ((offlineWhileOpening && (error || resolveError)
+            ? {
+                code: 'NETWORK_OFFLINE' as const,
+                message: t('errors.offline'),
+                recoverable: true,
+                cause: resolveError ?? getErrorCause() ?? error ?? undefined,
+              }
+            : null) ??
+          resolveError ??
+          (error
+            ? {
+                // The Parquet reader (its worker or WASM) could not load: a host
+                // or CSP setup problem, not the data.
+                code: isParquetEngineError(error)
+                  ? 'PARQUET_ENGINE_UNAVAILABLE'
+                  : 'DATASET_LOAD_FAILED',
+                message: error,
+                recoverable: true,
+                cause: getErrorCause() ?? undefined,
+              }
+            : null)),
+    [opening, error, resolveError, offlineWhileOpening, getErrorCause, t],
   );
 
   const normalizeUrl = (raw: string) => {
@@ -409,6 +425,9 @@ export function LeRobotViewerContent({
       </div>
     ) : null;
 
+  const offlineState = (
+    <ErrorState title={t('common.error')} message={t('errors.offline')} onRetry={handleRetry} />
+  );
   const emptyState = fatalError ? (
     <ErrorState
       title={t('common.error')}
@@ -450,7 +469,7 @@ export function LeRobotViewerContent({
         sidebarHeader={sidebarHeader}
         hostChrome={extensions && extensions.length > 0 ? hostChrome : null}
         emptyState={emptyState}
-        blockingState={fatalError?.code === 'NETWORK_OFFLINE' ? emptyState : null}
+        blockingState={offlineWhileOpening ? offlineState : null}
         onRetry={handleRetry}
       />
       <SelectionBridge captureRef={captureSelectionRef} onSelectionChange={onSelectionChange} />

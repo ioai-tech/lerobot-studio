@@ -196,6 +196,9 @@ export const LeRobotDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
   const dataLoaderRef = useRef<LeRobotDataLoader | null>(null);
   const currentSourceRef = useRef<DataSource | FileSystemDirectoryHandle | null>(null);
   const failedSourcesRef = useRef<Set<DataSource | FileSystemDirectoryHandle>>(new Set());
+  /** The failure behind `error` of the last open, for a host's `onFatalError` cause. */
+  const errorCauseRef = useRef<unknown>(null);
+  const getErrorCause = useCallback(() => errorCauseRef.current, []);
   const isLoadingRef = useRef(false);
   /** Monotonic generation so A→B opens discard stale init results. */
   const initGenerationRef = useRef(0);
@@ -608,6 +611,7 @@ export const LeRobotDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
         swapResumeRef.current = false;
       }
       const taskId = 'lerobot-init';
+      errorCauseRef.current = null;
       setError(null);
       if (keepView) {
         setIsPlaying(false);
@@ -769,6 +773,7 @@ export const LeRobotDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
         console.error('Failed to initialize LeRobot data loader', e);
         failedSourcesRef.current.add(dataSource);
         const msg = e instanceof Error ? e.message : 'Unknown error during initialization';
+        errorCauseRef.current = e;
         setError(msg);
         if (!viewCleared) {
           // The shown dataset stays, as it was; the error names what failed.
@@ -1066,6 +1071,7 @@ export const LeRobotDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
   }, [dataLoader, info, selectEpisode, landSwap]);
 
   const clearError = useCallback(() => {
+    errorCauseRef.current = null;
     setError(null);
     failedSourcesRef.current.clear();
   }, []);
@@ -1169,6 +1175,7 @@ export const LeRobotDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
       getPendingSelection,
       subscribeSelectionSettled,
       takeResumeAfterSelect,
+      getErrorCause,
     }),
     [
       info,
@@ -1195,6 +1202,7 @@ export const LeRobotDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
       getPendingSelection,
       subscribeSelectionSettled,
       takeResumeAfterSelect,
+      getErrorCause,
     ],
   );
 

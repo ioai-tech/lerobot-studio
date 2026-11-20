@@ -46,6 +46,8 @@ export interface LeRobotDataContextType {
   reset: () => Promise<void>;
   clearError: () => void;
   error: string | null;
+  /** The original failure behind `error` (for example a named read failure), when there is one. */
+  getErrorCause: () => unknown;
   isLoading: boolean;
   /** Open this selection once its episode loads (deep link, data-source swap); `null` drops it. */
   setPendingSelection: (selection: PendingSelection | null) => void;

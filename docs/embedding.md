@@ -503,9 +503,9 @@ Common props include:
 
 `onExport` is a callback only. It does not include the standalone app's export engine.
 
-When you provide `onFatalError`, the viewer does not render its built-in fatal-error state. Keep the error in your application state and display an appropriate message yourself.
+When you provide `onFatalError`, the viewer does not render its built-in fatal-error state. Keep the error in your application state and display an appropriate message yourself. A failure is fatal only while no dataset is shown; once one is, a failed load (an episode whose data cannot be read) stays inside the viewer as its error line.
 
-If the browser is offline before the dataset is shown, the viewer reports `NETWORK_OFFLINE` (`recoverable: true`) at once instead of waiting on reads that may never finish. When the browser is back online it opens the dataset again by itself, so a host showing its own offline state can clear it on the browser's `online` event.
+If the browser is offline before the dataset is shown, the viewer shows its own "You're offline" state at once instead of a spinner, and keeps opening: `navigator.onLine` can be wrong on a working network, so the dataset still appears if the reads succeed. Only an open that actually failed while the browser is offline is reported to `onFatalError`, as `NETWORK_OFFLINE` (`recoverable: true`). When the browser is back online the viewer opens the dataset again by itself; a host that replaced the viewer with its own offline state can remount it on the browser's `online` event.
 
 For segments, review and change ops, see [API — Segments and review](./api.md#segments-and-review). For custom `DataSource` implementations and the full type list, see [API reference](./api.md).
 
