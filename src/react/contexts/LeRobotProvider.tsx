@@ -815,6 +815,18 @@ export const LeRobotDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
     ],
   );
 
+  /**
+   * The play state a selection carries (s10 F-14): an episode opens paused, and
+   * selecting another keeps playing only when playback was on. Set when a
+   * selection starts, taken once when its frames are in.
+   */
+  const resumeAfterSelectRef = useRef(false);
+  const takeResumeAfterSelect = useCallback(() => {
+    const resume = resumeAfterSelectRef.current;
+    resumeAfterSelectRef.current = false;
+    return resume;
+  }, []);
+
   const selectEpisode = useCallback(
     /**
      * `keepView`: reload the shown episode from a swapped-in source without
@@ -826,6 +838,8 @@ export const LeRobotDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
       const keep = options.keepView === true;
       const showTask: typeof upsertTask = keep ? () => undefined : upsertTask;
       if (!keep) setIsLoading(true);
+      // A second selection while one loads keeps the first one's play state.
+      resumeAfterSelectRef.current = resumeAfterSelectRef.current || isPlayingRef.current;
       setIsPlaying(false);
       setError(null);
       const taskId = 'lerobot-select-episode';
@@ -1154,6 +1168,7 @@ export const LeRobotDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
       hasPendingSelection,
       getPendingSelection,
       subscribeSelectionSettled,
+      takeResumeAfterSelect,
     }),
     [
       info,
@@ -1179,6 +1194,7 @@ export const LeRobotDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
       hasPendingSelection,
       getPendingSelection,
       subscribeSelectionSettled,
+      takeResumeAfterSelect,
     ],
   );
 

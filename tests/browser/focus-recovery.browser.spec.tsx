@@ -37,6 +37,11 @@ describe('focus stays in the viewer when the focused control goes away (s10 F-01
     Array.from(
       host.querySelectorAll<HTMLButtonElement>('[data-testid="lerobot-segment-list"] li > button'),
     );
+  /** The track appears before the (lazy) list: wait for both before the first click. */
+  const waitForRows = async () => {
+    await waitForSegments(host);
+    await expect.poll(() => rows().length, { timeout: 30_000 }).toBeGreaterThan(0);
+  };
   const inspectorText = () =>
     host.querySelector('[data-testid="lerobot-segment-inspector"]')?.textContent ?? '';
   const inspectorButton = (label: string) =>
@@ -59,7 +64,7 @@ describe('focus stays in the viewer when the focused control goes away (s10 F-01
   it('R on a clicked list row: focus moves to the next row; J and Ctrl+Z work at once', async () => {
     const log: HostLog = { changes: [], value: () => ({ episodes: {} }) };
     root.render(<Host log={log} initial={three()} />);
-    await waitForSegments(host);
+    await waitForRows();
     await userEvent.click(rows()[0]!);
     await expect.poll(inspectorText).toContain('#1');
     await press('r');
@@ -77,7 +82,7 @@ describe('focus stays in the viewer when the focused control goes away (s10 F-01
   it('the last row deleted by the Delete button: focus goes to the previous row, then to the viewer', async () => {
     const log: HostLog = { changes: [], value: () => ({ episodes: {} }) };
     root.render(<Host log={log} initial={three()} />);
-    await waitForSegments(host);
+    await waitForRows();
     // The last row: no next one, so the previous one takes focus.
     await userEvent.click(rows()[2]!);
     await expect.poll(inspectorText).toContain('#3');
@@ -106,7 +111,7 @@ describe('focus stays in the viewer when the focused control goes away (s10 F-01
   it('a merge that removes the focused row keeps keys working; the Merge button keeps focus', async () => {
     const log: HostLog = { changes: [], value: () => ({ episodes: {} }) };
     root.render(<Host log={log} initial={three()} />);
-    await waitForSegments(host);
+    await waitForRows();
     // Focus on row b, selection on a: M merges b into a and removes the focused row.
     await userEvent.click(rows()[1]!);
     await expect.poll(inspectorText).toContain('#2');
@@ -144,7 +149,7 @@ describe('focus stays in the viewer when the focused control goes away (s10 F-01
         }}
       />,
     );
-    await waitForSegments(host);
+    await waitForRows();
     // G then N adds a segment on the uncovered frame; its row gets focus by a click.
     await press('g');
     await press('n');
@@ -176,7 +181,7 @@ describe('focus stays in the viewer when the focused control goes away (s10 F-01
         initial={{ episodes: { 0: { segments: [seg('a', 0, 0), seg('b', 1, 2)] } } }}
       />,
     );
-    await waitForSegments(host);
+    await waitForRows();
     await userEvent.click(rows()[1]!);
     await expect.poll(inspectorText).toContain('#2');
     await userEvent.click(inspectorButton('Confirm'));
@@ -192,7 +197,7 @@ describe('focus stays in the viewer when the focused control goes away (s10 F-01
     outside.textContent = 'Host control';
     document.body.append(outside);
     root.render(<Host log={log} initial={three()} />);
-    await waitForSegments(host);
+    await waitForRows();
     await userEvent.click(rows()[0]!);
     // Focus leaves the viewer for a host control, which then goes away (focus on <body>).
     outside.focus();
@@ -228,7 +233,7 @@ describe('focus stays in the viewer when the focused control goes away (s10 F-01
       },
     });
     root.render(<Host log={log} dataset={FRAME_CODED} initial={five(['a', 'b', 'c', 'd', 'e'])} />);
-    await waitForSegments(host);
+    await waitForRows();
     await expect.poll(() => rows().length).toBe(5);
     rows()[2]!.focus();
     log.setValue!(five(['b', 'c', 'd', 'e']));

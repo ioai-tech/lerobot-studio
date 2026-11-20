@@ -205,6 +205,59 @@ describe('browser: segments, review and change ops', () => {
     expect(checked()).toBe('All 2');
   });
 
+  it('a row keeps each badge on one line: Excluded, Suggested 0.33, Check warnings 1 (s10 F-27)', async () => {
+    const log: HostLog = { changes: [], value: () => ({ episodes: {} }) };
+    root.render(
+      <Host
+        log={log}
+        initial={{
+          episodes: {
+            0: {
+              segments: [
+                seg('a', 0, 2, {
+                  excluded: true,
+                  origin: { kind: 'suggested', confidence: 0.33 },
+                  status: { severity: 'warn', label: 'Check warnings', count: 1 },
+                }),
+              ],
+            },
+          },
+        }}
+      />,
+    );
+    await waitForSegments(host);
+    const badges = () =>
+      Array.from(
+        host.querySelectorAll<HTMLElement>(
+          '[data-testid="lerobot-segment-list"] li > button > span:last-child > *',
+        ),
+      ).filter((badge) => !badge.classList.contains('sr-only'));
+    await expect.poll(() => badges().length).toBeGreaterThanOrEqual(3);
+    const lineHeight = parseFloat(getComputedStyle(badges()[0]!).lineHeight) || 15;
+    for (const badge of badges()) {
+      // One line each: never "Suggested / 0.33" stacked in a column.
+      expect(badge.getBoundingClientRect().height, badge.textContent ?? '').toBeLessThan(
+        lineHeight * 1.5,
+      );
+    }
+    expect(badges().map((badge) => badge.textContent)).toEqual([
+      'Excluded',
+      'Suggested 0.33',
+      'Check warnings 1',
+    ]);
+    // A badge never breaks inside, however narrow the row: whole badges wrap instead.
+    for (const badge of badges()) {
+      expect(getComputedStyle(badge).whiteSpace, badge.textContent ?? '').toBe('nowrap');
+    }
+    // The inspector's Excluded badge reads as a state, not as struck-out (deleted) text.
+    await selectWithKeys(host, 1);
+    const inspectorBadge = Array.from(
+      host.querySelectorAll<HTMLElement>('[data-testid="lerobot-segment-inspector"] span'),
+    ).find((span) => span.childElementCount === 0 && span.textContent === 'Excluded');
+    expect(inspectorBadge).toBeDefined();
+    expect(getComputedStyle(inspectorBadge!).textDecorationLine).not.toContain('line-through');
+  });
+
   it('a refusing host keeps its value: each refusal drops its change and its undo step', async () => {
     const log: HostLog = { changes: [], value: () => ({ episodes: {} }) };
     root.render(
@@ -369,6 +422,63 @@ describe('browser: segments, review and change ops', () => {
     expect(host.querySelector('[data-testid="lerobot-segment-list"]')).toBeNull();
   });
 
+  it('with the segment UI on, J / K never step episodes, even from <body> (s10 F-12)', async () => {
+    const reports: Array<number | null> = [];
+    const value: AnnotationDocument = {
+      episodes: { 0: { segments: [seg('a', 0, 0), seg('b', 1, 2)] }, 1: { segments: [] } },
+    };
+    root.render(
+      <LeRobotViewer
+        dataSource={new FetchDataSource(FIXTURE)}
+        language="en"
+        annotation={{ value, onChange: () => undefined }}
+        fields={fields}
+        onSelectionChange={(selection) => reports.push(selection.episodeIndex)}
+      />,
+    );
+    await waitForSegments(host);
+    await expect.poll(() => reports.at(-1)).toBe(0);
+    (document.activeElement as HTMLElement | null)?.blur();
+    expect(viewerRoot(host).contains(document.activeElement)).toBe(false);
+    await press('j');
+    await press('j');
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    expect(reports.at(-1)).toBe(0);
+    await press('k');
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    expect(reports.at(-1)).toBe(0);
+  });
+
+  it('J / K step episodes in a viewer without segments, as ↓ / ↑ do (s10 F-12)', async () => {
+    const reports: Array<number | null> = [];
+    root.render(
+      <LeRobotViewer
+        dataSource={new FetchDataSource(FIXTURE)}
+        language="en"
+        onSelectionChange={(selection) => reports.push(selection.episodeIndex)}
+      />,
+    );
+    await expect
+      .poll(() => /\d+ episodes?/.test(host.textContent ?? ''), { timeout: 60_000 })
+      .toBe(true);
+    await expect.poll(() => reports.at(-1)).toBe(0);
+    // Keys wait for the episode's frames (no step while it loads).
+    await expect
+      .poll(
+        () => host.querySelector<HTMLButtonElement>('button[aria-label="Play/pause"]')?.disabled,
+      )
+      .toBe(false);
+    viewerRoot(host).focus();
+    await press('j');
+    await expect.poll(() => reports.at(-1), { timeout: 20_000 }).toBe(1);
+    await press('k');
+    await expect.poll(() => reports.at(-1), { timeout: 20_000 }).toBe(0);
+    // With a modifier, J is not an episode step.
+    await press('{Control>}j{/Control}');
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    expect(reports.at(-1)).toBe(0);
+  });
+
   it('read-only shows segments, review and badges with no edit control and no edit key', async () => {
     const log: HostLog = { changes: [], value: () => ({ episodes: {} }) };
     root.render(
@@ -402,9 +512,12 @@ describe('browser: segments, review and change ops', () => {
     }
     expect(host.querySelector('[data-testid^="segment-handle-"]')).toBeNull();
     expect(host.querySelector('[title="Edit episodes"]')).toBeNull();
-    const failure = page.getByRole('radio', { name: 'Failure' });
-    await expect.element(failure).toBeDisabled();
-    await expect.element(failure).toHaveAttribute('aria-checked', 'true');
+    // The outcome reads as text, not as disabled toggles (s10 F-16).
+    const inspector = host.querySelector('[data-testid="lerobot-segment-inspector"]')!;
+    expect(inspector.querySelectorAll('[role="radio"], [role="radiogroup"]')).toHaveLength(0);
+    expect(inspector.querySelector('[data-field-value="outcome"]')?.textContent).toBe(
+      'OutcomeFailure',
+    );
   });
 
   it('readOnly without annotation never edits (no uncontrolled editing)', async () => {

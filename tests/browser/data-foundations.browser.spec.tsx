@@ -132,7 +132,7 @@ describe('browser: data foundations', () => {
 
   it('retries a dead video URL once and keeps the frame across a URL refresh', async () => {
     const source = new SignedFixtureSource({ deadFirstVideoUrl: true });
-    // Without the playback bar nothing autoplays, so the episode stays put.
+    // Nothing plays on its own, so the episode stays put.
     await render(<LeRobotViewer dataSource={source} language="en" showPlaybackBar={false} />);
     await waitFor(() => (video()?.readyState ?? 0) >= 2);
     expect(source.invalidations).toBe(1);
@@ -390,7 +390,7 @@ describe('browser: data foundations', () => {
     const videos = () => Array.from(host.querySelectorAll('video'));
     const slider = () => host.querySelector<HTMLElement>('[role="slider"]')!;
     const button = () => host.querySelector<HTMLButtonElement>('button[aria-label="Play/pause"]')!;
-    // The play state as the UI shows it (autoplay may start at any moment).
+    // The play state as the UI shows it.
     const uiPlaying = () => button()?.querySelector('.lucide-pause') != null;
     const playing = () => uiPlaying() && videos().some((v) => !v.paused);
     await waitFor(() => videos().length === 2 && videos().every((v) => v.readyState >= 2));

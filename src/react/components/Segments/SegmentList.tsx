@@ -187,7 +187,11 @@ export const SegmentList: React.FC<{ episodeIndex: number; showTitle?: boolean }
                   segment.origin.kind === 'suggested' ||
                   segment.status ||
                   markerIssues.length > 0 ? (
-                    <span className="flex min-w-0 items-center gap-2 pl-5 text-[10px] text-muted-foreground">
+                    <span
+                      // Each badge stays on one line; a narrow row wraps whole badges (s10 F-27).
+                      className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5 pl-5 text-[10px] text-muted-foreground [&>*]:whitespace-nowrap"
+                      data-testid="lerobot-segment-row-badges"
+                    >
                       {display === 'excluded' ? (
                         <span className="font-medium">{reviewText}</span>
                       ) : null}

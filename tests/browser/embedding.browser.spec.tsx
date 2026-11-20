@@ -96,7 +96,14 @@ async function videosReady(count: number) {
     .toBe(true);
 }
 
-/** Stop autoplay and wait until every camera rests. */
+/** Start playback the way a person does (an episode opens paused). */
+async function play() {
+  await expect.poll(() => playButton()?.disabled, { timeout: 60_000 }).toBe(false);
+  if (!isPlaying()) playButton()!.click();
+  await expect.poll(isPlaying, { timeout: 30_000 }).toBe(true);
+}
+
+/** Pause and wait until every camera rests. */
 async function pause() {
   await expect.poll(() => playButton()?.disabled, { timeout: 60_000 }).toBe(false);
   await expect
@@ -205,7 +212,7 @@ describe('browser: embedding — selection', () => {
       }),
     );
     await videosReady(2);
-    await expect.poll(isPlaying, { timeout: 30_000 }).toBe(true);
+    await play();
     reports.length = 0;
     await new Promise((resolve) => setTimeout(resolve, 2_000));
     await pause();
@@ -567,6 +574,50 @@ describe('browser: embedding — host chrome', () => {
     ).toBe('All 3');
   });
 
+  it('35 proposals stay readable: blocks as tall as segments, numbered, apart (s10 F-17)', async () => {
+    const count = 35;
+    const span = Math.floor(FRAMES / count);
+    await mount(
+      1280,
+      800,
+      viewer({
+        annotation: { value: DOC },
+        overlaySegments: [
+          {
+            episodeIndex: 0,
+            segments: Array.from({ length: count }, (_, index) => ({
+              id: `p${index}`,
+              startFrame: index * span,
+              endFrame: index * span + span - 1,
+              task: null,
+              origin: { kind: 'suggested' as const },
+            })),
+          },
+        ],
+      }),
+    );
+    await videosReady(2);
+    await pause();
+    const blocks = () =>
+      Array.from(
+        host.querySelectorAll<HTMLButtonElement>('[data-testid="lerobot-overlay-band"] button'),
+      );
+    await expect.poll(() => blocks().length).toBe(count);
+    const rects = blocks().map((block) => block.getBoundingClientRect());
+    for (const rect of rects) expect(rect.height).toBeGreaterThanOrEqual(14);
+    // Numbered like the segment track, and neighbours never overlap.
+    expect(blocks().map((block) => block.textContent)).toEqual(
+      Array.from({ length: count }, (_, index) => String(index + 1)),
+    );
+    for (let index = 1; index < rects.length; index += 1) {
+      expect(rects[index]!.left).toBeGreaterThanOrEqual(rects[index - 1]!.right - 0.5);
+    }
+    // Neighbours differ in shade.
+    expect(getComputedStyle(blocks()[0]!).backgroundColor).not.toBe(
+      getComputedStyle(blocks()[1]!).backgroundColor,
+    );
+  });
+
   it('theme tokens set the root variables, with dark overrides only in dark', async () => {
     const themeTokens = {
       primary: 'rgb(29, 78, 216)',
@@ -683,7 +734,7 @@ describe('browser: embedding — layout and time axis', () => {
   it('during playback the thumb and the fill sit at k / N of the frame shown', async () => {
     await mount(1280, 800, viewer());
     await videosReady(2);
-    await expect.poll(isPlaying, { timeout: 30_000 }).toBe(true);
+    await play();
     const thumb = host.querySelector<HTMLElement>('[data-testid="playback-thumb"]')!;
     const fill = host.querySelector<HTMLElement>('[data-testid="playback-fill"]')!;
     const frameText = host.querySelector<HTMLElement>('[data-testid="playback-frame"]')!;

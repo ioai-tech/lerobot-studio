@@ -51,7 +51,7 @@ export type HostLog = {
   setValue?: (doc: AnnotationDocument) => void;
 };
 
-/** Wait for the dataset and the segment UI, then stop autoplay so the playhead stays put. */
+/** Wait for the dataset and the segment UI, then make sure playback is paused so the playhead stays put. */
 export async function waitForSegments(host: HTMLElement) {
   await expect
     .poll(() => host.querySelector('[data-testid="lerobot-segment-track"]'), { timeout: 60_000 })

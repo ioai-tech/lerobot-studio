@@ -19,6 +19,20 @@ import {
 } from './segmentShortcuts';
 
 /** Video-player and segment keyboard shortcuts. */
+/** J / K without modifiers, as the episode step they stand for (↓ / ↑). */
+export function episodeStepKey(event: {
+  key: string;
+  ctrlKey: boolean;
+  metaKey: boolean;
+  altKey: boolean;
+  shiftKey: boolean;
+}): 'ArrowDown' | 'ArrowUp' | null {
+  if (event.ctrlKey || event.metaKey || event.altKey || event.shiftKey) return null;
+  if (event.key === 'j') return 'ArrowDown';
+  if (event.key === 'k') return 'ArrowUp';
+  return null;
+}
+
 export const useKeyboardShortcuts = (enabled: boolean = true) => {
   const portalContainer = usePortalContainer();
   const { episodes, getFrameIndex, isLoading, info } = useLeRobotData();
@@ -237,8 +251,12 @@ export const useKeyboardShortcuts = (enabled: boolean = true) => {
       if (!isEventInsideStudio(target, portalContainer)) return;
       if (isPlaybackShortcutBlocked(target, e.key)) return;
 
+      // One key map (s10 F-12): J / K step to the next / previous item. With the
+      // segment UI on they are segment keys only (above), never an episode step,
+      // wherever focus is; with it off they step episodes, as ↓ / ↑ do.
+      const key = (segmentsRef.current.active ? null : episodeStepKey(e)) ?? e.key;
       const preventDefaultKeys = ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', ' '];
-      if (preventDefaultKeys.includes(e.key)) {
+      if (preventDefaultKeys.includes(key)) {
         e.preventDefault();
         e.stopPropagation();
       }
@@ -251,7 +269,7 @@ export const useKeyboardShortcuts = (enabled: boolean = true) => {
       const canUseSubtaskKeys =
         canAnnotateRef.current && pauseToLabelRef.current && totalFrames > 0;
 
-      switch (e.key) {
+      switch (key) {
         case 'ArrowUp': {
           if (trimSuggestionRef.current) return;
           if (currentEpisodes.length === 0) return;

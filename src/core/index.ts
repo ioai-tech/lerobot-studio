@@ -51,14 +51,14 @@ export {
   buildPlaybackFrames,
   getFirstAvailableEpisodeIndex,
 } from './playback/episodeLoadPlan';
-export { shouldStartAutoplay } from './playback/playbackAutoplay';
+export { shouldPlayShownEpisode } from './playback/playbackAutoplay';
 export type { PendingSelection } from './playback/selection';
 export {
   frameAtSeconds,
   pendingSelectionEpisode,
   pendingSelectionFrame,
 } from './playback/selection';
-export type { AutoplayDecisionInput } from './playback/playbackAutoplay';
+export type { ShownEpisodePlayInput } from './playback/playbackAutoplay';
 
 export * from './utils/featureUtils';
 export * from './utils/datasetDisplayName';

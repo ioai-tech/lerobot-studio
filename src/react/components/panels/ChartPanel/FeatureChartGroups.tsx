@@ -36,6 +36,9 @@ export interface FeatureChartGroupsProps {
   resolvedTheme: 'light' | 'dark';
 }
 
+/** Smallest plot (axes included); its host reserves it, so the plot never overflows the group. */
+const PLOT_MIN_HEIGHT_PX = 64;
+
 function formatValue(value: number | null | undefined): string {
   if (value == null || !Number.isFinite(value)) return '—';
   const abs = Math.abs(value);
@@ -154,7 +157,7 @@ function FeatureChart({
     };
 
     const width = Math.max(50, host.clientWidth);
-    const height = Math.max(60, host.clientHeight);
+    const height = Math.max(PLOT_MIN_HEIGHT_PX, host.clientHeight);
     const plot = new uPlot(
       {
         width,
@@ -221,7 +224,7 @@ function FeatureChart({
 
     const observer = new ResizeObserver(() => {
       const nextWidth = Math.max(50, host.clientWidth);
-      const nextHeight = Math.max(60, host.clientHeight);
+      const nextHeight = Math.max(PLOT_MIN_HEIGHT_PX, host.clientHeight);
       if (nextWidth !== plot.width || nextHeight !== plot.height) {
         plot.setSize({ width: nextWidth, height: nextHeight });
         plot.setData(build(nextWidth), true);
@@ -243,7 +246,9 @@ function FeatureChart({
 
   return (
     <section
-      className="flex min-h-[96px] flex-1 flex-col border-b border-border/50 last:border-b-0"
+      // No fixed minimum: the group is at least its header plus the plot's minimum, so the
+      // legend chips never sit on the plot or its axis; the list scrolls instead (s10 F-25).
+      className="flex flex-1 flex-col border-b border-border/50 last:border-b-0"
       aria-label={group.title}
       aria-busy={data.pending ? true : undefined}
       data-chart-group={group.id}
@@ -305,7 +310,11 @@ function FeatureChart({
       {data.pending ? (
         <ChartPlotPlaceholder />
       ) : (
-        <div ref={plotHostRef} className="relative min-h-0 flex-1" />
+        <div
+          ref={plotHostRef}
+          className="relative flex-1 overflow-hidden"
+          style={{ minHeight: PLOT_MIN_HEIGHT_PX }}
+        />
       )}
     </section>
   );
