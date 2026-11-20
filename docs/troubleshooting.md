@@ -51,6 +51,14 @@ The layout, segment panels and some dialogs load as separate files on first use.
 
 ---
 
+## "You're offline" before the dataset shows
+
+The browser reported that it is offline (`NETWORK_OFFLINE` for an `onFatalError` host) before the dataset was shown. The viewer opens the dataset again by itself once the browser is back online; **Retry** tries at once.
+
+A file that could not be read while online (network error, HTTP status) is named `DATASET_READ_FAILED: could not read <path>` with the cause. It is never reported as an invalid dataset.
+
+---
+
 ## The Parquet reader could not load
 
 An open that ends with `PARQUET_ENGINE_UNAVAILABLE` could not start the Parquet reader; the dataset was not read. The message names the cause:

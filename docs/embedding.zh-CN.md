@@ -505,6 +505,8 @@ const LeRobotViewer = dynamic(
 
 提供 `onFatalError` 后，查看器不会渲染内置的致命错误状态。请在应用中保存错误信息，并自行显示合适的提示。
 
+如果在数据集显示之前浏览器已离线，查看器会立即报告 `NETWORK_OFFLINE`（`recoverable: true`），而不是等待可能永远不会完成的读取。浏览器恢复在线后，查看器会自行重新打开数据集；宿主若显示了自己的离线状态，可在浏览器的 `online` 事件时清除它。
+
 分段、审核与修改操作见 [API — 分段与审核](./api#segments-and-review)。自定义 `DataSource` 和完整类型列表见 [API 参考](./api)。
 
 ## 集成注意事项

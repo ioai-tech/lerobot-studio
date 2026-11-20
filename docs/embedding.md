@@ -505,6 +505,8 @@ Common props include:
 
 When you provide `onFatalError`, the viewer does not render its built-in fatal-error state. Keep the error in your application state and display an appropriate message yourself.
 
+If the browser is offline before the dataset is shown, the viewer reports `NETWORK_OFFLINE` (`recoverable: true`) at once instead of waiting on reads that may never finish. When the browser is back online it opens the dataset again by itself, so a host showing its own offline state can clear it on the browser's `online` event.
+
 For segments, review and change ops, see [API — Segments and review](./api.md#segments-and-review). For custom `DataSource` implementations and the full type list, see [API reference](./api.md).
 
 ## Integration notes

@@ -51,6 +51,14 @@
 
 ---
 
+## 数据集显示前提示"当前处于离线状态"
+
+数据集显示之前，浏览器报告已离线（使用 `onFatalError` 的宿主收到 `NETWORK_OFFLINE`）。浏览器恢复在线后，查看器会自行重新打开数据集；点击**重试**会立即尝试。
+
+在线时无法读取的文件（网络错误、HTTP 状态码）会报告为 `DATASET_READ_FAILED: could not read <路径>` 并附上原因，不会被报告为数据集无效。
+
+---
+
 ## Parquet 读取器无法加载
 
 以 `PARQUET_ENGINE_UNAVAILABLE` 结束的打开，表示 Parquet 读取器未能启动，数据集并未被读取。错误信息会注明原因：

@@ -3,7 +3,10 @@ import type { LeRobotFeature } from '../types/lerobot';
 /**
  * Camera-first layout. Cameras get the height first: their row takes what
  * the tiles need to show the whole frame, at least `CAMERA_SHARE` of the
- * panel area, and the charts below keep at least `CHART_MIN_HEIGHT_PX`.
+ * panel area, and the charts below keep at least `CHART_MIN_HEIGHT_PX` — but
+ * in a short panel area never more than the rest of the cameras' share
+ * (s10 F-31: at 1024 × 768 with the segment inspector open, the fixed chart
+ * floor left the cameras an 80 px strip).
  */
 export const CAMERA_SHARE = 0.62;
 export const CHART_MIN_HEIGHT_PX = 200;
@@ -47,7 +50,8 @@ export function cameraAreaHeight(input: {
   const tileWidth = width / perRow;
   const needed = rows * (tileWidth / Math.max(0.1, aspect) + PANEL_HEADER_PX);
   const target = Math.max(needed, height * CAMERA_SHARE);
-  return Math.round(Math.max(0, Math.min(target, height - CHART_MIN_HEIGHT_PX)));
+  const chartFloor = Math.min(CHART_MIN_HEIGHT_PX, height * (1 - CAMERA_SHARE));
+  return Math.round(Math.max(0, Math.min(target, height - chartFloor)));
 }
 
 /**

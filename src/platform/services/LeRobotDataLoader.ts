@@ -18,6 +18,8 @@ import {
   getValidatorForVersion,
   hasBlockingValidationError,
   isParquetEngineError,
+  isDatasetReadError,
+  datasetReadError,
   buildSubtaskTable,
   indicesFromFrameLabels,
   tableFromSubtaskIndices,
@@ -202,11 +204,13 @@ export class LeRobotDataLoader {
       this.adapter = getAdapterForVersion(this.info.codebase_version);
       // A reader that could not load says nothing about the files: it is
       // reported as itself, never as the validator's "not Parquet".
+      // A reader that could not load, or a file that could not be read, says
+      // nothing about the data: the validator's parse failures never stand for them.
       let engineFailure: unknown = null;
       const helpers = {
         readParquetToIPC: (path: string, columns?: string[]) =>
           this.readParquetByPath(path, columns).catch((error: unknown) => {
-            if (isParquetEngineError(error)) engineFailure ??= error;
+            if (isParquetEngineError(error) || isDatasetReadError(error)) engineFailure ??= error;
             throw error;
           }),
       };
@@ -431,7 +435,9 @@ export class LeRobotDataLoader {
   }
 
   private async parseParquetByPath(path: string, columns?: string[]): Promise<Uint8Array> {
-    const bytes = await this.readFileBytesCached(path);
+    const bytes = await this.readFileBytesCached(path).catch((error: unknown) => {
+      throw datasetReadError(path, error);
+    });
     // Metadata tables may also be Arrow IPC (sources that synthesize metadata,
     // such as episode sets, produce IPC directly); Arrow reads it as-is.
     if (isArrowIpc(bytes)) return bytes;
