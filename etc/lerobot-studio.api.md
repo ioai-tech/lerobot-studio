@@ -288,6 +288,9 @@ export interface EpisodeSetResolvedRecording {
 }
 
 // @public
+export function fileNotFoundError(path: string, where?: string): Error;
+
+// @public
 export const LEROBOT_MESSAGE_KEYS: readonly LeRobotMessageKey[];
 
 // @public

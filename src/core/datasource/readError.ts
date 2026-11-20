@@ -19,22 +19,23 @@ export function isDatasetReadError(error: unknown): boolean {
 }
 
 /**
- * Whether a read failure says the file is not there (HTTP 404, a missing
- * directory entry): a dataset problem a validator reports, not a failed read.
+ * The one way a data source says "this file is not in the dataset" (an archive,
+ * tar, folder, manifest or episode set without that entry): a DOMException
+ * named `NotFoundError`, the error the browser's File System Access API
+ * throws for a missing entry. A custom `DataSource` throws it too.
+ */
+export function fileNotFoundError(path: string, where?: string): Error {
+  return new DOMException(
+    `File not found${where ? ` in ${where}` : ''}: ${path}`,
+    'NotFoundError',
+  ) as unknown as Error;
+}
+
+/**
+ * Whether a read failure says the file is not in the dataset (see
+ * `fileNotFoundError`): a dataset problem a validator reports, not a failed
+ * read. An HTTP 404 for a file a manifest lists is a failed read.
  */
 export function isMissingFileError(error: unknown): boolean {
-  for (let current = error, depth = 0; current && depth < 4; depth += 1) {
-    const record = current as {
-      status?: unknown;
-      name?: unknown;
-      message?: unknown;
-      cause?: unknown;
-    };
-    if (record.status === 404 || record.name === 'NotFoundError') return true;
-    if (typeof record.message === 'string' && /(?:->|status|HTTP)\s*404\b/i.test(record.message)) {
-      return true;
-    }
-    current = record.cause;
-  }
-  return false;
+  return (error as { name?: unknown } | null)?.name === 'NotFoundError';
 }

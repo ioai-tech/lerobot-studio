@@ -1,3 +1,4 @@
+import { fileNotFoundError } from '../../core/datasource/readError';
 import type { ByteRangeResult, DataSource, ProgressHandler } from '../../core/datasource/types';
 import { formatLeRobotPath } from '../../core/versioning/pathTemplate';
 import {
@@ -375,7 +376,7 @@ export class EpisodeSetDataSource implements DataSource {
 
   private virtualFile(path: string): VirtualFile {
     const file = this.virtualFiles.get(path);
-    if (!file) throw new Error(`File not found in episode set: ${path}`);
+    if (!file) throw fileNotFoundError(path, 'episode set');
     return file;
   }
 

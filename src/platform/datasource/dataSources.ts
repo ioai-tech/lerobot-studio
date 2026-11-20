@@ -1,3 +1,4 @@
+import { fileNotFoundError } from '../../core/datasource/readError';
 import { ZipReader, BlobReader, HttpReader, TextWriter, Uint8ArrayWriter } from '@zip.js/zip.js';
 import { Gunzip } from 'fflate';
 import {
@@ -215,7 +216,7 @@ abstract class BaseZipDataSource implements DataSource {
   async readText(path: string, _onProgress?: ProgressHandler): Promise<string> {
     await this.ensureInitialized();
     const entry = this.entryMap.get(this.resolvePath(path));
-    if (!entry) throw new Error(`File not found in archive: ${path}`);
+    if (!entry) throw fileNotFoundError(path, 'archive');
     assertMaterializable(path, Number(entry.uncompressedSize ?? 0), this.limits);
     const writer = new TextWriter();
     return entry.getData(writer);
@@ -224,7 +225,7 @@ abstract class BaseZipDataSource implements DataSource {
   async readBytes(path: string, _onProgress?: ProgressHandler): Promise<Uint8Array> {
     await this.ensureInitialized();
     const entry = this.entryMap.get(this.resolvePath(path));
-    if (!entry) throw new Error(`File not found in archive: ${path}`);
+    if (!entry) throw fileNotFoundError(path, 'archive');
     assertMaterializable(path, Number(entry.uncompressedSize ?? 0), this.limits);
     const writer = new Uint8ArrayWriter();
     return entry.getData(writer);
@@ -563,6 +564,8 @@ export class DirectoryDataSource implements DataSource {
   private async getFileHandle(path: string): Promise<FileSystemFileHandle> {
     const parts = normalizePath(path).split('/');
     let current: FileSystemDirectoryHandle | FileSystemFileHandle = this.rootHandle;
+    // The browser throws a DOMException named NotFoundError for a missing
+    // entry: the same not-found every source throws (fileNotFoundError).
     for (let i = 0; i < parts.length - 1; i++) {
       current = await (current as FileSystemDirectoryHandle).getDirectoryHandle(parts[i]);
     }
@@ -686,7 +689,7 @@ export class FileListDirectoryDataSource implements DataSource {
 
   private getFile(path: string): File {
     const file = this.fileMap.get(this.resolvePath(path));
-    if (!file) throw new Error(`File not found in selected directory: ${path}`);
+    if (!file) throw fileNotFoundError(path, 'selected directory');
     return file;
   }
 
@@ -1061,7 +1064,7 @@ export class TarDataSourceLocal implements DataSource {
       protected async readEntry(path: string, onProgress?: ProgressHandler): Promise<Uint8Array> {
         await this.ensureIndex(onProgress);
         const entry = this.entries.get(this.resolvePath(path));
-        if (!entry) throw new Error(`File not found in tar: ${path}`);
+        if (!entry) throw fileNotFoundError(path, 'tar');
         assertMaterializable(path, entry.size, this.limits);
         const slice = this.outer.slice(entry.offset, entry.offset + entry.size);
         onProgress?.({ phase: 'read', loaded: 0, total: entry.size });
@@ -1179,7 +1182,7 @@ class TarBufferDataSource implements DataSource {
       protected async readEntry(path: string, onProgress?: ProgressHandler): Promise<Uint8Array> {
         await this.ensureIndex(onProgress);
         const entry = this.entries.get(this.resolvePath(path));
-        if (!entry) throw new Error(`File not found in tar: ${path}`);
+        if (!entry) throw fileNotFoundError(path, 'tar');
         assertMaterializable(path, entry.size, this.limits);
         const data = this.outer.buffer.subarray(entry.offset, entry.offset + entry.size);
         onProgress?.({ phase: 'read', loaded: entry.size, total: entry.size });

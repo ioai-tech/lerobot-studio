@@ -1,3 +1,4 @@
+import { fileNotFoundError } from '../../core/datasource/readError';
 import type { ByteRangeResult, DataSource, ProgressHandler } from '../../core/datasource/types';
 import {
   Coalescer,
@@ -296,7 +297,7 @@ export class RemoteManifestDataSource implements DataSource {
   private getState(path: string): ManifestEntryState {
     const state = this.entryMap.get(normalizeLogicalPath(path));
     if (!state) {
-      throw new Error(`File not found in manifest: ${path}`);
+      throw fileNotFoundError(path, 'manifest');
     }
     return state;
   }

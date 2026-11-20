@@ -309,7 +309,7 @@ export class LeRobotDataLoader {
         }
       }
       if (e instanceof Error) {
-        if (e.name === 'NotFoundError') {
+        if (isMissingFileError(e)) {
           throw new Error('Not a valid LeRobot dataset: meta/info.json not found');
         }
         throw e;

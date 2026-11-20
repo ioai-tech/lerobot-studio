@@ -3,7 +3,9 @@ import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { page } from 'vitest/browser';
 import { LeRobotViewer, type LeRobotViewerError } from '@/components/LeRobotViewer';
-import type { DataSource } from '@/platform';
+import { zipSync } from 'fflate';
+import { FileListDirectoryDataSource, ZipDataSourceLocal, type DataSource } from '@/platform';
+import { fileNotFoundError } from '@/core';
 import { FetchDataSource } from './fixtures';
 import '../../src/react/index.css';
 
@@ -64,18 +66,42 @@ class OneFileUnreadable extends FetchDataSource {
   }
 }
 
-/** A v2 dataset whose one text file answers with an HTTP status. */
+/** A v2 dataset whose one text file answers with an HTTP status, or is not in the dataset. */
 class V2TextStatus extends FetchDataSource {
   constructor(
     private readonly path: string,
-    private readonly status: number,
+    private readonly status: number | 'missing',
   ) {
     super('/tests/fixtures/datasets/lerobotv2');
   }
   override async readText(path: string) {
-    if (path === this.path) throw new Error(`fetch ${path} -> ${this.status}`);
+    if (path === this.path) {
+      if (this.status === 'missing') throw fileNotFoundError(path);
+      throw new Error(`fetch ${path} -> ${this.status}`);
+    }
     return super.readText(path);
   }
+}
+
+const V2_FILES = [
+  'meta/info.json',
+  'meta/episodes.jsonl',
+  'meta/episodes_stats.jsonl',
+  'meta/tasks.jsonl',
+  'data/chunk-000/episode_000000.parquet',
+  'data/chunk-000/episode_000001.parquet',
+];
+
+/** The v2 fixture as selected files under one folder, without `omit`. */
+async function v2Files(omit: string): Promise<Array<{ path: string; bytes: Uint8Array }>> {
+  return Promise.all(
+    V2_FILES.filter((path) => path !== omit).map(async (path) => ({
+      path,
+      bytes: new Uint8Array(
+        await (await fetch(`/tests/fixtures/datasets/lerobotv2/${path}`)).arrayBuffer(),
+      ),
+    })),
+  );
 }
 
 /** Fails every read, online or not, and counts them. */
@@ -297,11 +323,42 @@ describe('an open that cannot reach the data ends in a named, retryable state (s
     expect(alertText()).not.toContain('数据集格式校验未通过');
   });
 
-  it('a v2 metadata file that is missing (404) stays a dataset validation failure', async () => {
+  it('a v2 metadata file that a custom source reports missing stays a dataset validation failure', async () => {
     root.render(
-      <LeRobotViewer dataSource={new V2TextStatus('meta/episodes.jsonl', 404)} language="en" />,
+      <LeRobotViewer
+        dataSource={new V2TextStatus('meta/episodes.jsonl', 'missing')}
+        language="en"
+      />,
     );
     await expect.poll(alertText, { timeout: 60_000 }).toContain('Failed to load the dataset.');
+    expect(alertText()).not.toContain('DATASET_READ_FAILED');
+  });
+
+  it('a ZIP without a required file is an invalid dataset, not a failed read', async () => {
+    const files = await v2Files('meta/episodes.jsonl');
+    const zip = zipSync(Object.fromEntries(files.map(({ path, bytes }) => [`ds/${path}`, bytes])));
+    const source = new ZipDataSourceLocal(new File([zip], 'ds.zip', { type: 'application/zip' }));
+    // An absent optional file is the same typed miss (never a failed read).
+    await expect(source.readText('meta/subtasks.jsonl')).rejects.toMatchObject({
+      name: 'NotFoundError',
+    });
+    root.render(<LeRobotViewer dataSource={source} language="en" />);
+    await expect.poll(alertText, { timeout: 60_000 }).toContain('Failed to load the dataset.');
+    expect(alertText()).toContain('meta/episodes.jsonl does not exist or cannot be read');
+    expect(alertText()).not.toContain('DATASET_READ_FAILED');
+  });
+
+  it('a folder without a required file is an invalid dataset, not a failed read', async () => {
+    const files = await v2Files('meta/episodes.jsonl');
+    const source = new FileListDirectoryDataSource(
+      files.map(({ path, bytes }) => ({
+        file: new File([bytes], path.split('/').pop()!),
+        path: `ds/${path}`,
+      })),
+    );
+    root.render(<LeRobotViewer dataSource={source} language="en" />);
+    await expect.poll(alertText, { timeout: 60_000 }).toContain('Failed to load the dataset.');
+    expect(alertText()).toContain('meta/episodes.jsonl does not exist or cannot be read');
     expect(alertText()).not.toContain('DATASET_READ_FAILED');
   });
 });

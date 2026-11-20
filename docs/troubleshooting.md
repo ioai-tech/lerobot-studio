@@ -55,7 +55,7 @@ The layout, segment panels and some dialogs load as separate files on first use.
 
 The browser reports that it is offline before the dataset was shown. The viewer keeps opening (the dataset appears if the reads succeed); an open that fails while offline is reported as `NETWORK_OFFLINE` to an `onFatalError` host. The viewer opens the dataset again by itself once the browser is back online; **Retry** tries at once.
 
-A metadata file that is there but could not be read (network error, HTTP status other than 404) is named `DATASET_READ_FAILED: could not read <path>` with the cause. It is never reported as an invalid dataset. A missing file (404) is a dataset validation failure.
+A metadata file that the dataset has but that could not be read (network error, HTTP status) is named `DATASET_READ_FAILED: could not read <path>` with the cause. It is never reported as an invalid dataset. A file missing from the dataset (not in the archive, folder or manifest) is a dataset validation failure.
 
 ---
 

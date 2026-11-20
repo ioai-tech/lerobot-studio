@@ -95,6 +95,7 @@ export {
   datasetReadError,
   isDatasetReadError,
   isMissingFileError,
+  fileNotFoundError,
 } from './datasource/readError';
 
 export * from './subtask';

@@ -49,6 +49,7 @@ export type {
 } from '../core/datasource/types';
 export type { RemoteFileEntry, RemoteManifestOptions, RemoteManifestRefreshResult };
 export { RemoteSourceError } from '../platform/datasource/signedUrls';
+export { fileNotFoundError } from '../core/datasource/readError';
 export { EpisodeSetError } from '../platform/datasource/EpisodeSetDataSource';
 export type {
   EpisodeSetEpisode,
