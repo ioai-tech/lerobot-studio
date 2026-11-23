@@ -1,4 +1,5 @@
 import type { LeRobotFeature } from '../types/lerobot';
+import { getFeatureInfoValue } from '../utils/mediaFeatureMetadata';
 
 /**
  * Camera-first layout. Cameras get the height first: their row takes what
@@ -14,11 +15,10 @@ export const CHART_MIN_HEIGHT_PX = 200;
 export const PANEL_HEADER_PX = 28;
 const DEFAULT_ASPECT = 4 / 3;
 
-/** Width / height of a camera feature, from `info` or the `[h, w, c]` shape. */
+/** Width / height of a camera feature, from its video metadata or the `[h, w, c]` shape. */
 export function visualAspectRatio(feature: LeRobotFeature | undefined): number {
-  const info = (feature as { info?: Record<string, unknown> } | undefined)?.info;
-  const width = Number(info?.['video.width']);
-  const height = Number(info?.['video.height']);
+  const width = Number(getFeatureInfoValue(feature, 'video.width'));
+  const height = Number(getFeatureInfoValue(feature, 'video.height'));
   if (width > 0 && height > 0) return width / height;
   const shape = feature?.shape;
   const names = feature?.names as unknown;

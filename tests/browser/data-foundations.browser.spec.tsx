@@ -40,7 +40,14 @@ class SignedFixtureSource extends FetchDataSource {
   expired: boolean;
   private listeners = new Set<(paths: readonly string[]) => void>();
 
-  constructor(private readonly options: { deadFirstVideoUrl?: boolean; codec?: string } = {}) {
+  constructor(
+    private readonly options: {
+      deadFirstVideoUrl?: boolean;
+      codec?: string;
+      /** Where the camera's video metadata lives (LeRobot v2.1 / older Hub datasets: `video_info`). */
+      codecUnder?: 'info' | 'video_info';
+    } = {},
+  ) {
     super(DATASET);
     this.expired = Boolean(options.deadFirstVideoUrl);
   }
@@ -49,7 +56,14 @@ class SignedFixtureSource extends FetchDataSource {
     const text = await super.readText(path);
     if (path !== 'meta/info.json' || !this.options.codec) return text;
     const info = JSON.parse(text);
-    info.features['observation.images.cam'].info['video.codec'] = this.options.codec;
+    const camera = info.features['observation.images.cam'];
+    const metadata = { ...camera.info, 'video.codec': this.options.codec };
+    if (this.options.codecUnder === 'video_info') {
+      delete camera.info;
+      camera.video_info = metadata;
+    } else {
+      camera.info = metadata;
+    }
     return JSON.stringify(info);
   }
 
@@ -197,6 +211,51 @@ describe('browser: data foundations', () => {
     expect(notice).toMatch(/hevc/i);
     expect(notice).toContain('cam');
     expect(video()?.getAttribute('src') ?? '').toBe('');
+  }, 60_000);
+
+  /** A browser whose every decode check refuses AV1 (Safari on a Mac without AV1 decode). */
+  function refuseAv1() {
+    const refuses = (type: string) => type.includes('av01');
+    const canPlayType = HTMLMediaElement.prototype.canPlayType;
+    vi.spyOn(HTMLMediaElement.prototype, 'canPlayType').mockImplementation(function (
+      this: HTMLMediaElement,
+      type: string,
+    ) {
+      return refuses(type) ? '' : canPlayType.call(this, type);
+    });
+    const isTypeSupported = MediaSource.isTypeSupported.bind(MediaSource);
+    vi.spyOn(MediaSource, 'isTypeSupported').mockImplementation(
+      (type) => !refuses(type) && isTypeSupported(type),
+    );
+    if (typeof VideoDecoder !== 'undefined') {
+      const isConfigSupported = VideoDecoder.isConfigSupported.bind(VideoDecoder);
+      vi.spyOn(VideoDecoder, 'isConfigSupported').mockImplementation(async (config) =>
+        refuses(config.codec) ? { supported: false, config } : isConfigSupported(config),
+      );
+    }
+  }
+
+  it.each(['video_info', 'info'] as const)(
+    'names an AV1 camera declared under %s when the browser refuses AV1',
+    async (codecUnder) => {
+      refuseAv1();
+      const source = new SignedFixtureSource({ codec: 'av1', codecUnder });
+      await render(<LeRobotViewer dataSource={source} language="en" />);
+      await waitFor(() => host.querySelector('[data-testid="video-codec-unsupported"]') !== null);
+      const notice = host.querySelector('[data-testid="video-codec-unsupported"]')!.textContent!;
+      expect(notice).toContain('AV1');
+      expect(notice).toContain('cam');
+      expect(video()?.getAttribute('src') ?? '').toBe('');
+    },
+    60_000,
+  );
+
+  it('plays an H.264 camera declared under video_info', async () => {
+    refuseAv1();
+    const source = new SignedFixtureSource({ codec: 'h264', codecUnder: 'video_info' });
+    await render(<LeRobotViewer dataSource={source} language="en" showPlaybackBar={false} />);
+    await waitFor(() => (video()?.readyState ?? 0) >= 2);
+    expect(host.querySelector('[data-testid="video-codec-unsupported"]')).toBeNull();
   }, 60_000);
 
   it('plots an auxiliary series, warns on a missing column and keeps data across a URL refresh', async () => {

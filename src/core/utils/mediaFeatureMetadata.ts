@@ -35,7 +35,16 @@ function toOptionalBoolean(value: unknown): boolean | null {
   return typeof value === 'boolean' ? value : null;
 }
 
-function getFeatureInfoValue(feature: LeRobotFeature | undefined, key: string): unknown {
+/**
+ * One value of a camera feature's video metadata (`video.codec`,
+ * `video.pix_fmt`, `video.width`, ...). LeRobot writes it under `info`
+ * (current datasets) or `video_info` (LeRobot v2.1 and older Hub datasets);
+ * every reader of these keys goes through here so both spellings count.
+ */
+export function getFeatureInfoValue(
+  feature: LeRobotFeature | null | undefined,
+  key: string,
+): unknown {
   if (!feature) return undefined;
   const extra = feature as LeRobotFeature & { video_info?: Record<string, unknown> };
   return extra.info?.[key] ?? extra.video_info?.[key];
