@@ -26,7 +26,7 @@ const BatchTrimDialog = lazyChunk(
 
 export const EpisodeSidebar: React.FC = () => {
   const { t } = useTranslation();
-  const { episodes, tasks, isLoading, error, info, dataLoader, versionCapability, isReadOnly } =
+  const { episodes, tasks, isLoading, info, dataLoader, versionCapability, isReadOnly } =
     useLeRobotData();
   const {
     selectEpisode,
@@ -290,7 +290,6 @@ export const EpisodeSidebar: React.FC = () => {
 
       <div className="flex flex-1 min-h-0 min-w-0 flex-col overflow-hidden">
         <EpisodeList
-          error={error}
           episodes={episodes}
           filteredEpisodes={listRows}
           isLoading={isLoading}

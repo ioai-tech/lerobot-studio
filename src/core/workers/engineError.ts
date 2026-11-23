@@ -19,3 +19,23 @@ export function isParquetEngineError(error: unknown): boolean {
   const message = error instanceof Error ? error.message : typeof error === 'string' ? error : '';
   return message.startsWith(PARQUET_ENGINE_UNAVAILABLE);
 }
+
+/**
+ * A call to a worker that was released (its loader disposed, for example
+ * because the viewer unmounted): a cancelled call, not a failure. A
+ * DOMException named `AbortError`, as an aborted fetch rejects with.
+ */
+export function workerReleasedError(label: string): Error {
+  return new DOMException(
+    `The ${label} worker was released (its viewer closed); the call was cancelled`,
+    'AbortError',
+  ) as unknown as Error;
+}
+
+/**
+ * Whether a rejection is a cancellation (`AbortError`: a released worker, an
+ * aborted fetch), which a caller that cancelled the work does not report.
+ */
+export function isAbortError(error: unknown): boolean {
+  return (error as { name?: unknown } | null)?.name === 'AbortError';
+}

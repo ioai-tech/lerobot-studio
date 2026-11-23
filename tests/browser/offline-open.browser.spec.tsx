@@ -262,13 +262,18 @@ describe('an open that cannot reach the data ends in a named, retryable state (s
       />,
     );
     await expect.poll(loaded, { timeout: 60_000 }).toBe(true);
+    // Online: the shown viewer's failure line names the episode and the cause.
+    const line = () => host.querySelector('[data-testid="load-failure"]')?.textContent ?? '';
+    await expect.poll(line, { timeout: 20_000 }).toContain('This episode could not be loaded.');
+    expect(line()).toContain('Failed to fetch');
+    // Offline: the same line says so (not the blocking offline state of an open).
     setOnline(false);
     await expect
-      .poll(() => host.textContent ?? '', { timeout: 20_000 })
-      .toContain('Failed to fetch');
+      .poll(line)
+      .toContain("You're offline. The data loads when the connection is back.");
     await new Promise((resolve) => setTimeout(resolve, 300));
     expect(loaded()).toBe(true);
-    expect(alertText()).not.toContain("You're offline");
+    expect(alertText()).not.toContain("You're offline. The dataset loads");
     expect(errors).toEqual([]);
   });
 

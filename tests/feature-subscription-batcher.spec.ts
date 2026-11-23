@@ -130,4 +130,84 @@ describe('FeatureSubscriptionBatcher', () => {
     expect(cancel).not.toHaveBeenCalled();
     expect(onFeatureData).not.toHaveBeenCalled();
   });
+
+  it('does not report a read cancelled because its viewer went away (AbortError)', async () => {
+    let scheduled: (() => void) | undefined;
+    const onError = vi.fn();
+    const cancelled = new DOMException('The Parquet worker was released', 'AbortError');
+    const batcher = new FeatureSubscriptionBatcher({
+      getSnapshot: () => ({
+        episodeIndex: 7,
+        loader: { loadFeatureData: vi.fn(async () => Promise.reject(cancelled)) } as never,
+        info,
+        chartData: {},
+        featureData: {},
+      }),
+      onFeatureData: vi.fn(),
+      onError,
+      schedule: (callback) => {
+        scheduled = callback;
+        return 1;
+      },
+    });
+    await batcher.subscribe('vector');
+    scheduled?.();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(onError).not.toHaveBeenCalled();
+  });
+
+  it('does not report a read that failed after it was superseded (unmount or another episode)', async () => {
+    let fail: (error: Error) => void = () => undefined;
+    const onError = vi.fn();
+    const batcher = new FeatureSubscriptionBatcher({
+      getSnapshot: () => ({
+        episodeIndex: 7,
+        loader: {
+          loadFeatureData: vi.fn(
+            () =>
+              new Promise((_, reject) => {
+                fail = reject;
+              }),
+          ),
+        } as never,
+        info,
+        chartData: {},
+        featureData: {},
+      }),
+      onFeatureData: vi.fn(),
+      onError,
+      schedule: () => 1,
+      cancel: () => undefined,
+    });
+    await batcher.subscribe('vector');
+    const flushed = batcher.flush();
+    batcher.dispose();
+    fail(new Error('Failed to fetch'));
+    await flushed;
+    expect(onError).not.toHaveBeenCalled();
+  });
+
+  it('reports a read that failed while it was still wanted', async () => {
+    const onError = vi.fn();
+    const failure = new TypeError('Failed to fetch');
+    const batcher = new FeatureSubscriptionBatcher({
+      getSnapshot: () => ({
+        episodeIndex: 7,
+        loader: { loadFeatureData: vi.fn(async () => Promise.reject(failure)) } as never,
+        info,
+        chartData: {},
+        featureData: {},
+      }),
+      onFeatureData: vi.fn(),
+      onError,
+      schedule: () => 1,
+      cancel: () => undefined,
+    });
+    await batcher.subscribe('vector');
+    await batcher.flush();
+    expect(onError).toHaveBeenCalledWith(
+      'Failed to load batched feature data for episode 7',
+      failure,
+    );
+  });
 });

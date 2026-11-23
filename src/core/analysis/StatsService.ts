@@ -1,6 +1,7 @@
 import type { Table } from 'apache-arrow';
 import type { EpisodeMetadata, LeRobotFeature, LeRobotInfo } from '../types/lerobot';
 import { SUBTASK_INDEX_FEATURE_KEY } from '../subtask';
+import { isDepthMapFeature } from '../utils/depthImage';
 
 export interface StatsDataLoader {
   getEpisodeTableForExport(episodeIndex: number): Promise<{ table: Table }>;
@@ -74,12 +75,7 @@ function isNumeric(feature: LeRobotFeature): boolean {
 
 function isVisual(feature: LeRobotFeature): boolean {
   const dtype = feature.dtype.toLowerCase();
-  return (
-    dtype === 'image' ||
-    dtype === 'video' ||
-    dtype === 'depth' ||
-    feature.info?.is_depth_map === true
-  );
+  return dtype === 'image' || dtype === 'video' || isDepthMapFeature(feature);
 }
 
 function featureDim(feature: LeRobotFeature): number {

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef } from 'react';
-import type { LeRobotFeature, LeRobotInfo } from '@/core';
+import { isAbortError, type LeRobotFeature, type LeRobotInfo } from '@/core';
 import type { LeRobotDataLoader, NumericalColumnMap } from '@/platform';
 
 export function materializeNumericFeatureRows(column: NumericalColumnMap[string]): unknown[] {
@@ -146,10 +146,14 @@ export class FeatureSubscriptionBatcher {
         }
       }
     } catch (error) {
-      this.options.onError?.(
-        `Failed to load batched feature data for episode ${snapshot.episodeIndex}`,
-        error,
-      );
+      // A read nobody waits for any more (the viewer unmounted and released its
+      // worker, or the episode changed) is cancelled, not failed: not reported.
+      if (!isAbortError(error) && generation === this.generation) {
+        this.options.onError?.(
+          `Failed to load batched feature data for episode ${snapshot.episodeIndex}`,
+          error,
+        );
+      }
     } finally {
       if (generation === this.generation) {
         queued.forEach((featureName) => this.loading.delete(featureName));
