@@ -513,7 +513,7 @@ For segments, review and change ops, see [API — Segments and review](./api.md#
 
 - Give the viewer's parent an explicit height.
 - The viewer's root is a labelled `region` landmark (never `main`), so it can sit inside your page's own `main`.
-- Each camera's declared codec (`info.features[key].info["video.codec"]`) is checked before loading. If the browser cannot decode it, the camera shows a notice naming the codec instead of a broken player.
+- Each camera's declared codec (`video.codec` under `info.features[key].info`, or under `video_info` as LeRobot v2.1 and older Hub datasets write it) is checked before loading. If the browser cannot decode it, the camera shows a notice naming the codec instead of a broken player.
 - For a remote archive, check CORS and HTTP Range headers.
 - In Next.js, keep the viewer in a Client Component with `ssr: false`. It needs no `next.config` entry for the package: `next build` (Turbopack or webpack) emits the workers and the WASM, also under a `basePath`.
 - For a page or worker Content Security Policy, see [Workers, WebAssembly and Content Security Policy](#workers-webassembly-and-content-security-policy).

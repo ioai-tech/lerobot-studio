@@ -513,7 +513,7 @@ const LeRobotViewer = dynamic(
 
 - 为查看器的父元素设置明确高度。
 - 查看器的根元素是带标签的 `region` 地标（不是 `main`），可以放在宿主页面自己的 `main` 里。
-- 加载前会检查每个相机声明的编码（`info.features[key].info["video.codec"]`）。浏览器无法解码时，该相机显示注明编码的提示，而不是一个坏掉的播放器。
+- 加载前会检查每个相机声明的编码（`info.features[key].info` 中的 `video.codec`，或 LeRobot v2.1 及较早的 Hub 数据集写在 `video_info` 中的同名字段）。浏览器无法解码时，该相机显示注明编码的提示，而不是一个坏掉的播放器。
 - 使用远程压缩包时，请检查 CORS 和 HTTP Range 响应头。
 - 在 Next.js 中，请将查看器置于 Client Component，并使用 `ssr: false`。本包无需任何 `next.config` 配置：`next build`（Turbopack 或 webpack）会输出 Worker 与 WASM，在 `basePath` 下同样如此。
 - 页面或 Worker 的内容安全策略见 [Worker、WebAssembly 与内容安全策略](#worker、webassembly-与内容安全策略)。
