@@ -6,11 +6,11 @@ type CodecSupportModule = typeof import('../src/platform/services/videoCodecSupp
 
 /** A browser whose every decode check refuses AV1 (Safari on a Mac without AV1 decode). */
 function stubBrowserWithoutAv1() {
-  const refusesAv1 = (codec: string) => !codec.includes('av01');
-  vi.stubGlobal('MediaSource', { isTypeSupported: (type: string) => refusesAv1(type) });
+  const decodes = (codec: string) => !codec.includes('av01');
+  vi.stubGlobal('MediaSource', { isTypeSupported: (type: string) => decodes(type) });
   vi.stubGlobal('VideoDecoder', {
     isConfigSupported: async (config: { codec: string }) => ({
-      supported: refusesAv1(config.codec),
+      supported: decodes(config.codec),
     }),
   });
 }
@@ -51,6 +51,13 @@ describe('video codec support', () => {
     expect(
       support.declaredVideoCodec({ dtype: 'video', shape: [1], names: null } as LeRobotFeature),
     ).toBeNull();
+  });
+
+  it('prefers info over video_info when both declare a value', () => {
+    const feature = camera('info', 'h264');
+    feature.video_info = { 'video.codec': 'av1', 'video.width': 1280, 'video.height': 720 };
+    expect(support.declaredVideoCodec(feature)).toBe('h264');
+    expect(visualAspectRatio(feature)).toBeCloseTo(4 / 3);
   });
 
   it('refuses an AV1 camera declared under video_info where AV1 cannot be decoded', async () => {
