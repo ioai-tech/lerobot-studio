@@ -319,6 +319,7 @@ export const ExportDialog: React.FC<ExportDialogProps> = ({ open, onOpenChange }
                 <label className="flex items-start gap-2 text-sm">
                   <input
                     type="checkbox"
+                    name="export-include-subtasks"
                     className="mt-0.5 h-3.5 w-3.5 shrink-0 accent-primary"
                     checked={includeSubtasks}
                     onChange={(event) => setIncludeSubtasks(event.target.checked)}
@@ -329,6 +330,7 @@ export const ExportDialog: React.FC<ExportDialogProps> = ({ open, onOpenChange }
                   <label className="ml-5 flex items-start gap-2 text-sm">
                     <input
                       type="checkbox"
+                      name="export-fill-subtask-gaps"
                       className="mt-0.5 h-3.5 w-3.5 shrink-0 accent-primary"
                       checked={fillSubtaskGaps}
                       onChange={(event) => setFillSubtaskGaps(event.target.checked)}
@@ -343,6 +345,7 @@ export const ExportDialog: React.FC<ExportDialogProps> = ({ open, onOpenChange }
                 <label className="flex items-start gap-2">
                   <input
                     type="checkbox"
+                    name="export-compact-videos"
                     className="mt-0.5 accent-primary"
                     checked={compactVideos}
                     onChange={(event) => setCompactVideos(event.target.checked)}

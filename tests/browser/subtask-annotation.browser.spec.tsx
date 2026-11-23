@@ -87,8 +87,8 @@ describe('browser: subtask viewing and annotation', () => {
     await act(async () => {
       gap?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
     });
-    await waitFor(() => host.querySelector('#subtask-label') !== null);
-    const labelInput = host.querySelector<HTMLInputElement>('#subtask-label');
+    await waitFor(() => host.querySelector('input[name="subtask-label"]') !== null);
+    const labelInput = host.querySelector<HTMLInputElement>('input[name="subtask-label"]');
     expect(labelInput).toBeTruthy();
     await userEvent.type(labelInput!, 'Pick the cube');
     const save = Array.from(host.querySelectorAll('[data-slot="dialog-content"] button')).find(

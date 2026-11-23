@@ -21,6 +21,7 @@ export const EpisodeFilters: React.FC<EpisodeFiltersProps> = ({
     <div className="flex min-w-0 items-center gap-2 overflow-hidden">
       <Input
         type="number"
+        name="episode-duration-min"
         placeholder={t('sidebar.filterByDuration')}
         className="h-8 min-w-0 flex-1 basis-0 border border-border bg-muted/50 px-2 text-xs"
         value={durationMin}
@@ -28,17 +29,18 @@ export const EpisodeFilters: React.FC<EpisodeFiltersProps> = ({
         title={t('sidebar.filterByDuration')}
         min={0}
         step={0.1}
-        aria-label={t('sidebar.filterByDuration')}
+        aria-label={t('sidebar.durationMin')}
       />
       <span className="shrink-0 text-xs text-muted-foreground">-</span>
       <Input
         type="number"
+        name="episode-duration-max"
         className="h-8 min-w-0 flex-1 basis-0 border border-border bg-muted/50 px-2 text-xs"
         value={durationMax}
         onChange={(e) => onDurationMaxChange(e.target.value)}
         min={0}
         step={0.1}
-        aria-label={t('sidebar.filterByDuration')}
+        aria-label={t('sidebar.durationMax')}
       />
     </div>
   );

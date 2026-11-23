@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useId, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Button } from '@/ui';
 import { Globe2, AlertCircle } from 'lucide-react';
@@ -18,6 +18,7 @@ export const RemoteArchiveOpenForm: React.FC<RemoteArchiveOpenFormProps> = ({
   isLoading = false,
 }) => {
   const { t } = useTranslation();
+  const urlId = useId();
   const [url, setUrl] = useState(initialUrl);
   const [error, setError] = useState<string | null>(null);
 
@@ -60,10 +61,14 @@ export const RemoteArchiveOpenForm: React.FC<RemoteArchiveOpenFormProps> = ({
   return (
     <form onSubmit={handleSubmit} className="space-y-4 w-full">
       <div className="space-y-2">
-        <p className="text-sm text-muted-foreground">{t('panels.welcome.sources.remoteArchive')}</p>
+        <label htmlFor={urlId} className="block text-sm text-muted-foreground">
+          {t('panels.welcome.sources.remoteArchive')}
+        </label>
         <div className="relative w-full overflow-hidden rounded-md border">
           <Globe2 className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
           <Input
+            id={urlId}
+            name="archive-url"
             className="pl-9 text-base h-11 border-0 rounded-none"
             placeholder="https://example.com/lerobot.zip"
             value={url}

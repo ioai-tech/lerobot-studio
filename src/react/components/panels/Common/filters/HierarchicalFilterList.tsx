@@ -29,6 +29,11 @@ interface HierarchicalFilterListProps {
   className?: string;
 }
 
+/** A row button's pressed state: the selection its tri-state box draws. */
+function pressed(checked: boolean, indeterminate: boolean): boolean | 'mixed' {
+  return indeterminate ? 'mixed' : checked;
+}
+
 const TriStateCheckbox = memo(function TriStateCheckbox({
   checked,
   indeterminate,
@@ -46,11 +51,16 @@ const TriStateCheckbox = memo(function TriStateCheckbox({
   }, [checked, indeterminate]);
 
   return (
+    // Drawn inside the row button, which owns the state (`aria-pressed`): this
+    // box is only its picture, out of the tab order and the accessibility tree.
     <input
       ref={ref}
       type="checkbox"
+      name="filter-row-state"
       checked={checked}
       readOnly
+      tabIndex={-1}
+      aria-hidden
       className="pointer-events-none h-3.5 w-3.5 shrink-0 rounded border-border accent-primary"
     />
   );
@@ -92,6 +102,7 @@ export const HierarchicalFilterList = memo(function HierarchicalFilterList({
         <div className="flex items-center gap-2">
           <button
             type="button"
+            aria-pressed={pressed(allSelected, allIndeterminate)}
             className="flex h-8 shrink-0 items-center rounded-md px-1"
             onClick={(e) => {
               e.preventDefault();
@@ -110,6 +121,8 @@ export const HierarchicalFilterList = memo(function HierarchicalFilterList({
               value={searchValue}
               onChange={(e) => onSearchChange(e.target.value)}
               placeholder={searchPlaceholder}
+              aria-label={searchPlaceholder}
+              name="filter-search"
               className="h-8 bg-background pl-7 pr-7 text-xs"
             />
             {searchValue ? (
@@ -144,6 +157,7 @@ export const HierarchicalFilterList = memo(function HierarchicalFilterList({
               <div key={group.id} className="mb-1 border-b border-border/40 pb-1 last:border-b-0">
                 <button
                   type="button"
+                  aria-pressed={pressed(groupState === 'all', groupState === 'partial')}
                   data-filter-row="true"
                   className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs hover:bg-muted/50"
                   onClick={(e) => {
@@ -174,6 +188,7 @@ export const HierarchicalFilterList = memo(function HierarchicalFilterList({
                   <button
                     key={item.id}
                     type="button"
+                    aria-pressed={pressed(selectedIds.has(item.id), false)}
                     data-filter-row="true"
                     className={cn(
                       'flex w-full items-center gap-2 rounded-md px-2 py-1.5 pl-6 text-left text-[11px] hover:bg-muted/40',

@@ -33,6 +33,8 @@ export const ChartLineStyleKey: React.FC<ChartLineStyleKeyProps> = ({
     >
       <input
         type="checkbox"
+        name={`chart-series-${kind}`}
+        aria-label={toggleTitle}
         checked={visible}
         onChange={(e) => {
           e.stopPropagation();

@@ -28,6 +28,7 @@ export const EpisodeSearch: React.FC<EpisodeSearchProps> = ({
           aria-hidden
         />
         <Input
+          name="episode-search"
           placeholder={t('sidebar.searchPlaceholder')}
           className="h-9 min-w-0 w-full border-transparent bg-muted/50 pl-9 text-xs placeholder:text-muted-foreground/40"
           value={searchTerm}

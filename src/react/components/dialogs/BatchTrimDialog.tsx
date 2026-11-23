@@ -312,6 +312,7 @@ export function BatchTrimDialog({
               {t(mode === 'auto' ? 'batchTrim.before' : 'batchTrim.head')}
               <Input
                 type="number"
+                name="batch-trim-start"
                 min={0}
                 step={0.1}
                 value={mode === 'auto' ? before : head}
@@ -324,6 +325,7 @@ export function BatchTrimDialog({
               {t(mode === 'auto' ? 'batchTrim.after' : 'batchTrim.tail')}
               <Input
                 type="number"
+                name="batch-trim-end"
                 min={0}
                 step={0.1}
                 value={mode === 'auto' ? after : tail}
@@ -339,6 +341,7 @@ export function BatchTrimDialog({
               <label className="flex flex-wrap items-center gap-2 text-sm">
                 {t('batchTrim.feature')}
                 <select
+                  name="batch-trim-feature"
                   className={nativeSelectClassName}
                   aria-label={t('batchTrim.feature')}
                   value={feature}
@@ -390,6 +393,8 @@ export function BatchTrimDialog({
                       <label key={i} className="flex items-center gap-1">
                         <input
                           type="checkbox"
+                          name="batch-trim-dimension"
+                          value={i}
                           checked={!excluded.includes(i)}
                           onChange={(e) =>
                             setExcluded((previous) =>
@@ -408,6 +413,7 @@ export function BatchTrimDialog({
           <label className="flex items-center gap-2 text-sm">
             <input
               type="checkbox"
+              name="batch-trim-overwrite"
               checked={overwrite}
               onChange={(e) => setOverwrite(e.target.checked)}
             />
@@ -457,6 +463,8 @@ export function BatchTrimDialog({
                         <label className="flex items-center gap-2">
                           <input
                             type="checkbox"
+                            name="batch-trim-episode"
+                            value={row.episode.episode_index}
                             aria-label={t('batchTrim.select', {
                               index: row.episode.episode_index,
                             })}
