@@ -199,6 +199,18 @@ export const LeRobotDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
   /** The failure behind `error` of the last open, for a host's `onFatalError` cause. */
   const errorCauseRef = useRef<unknown>(null);
   const getErrorCause = useCallback(() => errorCauseRef.current, []);
+  /**
+   * The episode whose load failed (it is still the selected one), so Retry,
+   * or the browser coming back online, loads it again; `null` otherwise.
+   */
+  const failedEpisodeRef = useRef<number | null>(null);
+  const [failedEpisode, setFailedEpisodeState] = useState<number | null>(null);
+  const setFailedEpisode = useCallback((index: number | null) => {
+    failedEpisodeRef.current = index;
+    setFailedEpisodeState(index);
+  }, []);
+  /** Bumped when a failed episode is loaded again: its panels request their files again. */
+  const [loadAttempt, setLoadAttempt] = useState(0);
   const isLoadingRef = useRef(false);
   /** Monotonic generation so A→B opens discard stale init results. */
   const initGenerationRef = useRef(0);
@@ -553,12 +565,15 @@ export const LeRobotDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
     notifyFrameSubscribers(0);
     clearPendingFeatureLoads();
     setIsPlaying(false);
+    errorCauseRef.current = null;
+    setFailedEpisode(null);
     setError(null);
     clearLoading();
     setLastValidationReport(null);
     setHealthDialogOpen(false);
   }, [
     clearPendingSelection,
+    setFailedEpisode,
     notifyFrameSubscribers,
     clearLoading,
     clearPendingFeatureLoads,
@@ -612,6 +627,7 @@ export const LeRobotDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
       }
       const taskId = 'lerobot-init';
       errorCauseRef.current = null;
+      setFailedEpisode(null);
       setError(null);
       if (keepView) {
         setIsPlaying(false);
@@ -671,6 +687,7 @@ export const LeRobotDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
       let loader: LeRobotDataLoader | null = null;
       /** Whether the shown dataset was given up (a first open, or another timeline). */
       let viewCleared = !keepView;
+      let shownSource: DataSource | FileSystemDirectoryHandle | null = null;
       try {
         if (!keepView) {
           // 先清理旧数据源
@@ -679,6 +696,9 @@ export const LeRobotDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
           resetEditing();
         }
 
+        // The source shown until this one opens: it is the current one again
+        // if this open fails with the view kept, so a retry can open this one.
+        shownSource = currentSourceRef.current;
         currentSourceRef.current = dataSource;
 
         // 首屏优化：把重依赖（apache-arrow/worker 等）延迟到用户真正打开数据源时再加载
@@ -777,6 +797,7 @@ export const LeRobotDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
         setError(msg);
         if (!viewCleared) {
           // The shown dataset stays, as it was; the error names what failed.
+          currentSourceRef.current = shownSource;
           await loader?.dispose().catch(() => {});
           const waiting = committedSwapRef.current;
           if (waiting) {
@@ -806,6 +827,7 @@ export const LeRobotDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
     },
     [
       clearPendingSelection,
+      setFailedEpisode,
       settleWithoutLanding,
       upsertTask,
       completeTask,
@@ -846,6 +868,8 @@ export const LeRobotDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
       // A second selection while one loads keeps the first one's play state.
       resumeAfterSelectRef.current = resumeAfterSelectRef.current || isPlayingRef.current;
       setIsPlaying(false);
+      setFailedEpisode(null);
+      errorCauseRef.current = null;
       setError(null);
       const taskId = 'lerobot-select-episode';
       showTask({
@@ -1006,6 +1030,8 @@ export const LeRobotDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
           setPendingChartColumns([]);
           console.error('Failed to load episode data', e);
           const msg = e instanceof Error ? e.message : 'Unknown error while loading episode';
+          setFailedEpisode(index);
+          errorCauseRef.current = e;
           setError(msg);
           failTask(taskId, msg);
         }
@@ -1018,6 +1044,7 @@ export const LeRobotDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
     },
     [
       dataLoader,
+      setFailedEpisode,
       imageService,
       info,
       upsertTask,
@@ -1072,8 +1099,17 @@ export const LeRobotDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
 
   const clearError = useCallback(() => {
     errorCauseRef.current = null;
+    setFailedEpisode(null);
     setError(null);
     failedSourcesRef.current.clear();
+  }, [setFailedEpisode]);
+
+  const retryEpisode = useCallback(() => {
+    const index = failedEpisodeRef.current;
+    if (index === null) return false;
+    setLoadAttempt((attempt) => attempt + 1);
+    void selectEpisodeRef.current(index);
+    return true;
   }, []);
 
   // 当当前选中的 episode 被删除时，切换到第一个未删除的
@@ -1176,6 +1212,9 @@ export const LeRobotDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
       subscribeSelectionSettled,
       takeResumeAfterSelect,
       getErrorCause,
+      retryEpisode,
+      failedEpisode,
+      loadAttempt,
     }),
     [
       info,
@@ -1203,6 +1242,9 @@ export const LeRobotDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
       subscribeSelectionSettled,
       takeResumeAfterSelect,
       getErrorCause,
+      retryEpisode,
+      failedEpisode,
+      loadAttempt,
     ],
   );
 

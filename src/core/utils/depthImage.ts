@@ -243,10 +243,28 @@ export function renderTiffDepthPreview(bytes: Uint8Array): DepthPreview {
   return colorizeUint16Depth(tiff.pixels, tiff.width, tiff.height);
 }
 
+/**
+ * Whether a feature is a depth map. LeRobot flags it in one of three places
+ * across dataset versions, and any of them counts (as in LeRobot's own
+ * `lerobot.configs.video.is_depth_map`): `info.is_depth_map` (current), or the
+ * legacy `video.is_depth_map` under `info` or under a separate `video_info`
+ * (LeRobot v2.1 and older Hub datasets). Every depth check goes through here.
+ */
 export function isDepthMapFeature(
-  feature: { dtype?: string; info?: Record<string, unknown> } | undefined,
+  feature:
+    | {
+        dtype?: string;
+        info?: Record<string, unknown>;
+        video_info?: Record<string, unknown>;
+      }
+    | null
+    | undefined,
 ): boolean {
   if (!feature) return false;
   if (feature.dtype === 'depth') return true;
-  return feature.info?.is_depth_map === true;
+  return (
+    feature.info?.is_depth_map === true ||
+    feature.info?.['video.is_depth_map'] === true ||
+    feature.video_info?.['video.is_depth_map'] === true
+  );
 }

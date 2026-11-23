@@ -34,7 +34,7 @@ export const HOLD_CAP_MS = 4000;
 
 const VideoPanelContent: React.FC<VideoPanelProps> = ({ params }) => {
   const { t } = useTranslation();
-  const { info, dataLoader, isLoading } = useLeRobotData();
+  const { info, dataLoader, isLoading, failedEpisode, loadAttempt } = useLeRobotData();
   const { clock, isPlaying } = useLeRobotPlayback();
   /**
    * A camera reads ahead only while it plays (`cameraPreload`): while the
@@ -52,7 +52,13 @@ const VideoPanelContent: React.FC<VideoPanelProps> = ({ params }) => {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [hasVideo, setHasVideo] = useState(false);
   const [isInitialLoading, setIsInitialLoading] = useState(false);
-  const [loadError, setLoadError] = useState<string | null>(null);
+  const [loadError, setLoadErrorState] = useState<string | null>(null);
+  /** This camera's file failed: an episode load run again (Retry, back online) requests it again. */
+  const failedRef = useRef(false);
+  const setLoadError = useCallback((message: string | null) => {
+    failedRef.current = message !== null;
+    setLoadErrorState(message);
+  }, []);
   const [unsupportedCodec, setUnsupportedCodec] = useState<string | null>(null);
   const [videoDimensions, setVideoDimensions] = useState<{ width: number; height: number } | null>(
     null,
@@ -201,7 +207,7 @@ const VideoPanelContent: React.FC<VideoPanelProps> = ({ params }) => {
         }
       }
     },
-    [dataLoader, setSource, t],
+    [dataLoader, setSource, setLoadError, t],
   );
 
   useEffect(() => {
@@ -273,7 +279,7 @@ const VideoPanelContent: React.FC<VideoPanelProps> = ({ params }) => {
       video.removeEventListener('loadeddata', onLoadedData);
       video.removeEventListener('error', onError);
     };
-  }, [swapSource, releaseHold, releaseHoldWhenPainted, t]);
+  }, [swapSource, releaseHold, releaseHoldWhenPainted, setLoadError, t]);
 
   // A camera that goes away (unmount, a rebuilt layout) stops loading at once:
   // a detached element would otherwise keep reading its file, holding the
@@ -328,7 +334,7 @@ const VideoPanelContent: React.FC<VideoPanelProps> = ({ params }) => {
       // A swapped-in source shows the same moment of the same recording:
       // its file replaces the shown one in place, holding the shown frame.
       const swapped = sourceRef.current !== null && sourceRef.current.loader !== dataLoader;
-      if (!sameFile || swapped) {
+      if (!sameFile || swapped || failedRef.current) {
         if (!sameFile) rangeRef.current = null;
         if (!sourceRef.current) setIsInitialLoading(true);
         setLoadError(null);
@@ -353,7 +359,8 @@ const VideoPanelContent: React.FC<VideoPanelProps> = ({ params }) => {
       followerRef.current?.sync();
     };
     void run();
-  }, [selectedEpisodeIndex, info, dataLoader, featureKey, setSource, t]);
+    // `loadAttempt`: the episode is loaded again after its load failed.
+  }, [selectedEpisodeIndex, info, dataLoader, featureKey, setSource, setLoadError, t, loadAttempt]);
 
   useEffect(() => {
     const video = videoRef.current;
@@ -423,7 +430,8 @@ const VideoPanelContent: React.FC<VideoPanelProps> = ({ params }) => {
                 />
                 <p className="text-sm opacity-50">{t('panels.video.placeholder')}</p>
               </div>
-            ) : loadError ? (
+            ) : loadError && failedEpisode === null ? (
+              // When the whole episode failed, the viewer's failure line names it once.
               <div className="text-destructive max-w-xs mx-auto">
                 <div className="flex justify-center mb-2">
                   <AlertTriangle className="h-8 w-8" />

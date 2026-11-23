@@ -48,6 +48,15 @@ export interface LeRobotDataContextType {
   error: string | null;
   /** The original failure behind `error` (for example a named read failure), when there is one. */
   getErrorCause: () => unknown;
+  /**
+   * Load the selected episode again when its load failed (`error` names why);
+   * returns false when no episode load failed, so there is nothing to retry.
+   */
+  retryEpisode: () => boolean;
+  /** The selected episode, when its load failed (`error` names why); `null` otherwise. */
+  failedEpisode: number | null;
+  /** Bumped by `retryEpisode`: a panel whose file failed requests it again. */
+  loadAttempt: number;
   isLoading: boolean;
   /** Open this selection once its episode loads (deep link, data-source swap); `null` drops it. */
   setPendingSelection: (selection: PendingSelection | null) => void;

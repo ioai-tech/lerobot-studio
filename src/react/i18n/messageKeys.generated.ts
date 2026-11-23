@@ -58,6 +58,8 @@ export type LeRobotMessageKey =
   | 'errors.generic'
   | 'errors.loadFailed'
   | 'errors.offline'
+  | 'errors.offlineShown'
+  | 'errors.episodeLoadFailed'
   | 'errors.parquetEngineUnavailable'
   | 'errors.details'
   | 'errorBoundary.title'

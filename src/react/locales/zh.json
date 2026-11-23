@@ -65,6 +65,8 @@
     "generic": "加载数据时出现问题。",
     "loadFailed": "数据集加载失败。",
     "offline": "当前处于离线状态。网络恢复后将自动加载数据集。",
+    "offlineShown": "当前处于离线状态。网络恢复后将自动加载数据。",
+    "episodeLoadFailed": "无法加载此片段。",
     "parquetEngineUnavailable": "Parquet 读取器无法加载。页面需允许启动查看器的 Worker 脚本，且这些脚本需允许下载并编译其 WebAssembly 文件（见嵌入指南中的内容安全策略）。",
     "details": "错误详情"
   },

@@ -87,7 +87,7 @@ Download commands: [Data formats — Official Hub examples](./data-formats.md#of
 
 ## Depth map is blank or fails to decode
 
-Official depth datasets such as [`lerobot/outdoor-depth`](https://huggingface.co/datasets/lerobot/outdoor-depth) store 16-bit grayscale TIFF bytes in parquet (`info.is_depth_map: true`). Studio sniffs TIFF/PNG/JPEG, colorizes 16-bit depth for playback, and does not treat JPEG as the only encoding. If the panel stays empty, confirm the feature dtype is `image` or `depth` and that `observation.images.*` is present.
+Official depth datasets such as [`lerobot/outdoor-depth`](https://huggingface.co/datasets/lerobot/outdoor-depth) store 16-bit grayscale TIFF bytes in parquet (`info.is_depth_map: true`). Studio sniffs TIFF/PNG/JPEG, colorizes 16-bit depth for playback, and does not treat JPEG as the only encoding. If the panel stays empty, confirm the feature dtype is `image` or `depth` and that `observation.images.*` is present. A feature counts as a depth map when any of LeRobot's flags says so: `info.is_depth_map`, or the older `video.is_depth_map` under `info` or `video_info`.
 
 ---
 

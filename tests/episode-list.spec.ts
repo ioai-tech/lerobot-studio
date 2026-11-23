@@ -27,10 +27,9 @@ function item(index: number): EpisodeListItem {
 const noop = () => undefined;
 
 describe('EpisodeList', () => {
-  it('keeps the episode list visible when a load error is set', () => {
+  it('lists the episodes and repeats no load error (the viewer names it once, above the panels)', () => {
     const markup = renderToStaticMarkup(
       React.createElement(EpisodeList, {
-        error: 'File not found in archive: data/chunk-000/episode_000001.parquet',
         episodes: [item(0).episode, item(1).episode],
         filteredEpisodes: [item(0), item(1)],
         isLoading: false,
@@ -44,8 +43,7 @@ describe('EpisodeList', () => {
       }),
     );
 
-    expect(markup).toContain('sidebar.errorLoading');
-    expect(markup).toContain('File not found in archive: data/chunk-000/episode_000001.parquet');
+    expect(markup).not.toContain('sidebar.errorLoading');
     expect(markup).toContain('sidebar.selectEpisode:0');
     expect(markup).toContain('sidebar.selectEpisode:1');
     expect(markup).not.toContain('sidebar.emptyNoDataset');

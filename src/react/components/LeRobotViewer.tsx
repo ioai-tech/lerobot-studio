@@ -172,6 +172,7 @@ export function LeRobotViewerContent({
     getPendingSelection,
     info,
     getErrorCause,
+    retryEpisode,
   } = useLeRobotData();
   const online = useBrowserOnline();
   const hostChrome = useMemo(() => <HostChrome extensions={extensions} />, [extensions]);
@@ -358,6 +359,8 @@ export function LeRobotViewerContent({
   }, [fatalError, onFatalError]);
 
   const handleRetry = useCallback(() => {
+    // A shown dataset whose selected episode failed: that episode loads again.
+    if (info && retryEpisode()) return;
     clearError();
     lastSourceRef.current = null;
     setResolveError(null);
@@ -373,15 +376,16 @@ export function LeRobotViewerContent({
     } else {
       setResolveAttempt((attempt) => attempt + 1);
     }
-  }, [clearError, resolvedSource, initialize, dataSource]);
+  }, [info, retryEpisode, clearError, resolvedSource, initialize, dataSource]);
 
-  // Back online: an open that failed (most likely for being offline) runs again.
+  // Back online: what failed (most likely for being offline) runs again, once:
+  // an open, or, with a dataset shown, its episode or the source it swapped to.
   const wasOnlineRef = useRef(online);
   useEffect(() => {
     const cameBack = online && !wasOnlineRef.current;
     wasOnlineRef.current = online;
-    if (cameBack && !info && (error || resolveError)) handleRetry();
-  }, [online, info, error, resolveError, handleRetry]);
+    if (cameBack && (error || resolveError)) handleRetry();
+  }, [online, error, resolveError, handleRetry]);
 
   if (onFatalError && fatalError) {
     // The embedding host owns fatal-error rendering via onFatalError. Keeping a

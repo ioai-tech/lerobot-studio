@@ -65,6 +65,8 @@
     "generic": "Something went wrong while loading the data.",
     "loadFailed": "Failed to load the dataset.",
     "offline": "You're offline. The dataset loads when the connection is back.",
+    "offlineShown": "You're offline. The data loads when the connection is back.",
+    "episodeLoadFailed": "This episode could not be loaded.",
     "parquetEngineUnavailable": "The Parquet reader could not load. The page must be allowed to start the viewer's worker scripts, and they must be allowed to fetch and compile its WebAssembly file (see Content Security Policy in the embedding guide).",
     "details": "Error Details"
   },

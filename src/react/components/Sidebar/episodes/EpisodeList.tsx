@@ -1,6 +1,5 @@
 import React, { useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
-import { AlertCircle } from 'lucide-react';
 import { List, type RowComponentProps } from 'react-window';
 import type { EpisodeMetadata } from '@/core';
 import { ScrollArea } from '@/ui';
@@ -20,7 +19,6 @@ export interface EpisodeListItem {
 }
 
 interface EpisodeListProps {
-  error: string | null;
   episodes: EpisodeMetadata[] | null;
   filteredEpisodes: EpisodeListItem[];
   isLoading: boolean;
@@ -112,7 +110,6 @@ function episodeRowKey(index: number, data: VirtualEpisodeRowProps) {
 }
 
 export const EpisodeList: React.FC<EpisodeListProps> = ({
-  error,
   episodes,
   filteredEpisodes,
   isLoading,
@@ -165,22 +162,9 @@ export const EpisodeList: React.FC<EpisodeListProps> = ({
     [baseRowHeight, expansionHeight],
   );
 
-  const errorBanner = error ? (
-    <div className="shrink-0 border-b border-destructive/20 bg-destructive/5 px-3 py-2">
-      <div className="flex items-start gap-2">
-        <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-destructive/70" />
-        <div className="min-w-0 space-y-0.5">
-          <p className="text-sm font-medium text-destructive">{t('sidebar.errorLoading')}</p>
-          <p className="max-w-full break-words text-xs text-muted-foreground">{error}</p>
-        </div>
-      </div>
-    </div>
-  ) : null;
-
   if (filteredEpisodes.length === 0) {
     return (
       <div className="flex h-full min-h-0 flex-col">
-        {errorBanner}
         <div className="flex flex-1 items-center justify-center p-4 text-center text-muted-foreground">
           {episodes && episodes.length === 0
             ? t('sidebar.emptyNoDataset')
@@ -193,7 +177,6 @@ export const EpisodeList: React.FC<EpisodeListProps> = ({
   if (filteredEpisodes.length >= EPISODE_VIRTUALIZATION_THRESHOLD) {
     return (
       <div className="flex h-full min-h-0 flex-col">
-        {errorBanner}
         <List
           rowCount={filteredEpisodes.length}
           rowHeight={rowHeight}
@@ -211,7 +194,6 @@ export const EpisodeList: React.FC<EpisodeListProps> = ({
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      {errorBanner}
       <ScrollArea className="flex-1 min-h-0 w-full min-w-0">
         <div className="w-full min-w-0 overflow-x-hidden">
           {filteredEpisodes.map((item) => (
