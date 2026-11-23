@@ -210,6 +210,7 @@ function TextCommitInput({
   list?: string;
   className?: string;
 }) {
+  const id = React.useId();
   const [text, setText] = useState(value);
   const [editing, setEditing] = useState(false);
   useEffect(() => {
@@ -227,10 +228,12 @@ function TextCommitInput({
   };
   return (
     <label
+      htmlFor={id}
       className={cn('flex min-w-0 items-center gap-1 text-xs text-muted-foreground', className)}
     >
       <span className="shrink-0">{label}</span>
       <input
+        id={id}
         type="text"
         className="h-7 min-w-0 flex-1 rounded-md border border-input bg-transparent px-1.5 text-xs text-foreground focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/50 focus-visible:outline-none disabled:opacity-60"
         value={text}
@@ -277,8 +280,9 @@ function FieldControl({
 }) {
   const { t } = useTranslation();
   const value = segment.values[field.id] ?? null;
-  // Unique per viewer instance: two viewers on one page never share a datalist.
-  const listId = `${React.useId()}-suggestions`;
+  // Unique per viewer instance: two viewers on one page never share an id.
+  const baseId = React.useId();
+  const listId = `${baseId}-suggestions`;
   if (field.kind === 'select' && !editable) {
     // Read-only shows the chosen value as text, not disabled toggles that look
     // pressable (s10 F-16), like a read-only text field.
@@ -358,6 +362,7 @@ function FieldControl({
         {editable ? (
           <>
             <input
+              id={`${baseId}-add-tag`}
               type="text"
               aria-label={t('segments.inspector.addTag', { field: field.label })}
               placeholder={t('segments.inspector.addTagPlaceholder')}

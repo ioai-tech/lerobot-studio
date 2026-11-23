@@ -28,7 +28,7 @@ export const EpisodeFilters: React.FC<EpisodeFiltersProps> = ({
         title={t('sidebar.filterByDuration')}
         min={0}
         step={0.1}
-        aria-label={t('sidebar.filterByDuration')}
+        aria-label={t('sidebar.durationMin')}
       />
       <span className="shrink-0 text-xs text-muted-foreground">-</span>
       <Input
@@ -38,7 +38,7 @@ export const EpisodeFilters: React.FC<EpisodeFiltersProps> = ({
         onChange={(e) => onDurationMaxChange(e.target.value)}
         min={0}
         step={0.1}
-        aria-label={t('sidebar.filterByDuration')}
+        aria-label={t('sidebar.durationMax')}
       />
     </div>
   );

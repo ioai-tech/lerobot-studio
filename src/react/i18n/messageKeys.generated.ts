@@ -309,6 +309,8 @@ export type LeRobotMessageKey =
   | 'sidebar.clearSelection'
   | 'sidebar.filterByTask'
   | 'sidebar.filterByDuration'
+  | 'sidebar.durationMin'
+  | 'sidebar.durationMax'
   | 'sidebar.filterTaskAll'
   | 'sidebar.bulkEdit'
   | 'sidebar.bulkDelete'

@@ -448,6 +448,8 @@
     "clearSelection": "清除选择",
     "filterByTask": "任务",
     "filterByDuration": "时长（秒）",
+    "durationMin": "最短时长（秒）",
+    "durationMax": "最长时长（秒）",
     "filterTaskAll": "全部任务",
     "bulkEdit": "批量编辑任务",
     "bulkDelete": "批量删除",

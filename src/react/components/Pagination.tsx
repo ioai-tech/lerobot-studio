@@ -28,6 +28,8 @@ export function Pagination({
   className,
 }: PaginationProps) {
   const { t } = useTranslation();
+  // Unique per instance: two tables (or two viewers) on one page never share it.
+  const rowsPerPageId = React.useId();
   const totalPages = Math.max(0, Math.ceil(count / rowsPerPage));
   const from = count === 0 ? 0 : page * rowsPerPage + 1;
   const to = count === 0 ? 0 : Math.min((page + 1) * rowsPerPage, count);
@@ -50,11 +52,11 @@ export function Pagination({
       )}
     >
       <div className="flex items-center gap-2">
-        <label htmlFor="table-pagination-rows" className="whitespace-nowrap">
+        <label htmlFor={rowsPerPageId} className="whitespace-nowrap">
           {labelRowsPerPage}
         </label>
         <select
-          id="table-pagination-rows"
+          id={rowsPerPageId}
           value={rowsPerPage}
           onChange={onRowsPerPageChange}
           className={cn(

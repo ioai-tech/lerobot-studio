@@ -448,6 +448,8 @@
     "clearSelection": "選択をクリア",
     "filterByTask": "タスク",
     "filterByDuration": "時間（秒）",
+    "durationMin": "最短時間（秒）",
+    "durationMax": "最長時間（秒）",
     "filterTaskAll": "すべてのタスク",
     "bulkEdit": "タスクを編集",
     "bulkDelete": "選択を削除",
