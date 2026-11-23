@@ -143,8 +143,9 @@ type ElementLike = {
 const TEXT_ROLES = new Set(['textbox', 'combobox', 'searchbox', 'spinbutton']);
 
 /**
- * Segment keys need focus inside the viewer root and never act while a person
- * types (input, textarea, select, editable text) or a dialog is open.
+ * A key whose target is inside the viewer root is a segment key unless a
+ * person types (input, textarea, select, editable text) or a dialog is open.
+ * Keys pressed on the page itself (`<body>`) are decided by `usePageKeys`.
  */
 export function isSegmentShortcutTarget(
   target: EventTarget | null,

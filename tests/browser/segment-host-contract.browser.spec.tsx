@@ -61,6 +61,7 @@ function Harness({ control, initial }: { control: HostControl; initial: Annotati
     getFrameIndex: () => 0,
     setFrameIndex: () => undefined,
     selectEpisode: async () => true,
+    pausePlayback: () => undefined,
   });
   const onChange = useCallback((change: AnnotationChange, meta?: { changeId: string }) => {
     sent.current.push({ change, changeId: meta?.changeId ?? `missing-${sent.current.length}` });

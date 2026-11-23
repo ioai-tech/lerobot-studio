@@ -42,7 +42,7 @@ import {
   type PendingSelection,
 } from '@/core';
 import { createParquetImageService, type ParquetImageServiceImpl } from '@/platform';
-import { getAutoLayoutVisualRows, getImageFeatureNames } from '@/core';
+import { episodeNumber, getAutoLayoutVisualRows, getImageFeatureNames } from '@/core';
 import { useEpisodeView } from './useEpisodeView';
 import { materializeNumericFeatureRows, useFeatureSubscriptions } from './useFeatureSubscriptions';
 import { usePlaybackBridge } from './usePlaybackBridge';
@@ -225,6 +225,9 @@ export const LeRobotDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
   const stableSetFrameIndex = useCallback((index: number) => setFrameIndexRef.current(index), []);
   const stableSelectEpisode = useCallback((index: number) => selectEpisodeRef.current(index), []);
   const getFrameIndexStable = useCallback(() => frameIndexRef.current, []);
+  /** Set once playback exists (below); segment review pauses through it. */
+  const pausePlaybackRef = useRef<() => void>(() => undefined);
+  const stablePausePlayback = useCallback(() => pausePlaybackRef.current(), []);
 
   const segments = useSegmentAnnotation({
     episodes,
@@ -235,6 +238,7 @@ export const LeRobotDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
     getFrameIndex: getFrameIndexStable,
     setFrameIndex: stableSetFrameIndex,
     selectEpisode: stableSelectEpisode,
+    pausePlayback: stablePausePlayback,
   });
   const resetSegments = segments.reset;
 
@@ -397,6 +401,7 @@ export const LeRobotDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
   isPlayingRef.current = isPlaying;
   const setPlayingRef = useRef(setPlaying);
   setPlayingRef.current = setPlaying;
+  pausePlaybackRef.current = () => setPlayingRef.current(false);
 
   // A segment selected on another episode seeks once that episode's frames are in.
   const flushPendingSeek = segments.flushPendingSeek;
@@ -875,7 +880,10 @@ export const LeRobotDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
       showTask({
         id: taskId,
         phase: 'read',
-        message: tRef.current('loading.message.loadEpisode', { index }),
+        message: tRef.current('loading.message.loadEpisode', {
+          number: episodeNumber(index),
+          index,
+        }),
       });
 
       setSelectedEpisodeIndex(index);
@@ -920,7 +928,10 @@ export const LeRobotDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
         showTask({
           id: taskId,
           phase: 'read',
-          message: tRef.current('loading.message.fetchFrames', { index }),
+          message: tRef.current('loading.message.fetchFrames', {
+            number: episodeNumber(index),
+            index,
+          }),
         });
         // The later batch starts downloading once the first one's bytes are
         // in, while the first decodes; the link serves one batch at a time.

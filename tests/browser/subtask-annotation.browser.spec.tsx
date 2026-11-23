@@ -206,7 +206,7 @@ describe('browser: subtask viewing and annotation', () => {
       expect.arrayContaining(['phase 1', 'phase 2', 'phase 3']),
     );
 
-    const episode1 = host.querySelector<HTMLButtonElement>('[aria-label="Select Episode 1"]');
+    const episode1 = host.querySelector<HTMLButtonElement>('[aria-label="Select Episode 2"]');
     expect(episode1).toBeTruthy();
     await act(async () => {
       episode1?.click();

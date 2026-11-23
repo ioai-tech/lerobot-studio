@@ -115,6 +115,12 @@ export interface AnnotationField {
   }>;
   /** `tags` / `text` suggestions. */
   suggestions?: string[];
+  /**
+   * A new segment (`N`) starts with this field's value from the segment it
+   * continues (the one before it, else the one after it), as it starts with
+   * that segment's task. A split keeps every value on both halves either way.
+   */
+  inherit?: boolean;
 }
 
 export type AnnotationRefusalCode =

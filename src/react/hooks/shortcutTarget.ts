@@ -82,13 +82,3 @@ export function isPlaybackShortcutBlocked(target: EventTarget | null, key?: stri
 
   return Boolean(el.closest('[data-slot="dialog-content"], [role="dialog"], [role="alertdialog"]'));
 }
-
-/** True when the event belongs to this Studio instance (or focus was left on the document). */
-export function isEventInsideStudio(
-  target: EventTarget | null,
-  portal: HTMLElement | null,
-): boolean {
-  if (!portal) return true;
-  if (isDetachedFocusTarget(target)) return true;
-  return target instanceof Node && portal.contains(target);
-}

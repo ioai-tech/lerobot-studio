@@ -56,8 +56,8 @@
     "message": {
       "initLoader": "正在初始化数据加载器...",
       "readMetadata": "正在读取元数据...",
-      "loadEpisode": "正在加载 Episode {{index}}...",
-      "fetchFrames": "正在获取 Episode {{index}} 的帧数据...",
+      "loadEpisode": "正在加载 Episode {{number}}...",
+      "fetchFrames": "正在获取 Episode {{number}} 的帧数据...",
       "processCharts": "正在处理图表..."
     }
   },
@@ -432,7 +432,7 @@
     "emptyNoDataset": "请先加载一个 LeRobot 数据集",
     "emptyNoMatch": "没有匹配的 Episode",
     "episodeAbbr": "EP",
-    "selectEpisode": "选择 Episode {{index}}",
+    "selectEpisode": "选择 Episode {{number}}",
     "expand": "展开侧边栏",
     "collapse": "收缩侧边栏",
     "editTask": "编辑任务",
@@ -574,8 +574,8 @@
       "copyingImage": "复制中",
       "copiedImage": "已复制",
       "downloadedImage": "已下载 PNG",
-      "imageDtype": "IMAGE",
-      "videoDtype": "VIDEO",
+      "imageDtype": "图像",
+      "videoDtype": "视频",
       "allFeatures": "全部特征",
       "none": "未选择",
       "featuresCount": "{{count}} 项",
@@ -738,8 +738,8 @@
     "compactVideos": "移除视频文件中的未使用片段（较慢）",
     "sharedVideoHint": "快速导出直接复制共享视频，不重新编码。删除的片段和裁掉的帧会从导出数据中移除，但对应画面可能仍保留在共享视频文件里。勾选此项可物理移除未使用的画面。",
     "subtaskCoverageHint": "每个导出的 episode 都必须完整标注子任务。",
-    "subtaskCoverageMissing": "Episode #{{index}} 还没有标注子任务。",
-    "subtaskCoverageIncomplete": "Episode #{{index}} 标注不完整（{{labeled}}/{{total}}）。",
+    "subtaskCoverageMissing": "Episode #{{number}} 还没有标注子任务。",
+    "subtaskCoverageIncomplete": "Episode #{{number}} 标注不完整（{{labeled}}/{{total}}）。",
     "totalEpisodes": "Episode 总数",
     "metadataOnlyHint": "当前仅导出元数据（info、episodes、tasks）。",
     "export": "导出",
@@ -758,7 +758,7 @@
     "fillSubtaskGaps": "将空隙标为 \"unlabeled\"",
     "segmentSummary": "分段：{episodes} 个片段中共 {count} 个分段",
     "segmentFrames": "分段保留 {{original}} 帧中的 {{kept}} 帧；每个分段导出为一个片段。源文件不变。",
-    "subtaskCoverageSegment": "片段 #{{index}} 的分段 {{n}} 缺少子任务标注（{{labeled}}/{{total}}）。请补全标注或开启“填充空隙”。"
+    "subtaskCoverageSegment": "片段 #{{number}} 的分段 {{n}} 缺少子任务标注（{{labeled}}/{{total}}）。请补全标注或开启“填充空隙”。"
   },
   "dialogs": {
     "remoteArchive": {
@@ -844,8 +844,8 @@
     "range": "保留区间（点击预览）",
     "removed": "裁去时长",
     "status": "状态",
-    "select": "应用到 Episode {{index}}",
-    "preview": "预览 Episode {{index}}",
+    "select": "应用到 Episode {{number}}",
+    "preview": "预览 Episode {{number}}",
     "ready": "可应用",
     "unchanged": "保留整段",
     "existing": "已跳过：已有分段",
@@ -885,7 +885,7 @@
     },
     "origin": {
       "suggested": "建议",
-      "suggestedConfidence": "建议 {{confidence}}"
+      "suggestedConfidence": "建议 · 置信度 {{confidence}}"
     },
     "readOnly": "只读",
     "inheritTask": "片段任务",
@@ -925,7 +925,8 @@
       "subtaskEnd": "子任务结束",
       "undo": "撤销",
       "redo": "重做",
-      "help": "快捷键"
+      "help": "快捷键",
+      "more": "更多操作"
     },
     "confirmAll": {
       "title": "确认 {count} 个分段？",
@@ -967,7 +968,8 @@
       "subtaskOutside": "子任务必须位于一个分段之内。",
       "subtaskNeedsSegment": "请先添加分段：子任务属于分段。",
       "suggestionsApplied": "已添加 {count} 个建议分段待审核。",
-      "excludedNotConfirmed": "已排除的分段不能确认。"
+      "excludedNotConfirmed": "已排除的分段不能确认。",
+      "nextToReview": "下一个待审核：#{{n}}。"
     },
     "refusal": {
       "EPISODE_UNKNOWN": "该片段不在此数据集中。",
@@ -990,7 +992,7 @@
     },
     "shortcuts": {
       "title": "键盘快捷键",
-      "description": "查看器获得焦点且未在输入框中输入时，快捷键才会生效。",
+      "description": "查看器在使用中且未在输入框中输入时，快捷键即可生效。",
       "key": "按键",
       "action": "操作",
       "playPause": "播放 / 暂停",

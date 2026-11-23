@@ -68,10 +68,10 @@ describe('buildExportSubtaskPlan', () => {
   });
 
   it('uses Episode #N copy for an unlabeled episode', () => {
-    expect(zh.export.subtaskCoverageMissing.replace('{{index}}', '2')).toBe(
+    expect(zh.export.subtaskCoverageMissing.replace('{{number}}', '2')).toBe(
       'Episode #2 还没有标注子任务。',
     );
-    expect(en.export.subtaskCoverageMissing.replace('{{index}}', '2')).toBe(
+    expect(en.export.subtaskCoverageMissing.replace('{{number}}', '2')).toBe(
       'Episode #2 has no subtask labels.',
     );
   });

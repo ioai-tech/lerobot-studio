@@ -19,7 +19,7 @@ import { ExportService } from '@/platform';
 import { WebExportAdapter } from '@/platform';
 import type { ExportFormat } from '@/core';
 import type { ExportProgress } from '@/core';
-import { SubtaskCoverageError, annotationToExportSegments } from '@/core';
+import { SubtaskCoverageError, annotationToExportSegments, episodeNumber } from '@/core';
 
 export interface ExportDialogProps {
   open: boolean;
@@ -182,19 +182,22 @@ export const ExportDialog: React.FC<ExportDialogProps> = ({ open, onOpenChange }
           setExportError(
             segmentNumber > 0
               ? t('export.subtaskCoverageSegment', {
+                  number: episodeNumber(e.episodeIndex),
                   index: e.episodeIndex,
                   n: segmentNumber,
                   labeled: e.coverage.labeledFrames,
                   total: e.coverage.totalFrames,
                 })
               : e.coverage.labeledFrames === 0
-                ? t('export.subtaskCoverageMissing', 'Episode #{{index}} has no subtask labels.', {
+                ? t('export.subtaskCoverageMissing', 'Episode #{{number}} has no subtask labels.', {
+                    number: episodeNumber(e.episodeIndex),
                     index: e.episodeIndex,
                   })
                 : t(
                     'export.subtaskCoverageIncomplete',
-                    'Episode #{{index}} is missing labels ({{labeled}}/{{total}}).',
+                    'Episode #{{number}} is missing labels ({{labeled}}/{{total}}).',
                     {
+                      number: episodeNumber(e.episodeIndex),
                       index: e.episodeIndex,
                       labeled: e.coverage.labeledFrames,
                       total: e.coverage.totalFrames,

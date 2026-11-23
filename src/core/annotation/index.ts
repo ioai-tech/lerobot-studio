@@ -39,7 +39,7 @@ export {
 } from './history';
 export type { PendingChange } from './pending';
 export { composeUpdateSteps, rebasePending } from './pending';
-export type { SegmentFilter } from './queries';
+export type { OrderedSegment, SegmentFilter } from './queries';
 export type { OverlaySegment, OverlaySegmentGroup, TimelineMarker } from './markers';
 export {
   isIssueMarker,
@@ -53,9 +53,12 @@ export {
   effectiveSegmentFilter,
   fieldOptionForKey,
   hasSegmentIssue,
+  inheritedValues,
   matchesSegmentFilter,
   nearerEdge,
+  neighbourOfRange,
   newSegmentRangeAt,
+  nextSegmentToReview,
   nextUncoveredFrame,
   offeredSegmentFilters,
   reviewProgress,
@@ -63,6 +66,7 @@ export {
   segmentFilterCounts,
   segmentNumber,
   segmentReviewDisplay,
+  stepSegment,
   uncoveredRanges,
 } from './queries';
 export {

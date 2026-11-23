@@ -55,7 +55,7 @@ it('suggests segments through the real sidebar, previews without adding, and add
     await userEvent.click(page.getByRole('button', { name: 'Select', exact: true }));
     for (const index of [0, 1])
       await userEvent.click(
-        page.getByRole('button', { name: `Select Episode ${index}`, exact: true }),
+        page.getByRole('button', { name: `Select Episode ${index + 1}`, exact: true }),
       );
     await userEvent.click(page.getByRole('button', { name: 'Suggest segments', exact: true }));
     await expect.element(page.getByRole('dialog')).toBeVisible();
@@ -67,7 +67,7 @@ it('suggests segments through the real sidebar, previews without adding, and add
     await expect
       .element(page.getByRole('button', { name: 'Add as segments to review' }))
       .toBeEnabled();
-    await userEvent.click(page.getByRole('button', { name: 'Preview Episode 1', exact: true }));
+    await userEvent.click(page.getByRole('button', { name: 'Preview Episode 2', exact: true }));
     await expect.poll(() => host.querySelector('[data-slot="dialog-content"]')).toBeNull();
     await expect.element(page.getByRole('button', { name: 'Return to suggestions' })).toBeVisible();
     // Previewing adds nothing.
@@ -211,6 +211,7 @@ it('analyzes each episode independently, skips segmented/deleted/invalid data, a
       getFrameIndex: () => 0,
       setFrameIndex,
       selectEpisode: async () => true,
+      pausePlayback: () => undefined,
     });
     const [open, setOpen] = useState(false);
     const [suggestion, setSuggestion] = useState(null);
@@ -337,7 +338,7 @@ it('analyzes each episode independently, skips segmented/deleted/invalid data, a
     await expect
       .element(page.getByRole('button', { name: 'Add as segments to review' }))
       .toBeEnabled();
-    await userEvent.click(page.getByRole('checkbox', { name: 'Include Episode 4', exact: true }));
+    await userEvent.click(page.getByRole('checkbox', { name: 'Include Episode 5', exact: true }));
     await userEvent.click(page.getByRole('button', { name: 'Add as segments to review' }));
     await expect.poll(() => ranges().size).toBe(3);
     expect(ranges().get(2)).toEqual({ startFrame: 30, endFrame: 899 });

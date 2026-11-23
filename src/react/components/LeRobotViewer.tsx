@@ -28,6 +28,7 @@ import type {
 import { HostChrome } from './Host/HostChrome';
 import { SelectionBridge, type SelectionCarry } from './Host/SelectionBridge';
 import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts';
+import type { LeRobotKeyboardScope } from '../hooks/pageKeys';
 import { useBrowserOnline } from '../hooks/useBrowserOnline';
 import { ViewerLayout } from '../features/viewer/ViewerLayout';
 import { ErrorState } from './Commons/ErrorState';
@@ -92,6 +93,17 @@ export interface LeRobotViewerProps {
    */
   enableKeyboardShortcuts?: boolean;
   /**
+   * Which key presses outside the viewer it takes. Keys pressed while focus is
+   * inside the viewer always work. `auto` also takes keys pressed while focus
+   * is on the page itself (`<body>`: right after the viewer opens, after a
+   * navigation, after a click where nothing takes focus) when it is the shown
+   * viewer that opened or was used last; `page` does so in preference to
+   * `auto` viewers; `viewer` takes only keys pressed inside it. A field, a
+   * focused control of the page or an open modal dialog keeps its keys.
+   * @defaultValue 'auto'
+   */
+  keyboardScope?: LeRobotKeyboardScope;
+  /**
    * Extra time series from separate parquet files, aligned by their own time
    * column and plotted with the dataset's charts on the same playhead (native
    * rate; drawn with min/max-per-pixel decimation). Single-dataset views only.
@@ -146,6 +158,7 @@ export function LeRobotViewerContent({
   showPlaybackBar = true,
   onFatalError,
   enableKeyboardShortcuts = true,
+  keyboardScope = 'auto',
   onBack,
   onExport,
   auxiliarySeries,
@@ -188,7 +201,7 @@ export function LeRobotViewerContent({
   const initialSelectionRef = useRef(initialSelection);
   initialSelectionRef.current = initialSelection;
 
-  useKeyboardShortcuts(enableKeyboardShortcuts);
+  useKeyboardShortcuts(enableKeyboardShortcuts, keyboardScope);
 
   const lastSourceRef = useRef<DataSource | null>(null);
   const [resolvedSource, setResolvedSource] = useState<DataSource | null>(null);
@@ -490,6 +503,7 @@ export const LeRobotViewer: React.FC<LeRobotViewerProps> = ({
   className,
   onFatalError,
   enableKeyboardShortcuts = true,
+  keyboardScope,
   onBack,
   onExport,
   auxiliarySeries,
@@ -520,6 +534,7 @@ export const LeRobotViewer: React.FC<LeRobotViewerProps> = ({
         showPlaybackBar={showPlaybackBar}
         onFatalError={onFatalError}
         enableKeyboardShortcuts={enableKeyboardShortcuts}
+        keyboardScope={keyboardScope}
         onBack={onBack}
         onExport={onExport}
         auxiliarySeries={auxiliarySeries}

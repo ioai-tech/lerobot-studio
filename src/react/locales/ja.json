@@ -56,8 +56,8 @@
     "message": {
       "initLoader": "データローダーを初期化中...",
       "readMetadata": "メタデータを読み込み中...",
-      "loadEpisode": "エピソード {{index}} を読み込み中...",
-      "fetchFrames": "エピソード {{index}} のフレームデータを取得中...",
+      "loadEpisode": "エピソード {{number}} を読み込み中...",
+      "fetchFrames": "エピソード {{number}} のフレームデータを取得中...",
       "processCharts": "チャートを処理中..."
     }
   },
@@ -432,7 +432,7 @@
     "emptyNoDataset": "LeRobot データセットを読み込むとエピソードを表示します",
     "emptyNoMatch": "検索に一致するエピソードはありません",
     "episodeAbbr": "EP",
-    "selectEpisode": "エピソード {{index}} を選択",
+    "selectEpisode": "エピソード {{number}} を選択",
     "expand": "サイドバーを展開",
     "collapse": "サイドバーを折りたたむ",
     "editTask": "タスクを編集",
@@ -582,8 +582,8 @@
       "copyingImage": "コピー中",
       "copiedImage": "コピーしました",
       "downloadedImage": "PNG をダウンロードしました",
-      "imageDtype": "IMAGE",
-      "videoDtype": "VIDEO",
+      "imageDtype": "画像",
+      "videoDtype": "動画",
       "allFeatures": "全 Feature",
       "none": "未選択",
       "featuresCount": "{{count}} Feature",
@@ -746,8 +746,8 @@
     "compactVideos": "未使用の動画区間を除去する（低速）",
     "sharedVideoHint": "高速エクスポートは共有動画を再エンコードせずコピーします。削除したエピソードやフレームは出力データから除外されますが、映像は共有ファイルに残る場合があります。有効にすると不要な映像も物理的に削除します。",
     "subtaskCoverageHint": "書き出す各エピソードはサブタスクをすべてラベルする必要があります。",
-    "subtaskCoverageMissing": "エピソード #{{index}} にはサブタスクのラベルがありません。",
-    "subtaskCoverageIncomplete": "エピソード #{{index}} のラベルが不完全です（{{labeled}}/{{total}}）。",
+    "subtaskCoverageMissing": "エピソード #{{number}} にはサブタスクのラベルがありません。",
+    "subtaskCoverageIncomplete": "エピソード #{{number}} のラベルが不完全です（{{labeled}}/{{total}}）。",
     "totalEpisodes": "エピソード総数",
     "metadataOnlyHint": "現在のエクスポートはメタデータのみ（info, episodes, tasks）です。",
     "export": "エクスポート",
@@ -766,7 +766,7 @@
     "fillSubtaskGaps": "空白を \"unlabeled\" で埋める",
     "segmentSummary": "セグメント: {episodes} 件のエピソードに {count} 件",
     "segmentFrames": "セグメントは {{original}} フレーム中 {{kept}} フレームを保持し、各セグメントを 1 つのエピソードとして書き出します。元のファイルは変更されません。",
-    "subtaskCoverageSegment": "エピソード #{{index}} のセグメント {{n}} にサブタスクのラベルが不足しています（{{labeled}}/{{total}}）。ラベルを付けるか「空白を埋める」をオンにしてください。"
+    "subtaskCoverageSegment": "エピソード #{{number}} のセグメント {{n}} にサブタスクのラベルが不足しています（{{labeled}}/{{total}}）。ラベルを付けるか「空白を埋める」をオンにしてください。"
   },
   "dialogs": {
     "remoteArchive": {
@@ -852,8 +852,8 @@
     "range": "保持範囲（クリックでプレビュー）",
     "removed": "削除時間",
     "status": "状態",
-    "select": "エピソード {{index}} を含める",
-    "preview": "エピソード {{index}} をプレビュー",
+    "select": "エピソード {{number}} を含める",
+    "preview": "エピソード {{number}} をプレビュー",
     "ready": "適用可能",
     "unchanged": "全体を保持",
     "existing": "スキップ: セグメントあり",
@@ -893,7 +893,7 @@
     },
     "origin": {
       "suggested": "提案",
-      "suggestedConfidence": "提案 {{confidence}}"
+      "suggestedConfidence": "提案 · 信頼度 {{confidence}}"
     },
     "readOnly": "読み取り専用",
     "inheritTask": "エピソードのタスク",
@@ -933,7 +933,8 @@
       "subtaskEnd": "サブタスク終了",
       "undo": "元に戻す",
       "redo": "やり直す",
-      "help": "キー"
+      "help": "キー",
+      "more": "その他の操作"
     },
     "confirmAll": {
       "title": "{count} 件のセグメントを確認しますか？",
@@ -975,7 +976,8 @@
       "subtaskOutside": "サブタスクは 1 つのセグメント内に収める必要があります。",
       "subtaskNeedsSegment": "先にセグメントを追加してください。サブタスクはセグメントに属します。",
       "suggestionsApplied": "{count} 件の提案セグメントをレビュー用に追加しました。",
-      "excludedNotConfirmed": "除外されたセグメントは確認できません。"
+      "excludedNotConfirmed": "除外されたセグメントは確認できません。",
+      "nextToReview": "次の要レビュー：#{{n}}。"
     },
     "refusal": {
       "EPISODE_UNKNOWN": "このエピソードはデータセットにありません。",
@@ -998,7 +1000,7 @@
     },
     "shortcuts": {
       "title": "キーボードショートカット",
-      "description": "ビューアにフォーカスがあり、入力中でないときにキーが有効になります。",
+      "description": "ビューアの使用中、入力欄で入力していなければキーが有効です。",
       "key": "キー",
       "action": "操作",
       "playPause": "再生 / 一時停止",
