@@ -9,7 +9,7 @@ import {
 } from '../contexts/LeRobotContext';
 import { usePortalContainer } from '@/ui';
 import { fieldOptionForKey } from '@/core';
-import { isDetachedFocusTarget, isPlaybackShortcutBlocked } from './shortcutTarget';
+import { isPageKeyTarget, isPlaybackShortcutBlocked } from './shortcutTarget';
 import { usePageKeys, type LeRobotKeyboardScope } from './pageKeys';
 import {
   isSegmentShortcutTarget,
@@ -228,14 +228,26 @@ export const useKeyboardShortcuts = (
     (e: KeyboardEvent) => {
       if (!enabledRef.current || isLoadingRef.current) return;
       if (e.defaultPrevented) return;
+      // A key that composes text (IME) belongs to the composition.
+      if (e.isComposing || e.keyCode === 229) return;
 
-      const target = e.target;
+      // The element the key was pressed on, also inside a shadow root (the
+      // window sees the shadow host as the target).
+      const target = e.composedPath?.()[0] ?? e.target;
       const inside =
         !portalContainer || (target instanceof Node && portalContainer.contains(target));
       // A key pressed on the page itself (focus on <body>: the viewer just opened,
       // the host navigated, a click landed where nothing takes focus) belongs to
-      // one viewer only: the one shown that opened or was used last (F-01).
-      const onPage = !inside && isDetachedFocusTarget(target) && ownsPageKeys();
+      // one viewer only: the one shown that opened or was used last (F-01). A
+      // combination with Ctrl, Cmd or Alt stays the page's and the browser's
+      // (a host's Ctrl+K, Alt+← back), and an editable page keeps every key.
+      const onPage =
+        !inside &&
+        isPageKeyTarget(target) &&
+        !e.ctrlKey &&
+        !e.metaKey &&
+        !e.altKey &&
+        ownsPageKeys();
       if (!inside && !onPage) return;
       // Segment keys exist only while the segment UI does (a plain viewer is unchanged).
       if (

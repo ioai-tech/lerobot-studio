@@ -179,6 +179,37 @@ describe('browser: the review loop (walk 2026-11-23)', () => {
     expect(isPlaying(host)).toBe(false);
   });
 
+  it('F-01: on <body>, Ctrl / Cmd / Alt combinations, IME composition and an editable page keep their keys', async () => {
+    const log: HostLog = { changes: [], value: () => ({ episodes: {} }) };
+    root.render(<Host log={log} initial={{ episodes: { 0: { segments: [seg('a', 0, 1)] } } }} />);
+    await waitUntouched(host);
+    const keydown = (init: KeyboardEventInit) => {
+      const event = new KeyboardEvent('keydown', { bubbles: true, cancelable: true, ...init });
+      document.body.dispatchEvent(event);
+      return event.defaultPrevented;
+    };
+    // A host's own shortcut (Ctrl+K, Cmd+K) and the browser's (Alt+← back).
+    expect(keydown({ key: 'k', code: 'KeyK', ctrlKey: true })).toBe(false);
+    expect(keydown({ key: 'k', code: 'KeyK', metaKey: true })).toBe(false);
+    expect(keydown({ key: 'ArrowLeft', code: 'ArrowLeft', altKey: true })).toBe(false);
+    expect(keydown({ key: 'j', code: 'KeyJ', ctrlKey: true })).toBe(false);
+    // A key that composes text (IME) is the composition's.
+    expect(keydown({ key: 'j', code: 'KeyJ', isComposing: true })).toBe(false);
+    // A page that is being edited keeps every key.
+    document.body.contentEditable = 'true';
+    try {
+      expect(keydown({ key: 'j', code: 'KeyJ' })).toBe(false);
+    } finally {
+      document.body.removeAttribute('contenteditable');
+    }
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    expect(inspector(host)).not.toContain('#1');
+    // The plain key on the page still reaches the viewer.
+    expect(keydown({ key: 'j', code: 'KeyJ' })).toBe(true);
+    await expect.poll(() => inspector(host)).toContain('#1');
+    expect(log.changes).toEqual([]);
+  });
+
   it('F-18: A confirms and moves selection, details, playhead and focus to the next episode to review', async () => {
     const log: HostLog = { changes: [], value: () => ({ episodes: {} }) };
     const selections: LeRobotSelection[] = [];

@@ -512,7 +512,7 @@ Keys pressed while focus is inside the viewer always reach it. Right after the v
 - `'page'`: the same, preferred over `'auto'` viewers: give it to the page's main viewer when others are shown beside it.
 - `'viewer'`: only keys pressed inside the viewer.
 
-The viewer never takes focus itself, and never acts on a key typed into a field, on a key while a control of the page has focus, or while a modal dialog (`aria-modal="true"` or an open `<dialog>`) is open.
+The viewer never takes focus itself, and never acts on a key typed into a field, on a key while a control of the page has focus, or while a modal dialog (`aria-modal="true"` or an open `<dialog>`) is open. On the page, a key combined with Ctrl, ⌘ or Alt stays yours and the browser's (your own shortcuts such as Ctrl+K, Alt+← to go back), and so does a key that composes text (IME) or one pressed on an editable page (`contenteditable` body, `designMode`).
 
 When you provide `onFatalError`, the viewer does not render its built-in fatal-error state. Keep the error in your application state and display an appropriate message yourself. A failure is fatal only while no dataset is shown; once one is, a failed load (an episode whose data cannot be read, a data source swap that failed) stays inside the viewer: one line above the panels names it ("You're offline" while the browser is offline, otherwise what failed and why) with Retry, and the viewer loads it again by itself when the browser is back online. The shown dataset stays meanwhile.
 

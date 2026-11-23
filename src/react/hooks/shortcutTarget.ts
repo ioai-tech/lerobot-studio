@@ -5,6 +5,15 @@ export function isDetachedFocusTarget(target: EventTarget | null): boolean {
 }
 
 /**
+ * True when a key was pressed on the page itself (focus on `<body>`), not in a
+ * page that is being edited (`contenteditable` body, `designMode`).
+ */
+export function isPageKeyTarget(target: EventTarget | null): boolean {
+  if (!isDetachedFocusTarget(target)) return false;
+  return document.designMode !== 'on' && !document.body?.isContentEditable;
+}
+
+/**
  * Widgets whose own keyboard model uses Space and the arrow keys (WAI-ARIA
  * composite roles). While one has focus, playback shortcuts stay out of its way.
  */
