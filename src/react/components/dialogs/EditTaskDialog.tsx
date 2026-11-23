@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useId, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   Dialog,
@@ -27,6 +27,7 @@ export const EditTaskDialog: React.FC<EditTaskDialogProps> = ({
   onSave,
 }) => {
   const { t } = useTranslation();
+  const fieldId = useId();
   const [taskText, setTaskText] = useState('');
 
   useEffect(() => {
@@ -57,16 +58,28 @@ export const EditTaskDialog: React.FC<EditTaskDialogProps> = ({
           <>
             <div className="space-y-4 py-2">
               <div className="space-y-2">
-                <label className="text-sm font-medium text-muted-foreground">
+                <label
+                  htmlFor={`${fieldId}-episode`}
+                  className="text-sm font-medium text-muted-foreground"
+                >
                   {t('editTask.episodeIndex', 'Episode Index')}
                 </label>
-                <Input value={episode.episode_index} disabled className="bg-muted" />
+                <Input
+                  id={`${fieldId}-episode`}
+                  value={episode.episode_index}
+                  disabled
+                  className="bg-muted"
+                />
               </div>
               <div className="space-y-2">
-                <label className="text-sm font-medium text-muted-foreground">
+                <label
+                  htmlFor={`${fieldId}-task`}
+                  className="text-sm font-medium text-muted-foreground"
+                >
                   {t('editTask.taskDescription', 'Task Description')}
                 </label>
                 <Textarea
+                  id={`${fieldId}-task`}
                   value={taskText}
                   onChange={(e) => setTaskText(e.target.value)}
                   placeholder={t('editTask.taskPlaceholder', 'Enter task description...')}

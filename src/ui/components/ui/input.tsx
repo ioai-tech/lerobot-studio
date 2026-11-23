@@ -2,9 +2,15 @@ import * as React from 'react';
 
 import { cn } from '../../lib/utils';
 
-function Input({ className, type, ...props }: React.ComponentProps<'input'>) {
+/**
+ * A text-like input. Without an `id` it gets a `useId` one, so every field has
+ * an id that is unique on the page, also with several viewers mounted.
+ */
+function Input({ className, type, id, ...props }: React.ComponentProps<'input'>) {
+  const generatedId = React.useId();
   return (
     <input
+      id={id ?? generatedId}
       type={type}
       data-slot="input"
       className={cn(

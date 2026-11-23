@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   clipSubtasksToRange,
@@ -52,6 +52,7 @@ export function BatchTrimDialog({
   onClose: () => void;
 }) {
   const { t } = useTranslation();
+  const fieldId = useId();
   const { info, dataLoader, subtasks: sourceSubtaskTable } = useLeRobotData();
   const { selectEpisode, deletedEpisodes } = useLeRobotSelection();
   const segments = useLeRobotSegments();
@@ -339,6 +340,7 @@ export function BatchTrimDialog({
               <label className="flex flex-wrap items-center gap-2 text-sm">
                 {t('batchTrim.feature')}
                 <select
+                  id={`${fieldId}-feature`}
                   className={nativeSelectClassName}
                   aria-label={t('batchTrim.feature')}
                   value={feature}
@@ -390,6 +392,7 @@ export function BatchTrimDialog({
                       <label key={i} className="flex items-center gap-1">
                         <input
                           type="checkbox"
+                          id={`${fieldId}-dimension-${i}`}
                           checked={!excluded.includes(i)}
                           onChange={(e) =>
                             setExcluded((previous) =>
@@ -408,6 +411,7 @@ export function BatchTrimDialog({
           <label className="flex items-center gap-2 text-sm">
             <input
               type="checkbox"
+              id={`${fieldId}-overwrite`}
               checked={overwrite}
               onChange={(e) => setOverwrite(e.target.checked)}
             />
@@ -457,6 +461,7 @@ export function BatchTrimDialog({
                         <label className="flex items-center gap-2">
                           <input
                             type="checkbox"
+                            id={`${fieldId}-episode-${row.episode.episode_index}`}
                             aria-label={t('batchTrim.select', {
                               index: row.episode.episode_index,
                             })}

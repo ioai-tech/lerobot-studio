@@ -448,6 +448,8 @@
     "clearSelection": "Clear selection",
     "filterByTask": "Task",
     "filterByDuration": "Duration (s)",
+    "durationMin": "Minimum duration (s)",
+    "durationMax": "Maximum duration (s)",
     "filterTaskAll": "All tasks",
     "bulkEdit": "Edit task",
     "bulkDelete": "Delete selected",

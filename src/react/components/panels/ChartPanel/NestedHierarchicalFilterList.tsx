@@ -1,9 +1,11 @@
-import { memo, useEffect, useMemo, useRef } from 'react';
+import { memo, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Search, X } from 'lucide-react';
 import { Input } from '@/ui';
 import { Button } from '@/ui';
 import { cn } from '@/ui';
+import { TriStateBox } from '../Common/filters/TriStateBox';
+import { pressedState } from '../Common/filters/pressedState';
 import type { FilterGroup } from '@/core';
 import { getGroupSelectionState } from '@/core';
 import {
@@ -30,32 +32,6 @@ function getNodeSelectionState(itemIds: string[], selectedIds: Set<string>): Sel
   if (selectedCount === itemIds.length) return 'all';
   return 'partial';
 }
-
-const TriStateCheckbox = memo(function TriStateCheckbox({
-  checked,
-  indeterminate,
-}: {
-  checked: boolean;
-  indeterminate: boolean;
-}) {
-  const ref = useRef<HTMLInputElement | null>(null);
-
-  useEffect(() => {
-    if (!ref.current) return;
-    ref.current.checked = checked;
-    ref.current.indeterminate = indeterminate;
-  }, [checked, indeterminate]);
-
-  return (
-    <input
-      ref={ref}
-      type="checkbox"
-      checked={checked}
-      readOnly
-      className="pointer-events-none h-3.5 w-3.5 shrink-0 rounded border-border accent-primary"
-    />
-  );
-});
 
 export type NestedHierarchicalFilterListProps = {
   featureNodes: FeatureFilterNode[];
@@ -110,6 +86,7 @@ export const NestedHierarchicalFilterList = memo(function NestedHierarchicalFilt
         <div className="flex items-center gap-2">
           <button
             type="button"
+            aria-pressed={pressedState(allSelected, allIndeterminate)}
             className="flex h-8 shrink-0 items-center rounded-md px-1"
             onClick={(e) => {
               e.preventDefault();
@@ -120,7 +97,7 @@ export const NestedHierarchicalFilterList = memo(function NestedHierarchicalFilt
             title={selectAllLabel}
             aria-label={selectAllLabel}
           >
-            <TriStateCheckbox checked={allSelected} indeterminate={allIndeterminate} />
+            <TriStateBox checked={allSelected} indeterminate={allIndeterminate} />
           </button>
           <div className="relative min-w-0 flex-1">
             <Search className="absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
@@ -128,6 +105,7 @@ export const NestedHierarchicalFilterList = memo(function NestedHierarchicalFilt
               value={searchValue}
               onChange={(e) => onSearchChange(e.target.value)}
               placeholder={searchPlaceholder}
+              aria-label={searchPlaceholder}
               className="h-8 bg-background pl-7 pr-7 text-xs"
             />
             {searchValue ? (
@@ -165,6 +143,7 @@ export const NestedHierarchicalFilterList = memo(function NestedHierarchicalFilt
               >
                 <button
                   type="button"
+                  aria-pressed={pressedState(featureState === 'all', featureState === 'partial')}
                   data-filter-row="true"
                   className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs hover:bg-muted/50"
                   onClick={(e) => {
@@ -180,7 +159,7 @@ export const NestedHierarchicalFilterList = memo(function NestedHierarchicalFilt
                     })
                   }
                 >
-                  <TriStateCheckbox
+                  <TriStateBox
                     checked={featureState === 'all'}
                     indeterminate={featureState === 'partial'}
                   />
@@ -195,6 +174,7 @@ export const NestedHierarchicalFilterList = memo(function NestedHierarchicalFilt
                     <div key={`${featureNode.id}-${group.id}`} className="mb-0.5">
                       <button
                         type="button"
+                        aria-pressed={pressedState(groupState === 'all', groupState === 'partial')}
                         data-filter-row="true"
                         className="flex w-full items-center gap-2 rounded-md px-2 py-1 pl-4 text-left text-xs hover:bg-muted/50"
                         onClick={(e) => {
@@ -206,7 +186,7 @@ export const NestedHierarchicalFilterList = memo(function NestedHierarchicalFilt
                           onHoverChange?.({ type: 'group', id: group.id, itemIds: groupItemIds })
                         }
                       >
-                        <TriStateCheckbox
+                        <TriStateBox
                           checked={groupState === 'all'}
                           indeterminate={groupState === 'partial'}
                         />
@@ -217,6 +197,7 @@ export const NestedHierarchicalFilterList = memo(function NestedHierarchicalFilt
                         <button
                           key={item.id}
                           type="button"
+                          aria-pressed={pressedState(selectedIds.has(item.id), false)}
                           data-filter-row="true"
                           className={cn(
                             'flex w-full items-center gap-2 rounded-md px-2 py-1.5 pl-8 text-left text-[11px] hover:bg-muted/40',
@@ -231,10 +212,7 @@ export const NestedHierarchicalFilterList = memo(function NestedHierarchicalFilt
                             onHoverChange?.({ type: 'item', id: item.id, itemIds: [item.id] })
                           }
                         >
-                          <TriStateCheckbox
-                            checked={selectedIds.has(item.id)}
-                            indeterminate={false}
-                          />
+                          <TriStateBox checked={selectedIds.has(item.id)} indeterminate={false} />
                           {getItemColor ? (
                             <span
                               className="h-0.5 w-5 shrink-0 rounded-full"

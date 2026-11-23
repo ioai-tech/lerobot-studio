@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useMemo, useRef, useEffect } from 'react';
+import React, { useState, useCallback, useMemo, useRef, useEffect, useId } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   Dialog,
@@ -28,6 +28,7 @@ export interface ExportDialogProps {
 
 export const ExportDialog: React.FC<ExportDialogProps> = ({ open, onOpenChange }) => {
   const { t } = useTranslation();
+  const fieldId = useId();
   const { dataLoader, info, tasks, subtasks } = useLeRobotData();
   const { episodesForExport, modifiedEpisodes, deletedEpisodes } = useLeRobotSelection();
   const { doc, fields } = useLeRobotSegments();
@@ -319,6 +320,7 @@ export const ExportDialog: React.FC<ExportDialogProps> = ({ open, onOpenChange }
                 <label className="flex items-start gap-2 text-sm">
                   <input
                     type="checkbox"
+                    id={`${fieldId}-include-subtasks`}
                     className="mt-0.5 h-3.5 w-3.5 shrink-0 accent-primary"
                     checked={includeSubtasks}
                     onChange={(event) => setIncludeSubtasks(event.target.checked)}
@@ -329,6 +331,7 @@ export const ExportDialog: React.FC<ExportDialogProps> = ({ open, onOpenChange }
                   <label className="ml-5 flex items-start gap-2 text-sm">
                     <input
                       type="checkbox"
+                      id={`${fieldId}-fill-subtask-gaps`}
                       className="mt-0.5 h-3.5 w-3.5 shrink-0 accent-primary"
                       checked={fillSubtaskGaps}
                       onChange={(event) => setFillSubtaskGaps(event.target.checked)}
@@ -343,6 +346,7 @@ export const ExportDialog: React.FC<ExportDialogProps> = ({ open, onOpenChange }
                 <label className="flex items-start gap-2">
                   <input
                     type="checkbox"
+                    id={`${fieldId}-compact-videos`}
                     className="mt-0.5 accent-primary"
                     checked={compactVideos}
                     onChange={(event) => setCompactVideos(event.target.checked)}
