@@ -68,7 +68,6 @@ export const RemoteArchiveOpenForm: React.FC<RemoteArchiveOpenFormProps> = ({
           <Globe2 className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
           <Input
             id={urlId}
-            name="archive-url"
             className="pl-9 text-base h-11 border-0 rounded-none"
             placeholder="https://example.com/lerobot.zip"
             value={url}

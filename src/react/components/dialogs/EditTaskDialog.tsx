@@ -80,7 +80,6 @@ export const EditTaskDialog: React.FC<EditTaskDialogProps> = ({
                 </label>
                 <Textarea
                   id={`${fieldId}-task`}
-                  name="episode-task"
                   value={taskText}
                   onChange={(e) => setTaskText(e.target.value)}
                   placeholder={t('editTask.taskPlaceholder', 'Enter task description...')}

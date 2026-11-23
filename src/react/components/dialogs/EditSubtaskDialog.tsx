@@ -97,7 +97,6 @@ export const EditSubtaskDialog: React.FC<EditSubtaskDialogProps> = ({
         </DialogHeader>
         <div className="space-y-3 py-2">
           <Input
-            name="subtask-label"
             value={label}
             onChange={(event) => setLabel(event.target.value)}
             onKeyDown={(event) => {

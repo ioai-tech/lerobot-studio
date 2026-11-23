@@ -57,7 +57,6 @@ export function Pagination({
         </label>
         <select
           id={rowsPerPageId}
-          name="rows-per-page"
           value={rowsPerPage}
           onChange={onRowsPerPageChange}
           className={cn(

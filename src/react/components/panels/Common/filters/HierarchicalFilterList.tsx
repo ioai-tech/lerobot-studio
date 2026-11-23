@@ -1,9 +1,11 @@
-import { memo, useEffect, useMemo, useRef } from 'react';
+import { memo, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Search, X } from 'lucide-react';
 import { Input } from '@/ui';
 import { Button } from '@/ui';
 import { cn } from '@/ui';
+import { TriStateBox } from './TriStateBox';
+import { pressedState } from './pressedState';
 import type { FilterGroup } from '@/core';
 import { filterGroups, getGroupSelectionState } from '@/core';
 
@@ -28,43 +30,6 @@ interface HierarchicalFilterListProps {
   getGroupColor?: (groupId: string, itemIds: string[]) => string | undefined;
   className?: string;
 }
-
-/** A row button's pressed state: the selection its tri-state box draws. */
-function pressed(checked: boolean, indeterminate: boolean): boolean | 'mixed' {
-  return indeterminate ? 'mixed' : checked;
-}
-
-const TriStateCheckbox = memo(function TriStateCheckbox({
-  checked,
-  indeterminate,
-}: {
-  checked: boolean;
-  indeterminate: boolean;
-}) {
-  const ref = useRef<HTMLInputElement | null>(null);
-
-  useEffect(() => {
-    if (!ref.current) return;
-    // 显式同步 DOM checkbox 状态，避免在只读受控场景下出现视觉滞后。
-    ref.current.checked = checked;
-    ref.current.indeterminate = indeterminate;
-  }, [checked, indeterminate]);
-
-  return (
-    // Drawn inside the row button, which owns the state (`aria-pressed`): this
-    // box is only its picture, out of the tab order and the accessibility tree.
-    <input
-      ref={ref}
-      type="checkbox"
-      name="filter-row-state"
-      checked={checked}
-      readOnly
-      tabIndex={-1}
-      aria-hidden
-      className="pointer-events-none h-3.5 w-3.5 shrink-0 rounded border-border accent-primary"
-    />
-  );
-});
 
 export const HierarchicalFilterList = memo(function HierarchicalFilterList({
   groups,
@@ -102,7 +67,7 @@ export const HierarchicalFilterList = memo(function HierarchicalFilterList({
         <div className="flex items-center gap-2">
           <button
             type="button"
-            aria-pressed={pressed(allSelected, allIndeterminate)}
+            aria-pressed={pressedState(allSelected, allIndeterminate)}
             className="flex h-8 shrink-0 items-center rounded-md px-1"
             onClick={(e) => {
               e.preventDefault();
@@ -113,7 +78,7 @@ export const HierarchicalFilterList = memo(function HierarchicalFilterList({
             title={selectAllLabel}
             aria-label={selectAllLabel}
           >
-            <TriStateCheckbox checked={allSelected} indeterminate={allIndeterminate} />
+            <TriStateBox checked={allSelected} indeterminate={allIndeterminate} />
           </button>
           <div className="relative min-w-0 flex-1">
             <Search className="absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
@@ -122,7 +87,6 @@ export const HierarchicalFilterList = memo(function HierarchicalFilterList({
               onChange={(e) => onSearchChange(e.target.value)}
               placeholder={searchPlaceholder}
               aria-label={searchPlaceholder}
-              name="filter-search"
               className="h-8 bg-background pl-7 pr-7 text-xs"
             />
             {searchValue ? (
@@ -157,7 +121,7 @@ export const HierarchicalFilterList = memo(function HierarchicalFilterList({
               <div key={group.id} className="mb-1 border-b border-border/40 pb-1 last:border-b-0">
                 <button
                   type="button"
-                  aria-pressed={pressed(groupState === 'all', groupState === 'partial')}
+                  aria-pressed={pressedState(groupState === 'all', groupState === 'partial')}
                   data-filter-row="true"
                   className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs hover:bg-muted/50"
                   onClick={(e) => {
@@ -169,7 +133,7 @@ export const HierarchicalFilterList = memo(function HierarchicalFilterList({
                     onHoverChange?.({ type: 'group', id: group.id, itemIds: groupItemIds })
                   }
                 >
-                  <TriStateCheckbox
+                  <TriStateBox
                     checked={groupState === 'all'}
                     indeterminate={groupState === 'partial'}
                   />
@@ -188,7 +152,7 @@ export const HierarchicalFilterList = memo(function HierarchicalFilterList({
                   <button
                     key={item.id}
                     type="button"
-                    aria-pressed={pressed(selectedIds.has(item.id), false)}
+                    aria-pressed={pressedState(selectedIds.has(item.id), false)}
                     data-filter-row="true"
                     className={cn(
                       'flex w-full items-center gap-2 rounded-md px-2 py-1.5 pl-6 text-left text-[11px] hover:bg-muted/40',
@@ -203,7 +167,7 @@ export const HierarchicalFilterList = memo(function HierarchicalFilterList({
                       onHoverChange?.({ type: 'item', id: item.id, itemIds: [item.id] })
                     }
                   >
-                    <TriStateCheckbox checked={selectedIds.has(item.id)} indeterminate={false} />
+                    <TriStateBox checked={selectedIds.has(item.id)} indeterminate={false} />
                     {getItemColor ? (
                       <span
                         className="h-0.5 w-5 shrink-0 rounded-full"

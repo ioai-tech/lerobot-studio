@@ -36,11 +36,17 @@ const buttonVariants = cva(
   },
 );
 
+/**
+ * A button. Without a `type` it is `type="button"`, so a viewer button never
+ * submits a host page's `<form>` that the viewer is mounted in; a form's own
+ * submit button passes `type="submit"`. With `asChild` the child keeps its own.
+ */
 function Button({
   className,
   variant = 'default',
   size = 'default',
   asChild = false,
+  type,
   ...props
 }: React.ComponentProps<'button'> &
   VariantProps<typeof buttonVariants> & {
@@ -50,6 +56,7 @@ function Button({
 
   return (
     <Comp
+      {...(asChild ? (type ? { type } : {}) : { type: type ?? 'button' })}
       data-slot="button"
       data-variant={variant}
       data-size={size}

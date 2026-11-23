@@ -1,3 +1,4 @@
+import { useId } from 'react';
 import { Slider } from 'radix-ui';
 import { useTranslation } from 'react-i18next';
 import type { EpisodeTrimRange } from '@/core';
@@ -25,6 +26,7 @@ export function EpisodeTrimControls({
   onPreviewChange?: (enabled: boolean) => void;
 }) {
   const { t } = useTranslation();
+  const previewId = useId();
   const change = (startFrame: number, endFrame: number) => {
     if (
       disabled ||
@@ -51,7 +53,6 @@ export function EpisodeTrimControls({
             step={1}
             value={range.startFrame}
             disabled={disabled}
-            name="trim-start"
             aria-label={t('trim.start')}
             onChange={(event) => change(event.target.valueAsNumber, range.endFrame)}
           />
@@ -74,7 +75,6 @@ export function EpisodeTrimControls({
             step={1}
             value={range.endFrame}
             disabled={disabled}
-            name="trim-end"
             aria-label={t('trim.end')}
             onChange={(event) => change(range.startFrame, event.target.valueAsNumber)}
           />
@@ -102,7 +102,7 @@ export function EpisodeTrimControls({
           <label className="flex items-center gap-1">
             <input
               type="checkbox"
-              name="trim-preview"
+              id={previewId}
               checked={preview}
               disabled={disabled}
               onChange={(event) => {

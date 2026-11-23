@@ -342,7 +342,6 @@ export const EpisodeSidebar: React.FC = () => {
                 {t('editTask.taskDescription')}
               </p>
               <Textarea
-                name="bulk-episode-task"
                 aria-label={t('editTask.taskDescription')}
                 value={bulkEditText}
                 onChange={(e) => setBulkEditText(e.target.value)}
