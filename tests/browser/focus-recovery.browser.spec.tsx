@@ -112,14 +112,18 @@ describe('focus stays in the viewer when the focused control goes away (s10 F-01
     const log: HostLog = { changes: [], value: () => ({ episodes: {} }) };
     root.render(<Host log={log} initial={three()} />);
     await waitForRows();
-    // Focus on row b, selection on a: M merges b into a and removes the focused row.
+    // K moves the selection to a, and focus follows it (F-18: they never disagree).
     await userEvent.click(rows()[1]!);
     await expect.poll(inspectorText).toContain('#2');
     await press('k');
     await expect.poll(inspectorText).toContain('#1');
+    await expect.poll(() => document.activeElement).toBe(rows()[0]);
+    // Focus on row b, selection on a: M merges b into a and removes the focused
+    // row; focus goes to the selected (merged) row.
+    rows()[1]!.focus();
     await press('m');
     await expect.poll(() => log.value().episodes[0].segments.length).toBe(2);
-    await expect.poll(() => document.activeElement).toBe(rows()[1]);
+    await expect.poll(() => document.activeElement).toBe(rows()[0]);
     await press('{Control>}z{/Control}');
     await expect.poll(() => log.value().episodes[0].segments.length).toBe(3);
     expect(log.changes.at(-1)?.op).toBe('unmerge');
@@ -178,12 +182,17 @@ describe('focus stays in the viewer when the focused control goes away (s10 F-01
     root.render(
       <Host
         log={log}
-        initial={{ episodes: { 0: { segments: [seg('a', 0, 0), seg('b', 1, 2)] } } }}
+        initial={{
+          episodes: {
+            0: { segments: [seg('a', 0, 0, { review: 'confirmed' }), seg('b', 1, 2)] },
+          },
+        }}
       />,
     );
     await waitForRows();
     await userEvent.click(rows()[1]!);
     await expect.poll(inspectorText).toContain('#2');
+    // The last one to review: Confirm keeps it selected and disables itself.
     await userEvent.click(inspectorButton('Confirm'));
     await expect.poll(() => inspectorButton('Confirm').disabled).toBe(true);
     await expect.poll(focusInViewer).toBe(true);

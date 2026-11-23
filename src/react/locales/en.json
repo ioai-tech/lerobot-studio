@@ -56,8 +56,8 @@
     "message": {
       "initLoader": "Initializing data loader...",
       "readMetadata": "Reading metadata...",
-      "loadEpisode": "Loading episode {{index}}...",
-      "fetchFrames": "Fetching frame data for episode {{index}}...",
+      "loadEpisode": "Loading episode {{number}}...",
+      "fetchFrames": "Fetching frame data for episode {{number}}...",
       "processCharts": "Processing charts..."
     }
   },
@@ -432,7 +432,7 @@
     "emptyNoDataset": "Load a LeRobot dataset to see episodes",
     "emptyNoMatch": "No episodes match your search",
     "episodeAbbr": "EP",
-    "selectEpisode": "Select Episode {{index}}",
+    "selectEpisode": "Select Episode {{number}}",
     "expand": "Expand Sidebar",
     "collapse": "Collapse Sidebar",
     "editTask": "Edit task",
@@ -740,8 +740,8 @@
     "compactVideos": "Remove unused video segments (slower)",
     "sharedVideoHint": "Fast export copies shared videos without re-encoding. Deleted episodes and trimmed frames are excluded from the exported data, but their footage may remain in shared files. Enable this option to physically remove unused segments.",
     "subtaskCoverageHint": "Every exported episode must be fully labeled.",
-    "subtaskCoverageMissing": "Episode #{{index}} has no subtask labels.",
-    "subtaskCoverageIncomplete": "Episode #{{index}} is missing labels ({{labeled}}/{{total}}).",
+    "subtaskCoverageMissing": "Episode #{{number}} has no subtask labels.",
+    "subtaskCoverageIncomplete": "Episode #{{number}} is missing labels ({{labeled}}/{{total}}).",
     "totalEpisodes": "Total episodes",
     "metadataOnlyHint": "Current export includes metadata only (info, episodes, tasks).",
     "export": "Export",
@@ -760,7 +760,7 @@
     "fillSubtaskGaps": "Fill gaps as \"unlabeled\"",
     "segmentSummary": "Segments: {count, plural, one {# segment} other {# segments}} in {episodes, plural, one {# episode} other {# episodes}}",
     "segmentFrames": "Segments keep {{kept}} of {{original}} frames; each segment is exported as its own episode. Source files remain unchanged.",
-    "subtaskCoverageSegment": "Episode #{{index}}, segment {{n}} is missing subtask labels ({{labeled}}/{{total}}). Label it or turn on \"Fill gaps\"."
+    "subtaskCoverageSegment": "Episode #{{number}}, segment {{n}} is missing subtask labels ({{labeled}}/{{total}}). Label it or turn on \"Fill gaps\"."
   },
   "dialogs": {
     "remoteArchive": {
@@ -846,8 +846,8 @@
     "range": "Keep (click to preview)",
     "removed": "Remove",
     "status": "Status",
-    "select": "Include Episode {{index}}",
-    "preview": "Preview Episode {{index}}",
+    "select": "Include Episode {{number}}",
+    "preview": "Preview Episode {{number}}",
     "ready": "Ready",
     "unchanged": "Keep entire episode",
     "existing": "Skipped: has segments",
@@ -887,7 +887,7 @@
     },
     "origin": {
       "suggested": "Suggested",
-      "suggestedConfidence": "Suggested {{confidence}}"
+      "suggestedConfidence": "Suggested · {{confidence}} confidence"
     },
     "readOnly": "Read-only",
     "inheritTask": "Episode task",
@@ -927,7 +927,8 @@
       "subtaskEnd": "Subtask end",
       "undo": "Undo",
       "redo": "Redo",
-      "help": "Keys"
+      "help": "Keys",
+      "more": "More actions"
     },
     "confirmAll": {
       "title": "Confirm {count, plural, one {# segment} other {# segments}}?",
@@ -969,7 +970,8 @@
       "subtaskOutside": "A subtask must lie inside one segment.",
       "subtaskNeedsSegment": "Add a segment first: subtasks belong to a segment.",
       "suggestionsApplied": "Added {count, plural, one {# suggested segment} other {# suggested segments}} to review.",
-      "excludedNotConfirmed": "An excluded segment is not confirmed."
+      "excludedNotConfirmed": "An excluded segment is not confirmed.",
+      "nextToReview": "Next to review: #{{n}}."
     },
     "refusal": {
       "EPISODE_UNKNOWN": "This episode is not part of the dataset.",
@@ -992,7 +994,7 @@
     },
     "shortcuts": {
       "title": "Keyboard shortcuts",
-      "description": "Keys work while the viewer has focus and you are not typing in a field.",
+      "description": "Keys work while the viewer is in use and you are not typing in a field.",
       "key": "Key",
       "action": "Action",
       "playPause": "Play / pause",

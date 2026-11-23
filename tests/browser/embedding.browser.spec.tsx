@@ -190,7 +190,7 @@ describe('browser: embedding — selection', () => {
             ?.getAttribute('aria-label'),
         { timeout: 30_000 },
       )
-      .toBe('Select Episode 1');
+      .toBe('Select Episode 2');
     await expect.poll(sliderFrame, { timeout: 30_000 }).toBe(2);
     await new Promise((resolve) => setTimeout(resolve, 800));
     expect(sliderFrame()).toBe(2);

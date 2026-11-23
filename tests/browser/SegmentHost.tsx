@@ -2,9 +2,13 @@ import React, { useCallback, useMemo, useRef, useState } from 'react';
 import { LeRobotViewer } from '@/components/LeRobotViewer';
 import { applyChange, type AnnotationChange, type AnnotationDocument } from '@/core';
 import type { LeRobotAnnotationSaveState } from '@/contexts/annotationTypes';
+import type { LeRobotSelection } from '@/contexts/hostTypes';
+import type { LeRobotKeyboardScope } from '@/hooks/pageKeys';
+import type { DataSource } from '@/platform';
 import type { LeRobotMessages } from '@/i18n/messageKeys';
 import { FetchDataSource } from './fixtures';
-import { FIXTURE, ctx, fields, type HostLog } from './segmentHarness';
+import { FIXTURE, ctx, fields as defaultFields, type HostLog } from './segmentHarness';
+import type { AnnotationField } from '@/core';
 
 /**
  * A host that persists changes after `delayMs` (late answers) or refuses
@@ -18,6 +22,11 @@ export function Host({
   readOnly = false,
   editable = true,
   dataset = FIXTURE,
+  dataSource,
+  fields = defaultFields,
+  language = 'en',
+  keyboardScope,
+  onSelectionChange,
 }: {
   initial: AnnotationDocument;
   log: HostLog;
@@ -27,6 +36,12 @@ export function Host({
   editable?: boolean;
   /** Dataset path served to the viewer (default: the 2 × 3-frame v3 fixture). */
   dataset?: string;
+  /** A data source instead of `dataset` (e.g. one that declares more cameras). */
+  dataSource?: DataSource;
+  fields?: AnnotationField[];
+  language?: string;
+  keyboardScope?: LeRobotKeyboardScope;
+  onSelectionChange?: (selection: LeRobotSelection) => void;
 }) {
   const [value, setValue] = useState(initial);
   const [saveState, setSaveState] = useState<LeRobotAnnotationSaveState>({ kind: 'idle' });
@@ -78,8 +93,10 @@ export function Host({
   );
   return (
     <LeRobotViewer
-      dataSource={useMemo(() => new FetchDataSource(dataset), [dataset])}
-      language="en"
+      dataSource={useMemo(() => dataSource ?? new FetchDataSource(dataset), [dataSource, dataset])}
+      language={language}
+      keyboardScope={keyboardScope}
+      onSelectionChange={onSelectionChange}
       annotation={annotation}
       readOnly={readOnly}
       fields={fields}

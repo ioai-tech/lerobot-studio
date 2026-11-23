@@ -32,8 +32,9 @@ it('at 1024 × 768 with the segment inspector open the cameras keep their share 
         ?.closest('.dv-groupview')
         ?.getBoundingClientRect();
     await expect.poll(() => camera()?.height ?? 0, { timeout: 30_000 }).toBeGreaterThan(0);
-    // The inspector leaves the panels a short area; the camera row still takes its share.
-    await expect.poll(() => dock().height, { timeout: 10_000 }).toBeLessThan(420);
+    // The compact inspector (F-07) leaves the panels most of the height; in that
+    // still-short area the camera row takes its share.
+    await expect.poll(() => dock().height, { timeout: 10_000 }).toBeLessThan(560);
     await expect
       .poll(() => (camera()?.height ?? 0) / dock().height, { timeout: 10_000 })
       .toBeGreaterThanOrEqual(CAMERA_SHARE - 0.02);

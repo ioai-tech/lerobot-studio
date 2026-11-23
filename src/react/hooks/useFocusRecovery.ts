@@ -32,15 +32,17 @@ export function isFocusLost(element: HTMLElement): boolean {
 }
 
 /**
- * Where focus goes when the element that had it is gone: the item now at its
- * place in the same list (the next one), else the list's last item (the
- * previous one), else the viewer root.
+ * Where focus goes when the element that had it is gone: the list's current
+ * item (`aria-current`, the selection: a confirm that moved review on to
+ * another row), else the item now at its place in the same list (the next
+ * one), else the list's last item (the previous one), else the viewer root.
  */
 export function recoveryTarget(place: FocusedPlace, root: HTMLElement): HTMLElement {
   const { group, index } = place;
   if (group && group.isConnected && root.contains(group) && index >= 0) {
     const items = focusItems(group).filter((item) => !isFocusLost(item));
-    const target = items[Math.min(index, items.length - 1)];
+    const current = items.find((item) => item.getAttribute('aria-current') === 'true');
+    const target = current ?? items[Math.min(index, items.length - 1)];
     if (target) return target;
   }
   return root;

@@ -2,6 +2,7 @@ import { useEffect, useId, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   clipSubtasksToRange,
+  episodeNumber,
   fixedTrim,
   getDefaultChartFeatureKeys,
   getEpisodeSegments,
@@ -463,6 +464,7 @@ export function BatchTrimDialog({
                             type="checkbox"
                             id={`${fieldId}-episode-${row.episode.episode_index}`}
                             aria-label={t('batchTrim.select', {
+                              number: episodeNumber(row.episode.episode_index),
                               index: row.episode.episode_index,
                             })}
                             checked={row.checked}
@@ -477,7 +479,7 @@ export function BatchTrimDialog({
                               )
                             }
                           />
-                          #{row.episode.episode_index}
+                          #{episodeNumber(row.episode.episode_index)}
                         </label>
                       </td>
                       <td className="p-2">{(row.episode.length / fps).toFixed(2)} s</td>
@@ -488,6 +490,7 @@ export function BatchTrimDialog({
                             size="sm"
                             disabled={busy || undo !== null}
                             aria-label={t('batchTrim.preview', {
+                              number: episodeNumber(row.episode.episode_index),
                               index: row.episode.episode_index,
                             })}
                             onClick={() => void preview(row)}

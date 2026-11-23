@@ -12,7 +12,7 @@ export async function pauseOnEpisode(host: HTMLElement, episode = 0): Promise<vo
   const playPause = () => host.querySelector<HTMLButtonElement>('button[aria-label="Play/pause"]');
   const playing = () => playPause()?.querySelector('.lucide-pause') != null;
   const current = () =>
-    host.querySelector(`[aria-label="Select Episode ${episode}"][aria-current="true"]`);
+    host.querySelector(`[aria-label="Select Episode ${episode + 1}"][aria-current="true"]`);
   await expect.poll(() => playPause()?.disabled, { timeout: 10_000 }).toBe(false);
   for (let attempt = 0; attempt < 10; attempt++) {
     if (playing()) playPause()!.click();
@@ -23,7 +23,7 @@ export async function pauseOnEpisode(host: HTMLElement, episode = 0): Promise<vo
       if (!playing() && current()) return;
       continue;
     }
-    host.querySelector<HTMLButtonElement>(`[aria-label="Select Episode ${episode}"]`)!.click();
+    host.querySelector<HTMLButtonElement>(`[aria-label="Select Episode ${episode + 1}"]`)!.click();
     await expect.poll(current, { timeout: 10_000 }).not.toBeNull();
   }
   throw new Error(`Could not pause on episode ${episode}`);

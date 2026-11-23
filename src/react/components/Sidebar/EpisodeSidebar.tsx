@@ -8,7 +8,7 @@ import {
   useLeRobotUi,
 } from '../../contexts/LeRobotContext';
 import { LazySegmentList } from '../Segments/lazySegments';
-import type { EpisodeMetadata } from '@/core';
+import { episodeNumber, type EpisodeMetadata } from '@/core';
 import { LazyEditTaskDialog } from '../dialogs/lazyDialogs';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/ui';
 import { Button } from '@/ui';
@@ -92,7 +92,8 @@ export const EpisodeSidebar: React.FC = () => {
         const task = tasks[effective.task_index || 0] || '';
         const taskStr = (effective.tasks && effective.tasks[0]) || task;
         return (
-          String(ep.episode_index).includes(lowerSearch) ||
+          // People search by the number they read (#1 is episode_index 0).
+          String(episodeNumber(ep.episode_index)).includes(lowerSearch) ||
           taskStr.toLowerCase().includes(lowerSearch) ||
           (Array.isArray(effective.tasks) &&
             effective.tasks.some((s: string) => s.toLowerCase().includes(lowerSearch)))

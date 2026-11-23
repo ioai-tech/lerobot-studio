@@ -93,9 +93,9 @@ Segments appear as numbered bands above the timeline and in the episode list. Ea
 
 The details panel under the playback bar shows the selected segment. **In** and **Out** are times (`m:ss.cc`); Out is the end of the last frame, so neighbouring segments share a time. Type a time and press `Enter`, or `Escape` to revert. A value that is refused stays in the field, marked, with the reason. Drag a band edge on the timeline to move it; the edge stops at its neighbours.
 
-Editing a segment never confirms it. Confirm is a separate step (`A`) and cannot be undone. Every other change can be undone (`Ctrl/⌘+Z`) and redone (`Shift+Ctrl/⌘+Z`); the last 100 steps are kept.
+Editing a segment never confirms it. Confirm is a separate step (`A`) and cannot be undone. After a confirm, review goes on at the next segment to review that the list shows: it is selected, its details open and the playhead waits, paused, at its start. When none is left, the status line says so. Every other change can be undone (`Ctrl/⌘+Z`) and redone (`Shift+Ctrl/⌘+Z`); the last 100 steps are kept.
 
-Keys work while the viewer has focus and you are not typing in a field or a dialog. Press `?` for this list in the app.
+Keys work as soon as the viewer opens, without a click, and while you use it; not while you type in a field, use a control of the page around the viewer, or have a dialog open. Press `?` for this list in the app.
 
 | Key                           | Action                                                                |
 | ----------------------------- | --------------------------------------------------------------------- |
@@ -106,9 +106,9 @@ Keys work while the viewer has focus and you are not typing in a field or a dial
 | `S`                           | Split the selected segment at the playhead                            |
 | `M`                           | Merge with the next segment                                           |
 | `R` / `Delete`                | Delete the selected segment (Undo restores it)                        |
-| `A`                           | Confirm the selected segment                                          |
+| `A`                           | Confirm the selected segment and go on to the next one to review      |
 | `Shift+A`                     | Confirm every segment to review in the current filter (asks first)    |
-| `J` / `K`                     | Next / previous segment, across episodes                              |
+| `J` / `K`                     | Next / previous segment the list shows, across episodes               |
 | `G`                           | Jump to the next frame that is in no segment                          |
 | `L`                           | Loop playback inside the selected segment                             |
 | `Shift+[` / `Shift+]`         | Start / end a subtask at the playhead                                 |
@@ -116,9 +116,11 @@ Keys work while the viewer has focus and you are not typing in a field or a dial
 | `1`–`9`                       | Choose an option of a field that declares that key (embedded viewers) |
 | `?`                           | Show the keys                                                         |
 
-Splitting keeps the task, review state and field values on both halves and cuts a subtask that crosses the split point. Merging keeps the first segment's task and values, joins tag lists, and is confirmed only if both segments were.
+Splitting keeps the task, review state and field values on both halves and cuts a subtask that crosses the split point. A new segment (`N`) starts with the task of the segment before it (else the one after it); in an episode with no segment it keeps the episode's task. Merging keeps the first segment's task and values, joins tag lists, and is confirmed only if both segments were.
 
-The list filter shows **All**, **To review**, or **Issues** (segments a host flagged). Segments stay in the current browser session until you export.
+The list filter shows **All**, **To review**, or **Issues** (segments a host flagged). A suggested segment says how confident its suggester was (for example "Suggested · 82% confidence") until it is confirmed. Segments stay in the current browser session until you export.
+
+In a short or narrow window (a 1024 × 768 laptop screen) the details panel is compact: the review actions stay in one row as icons (each names its action and key on hover), and the rarer ones (Set in / out, edge moves, Next uncovered, Loop, subtasks, Undo / Redo, Keys) are under **More actions**. Their keys work the same.
 
 ### Suggest segments from motion
 

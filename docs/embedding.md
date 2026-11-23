@@ -486,6 +486,7 @@ Common props include:
 | `showSidebar`              | Show or hide the episode sidebar                                                       |
 | `showPlaybackBar`          | Show or hide playback controls                                                         |
 | `enableKeyboardShortcuts`  | Enable or disable viewer shortcuts                                                     |
+| `keyboardScope`            | Which keys pressed outside the viewer it takes; see [Keyboard](#keyboard)              |
 | `onFatalError`             | Receive a loading error and render your own error state                                |
 | `onExport`                 | Respond when a user clicks your export button                                          |
 | `auxiliarySeries`          | Extra time series to plot; see [Plot extra time series](#plot-extra-time-series)       |
@@ -502,6 +503,16 @@ Common props include:
 | `themeTokens`              | Host colours, radius and font on the viewer root                                       |
 
 `onExport` is a callback only. It does not include the standalone app's export engine.
+
+### Keyboard
+
+Keys pressed while focus is inside the viewer always reach it. Right after the viewer opens, after a client-side navigation, or after a click where nothing takes focus, focus is on the page itself (`<body>`); `keyboardScope` decides whether those keys reach the viewer too, so the keys the viewer names (`Press N…`) work without a first click:
+
+- `'auto'` (default): the viewer takes them when it is the shown viewer that opened or was used (focus or a click inside it) last. With two viewers on one page, one key reaches one viewer.
+- `'page'`: the same, preferred over `'auto'` viewers: give it to the page's main viewer when others are shown beside it.
+- `'viewer'`: only keys pressed inside the viewer.
+
+The viewer never takes focus itself, and never acts on a key typed into a field, on a key while a control of the page has focus, or while a modal dialog (`aria-modal="true"` or an open `<dialog>`) is open. On the page, a key combined with Ctrl, ⌘ or Alt stays yours and the browser's (your own shortcuts such as Ctrl+K, Alt+← to go back), and so does a key that composes text (IME) or one pressed on an editable page (`contenteditable` body, `designMode`).
 
 When you provide `onFatalError`, the viewer does not render its built-in fatal-error state. Keep the error in your application state and display an appropriate message yourself. A failure is fatal only while no dataset is shown; once one is, a failed load (an episode whose data cannot be read, a data source swap that failed) stays inside the viewer: one line above the panels names it ("You're offline" while the browser is offline, otherwise what failed and why) with Retry, and the viewer loads it again by itself when the browser is back online. The shown dataset stays meanwhile.
 

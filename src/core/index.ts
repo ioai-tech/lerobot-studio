@@ -104,4 +104,5 @@ export * from './subtask';
 export * from './export/trim';
 export { fixedTrim, suggestTrim } from './export/suggestTrim';
 export * from './annotation';
+export { episodeNumber } from './utils/episodeNumber';
 export * from './timeline/scale';

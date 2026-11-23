@@ -36,7 +36,7 @@ describe('play state on open and on select (s10 F-14)', () => {
   const playPause = () => host.querySelector<HTMLButtonElement>('button[aria-label="Play/pause"]');
   const playing = () => playPause()?.querySelector('.lucide-pause') != null;
   const current = (episode: number) =>
-    host.querySelector(`[aria-label="Select Episode ${episode}"][aria-current="true"]`) != null;
+    host.querySelector(`[aria-label="Select Episode ${episode + 1}"][aria-current="true"]`) != null;
   const settle = () => new Promise((resolve) => setTimeout(resolve, 600));
   const ready = async () => {
     await expect.poll(() => playPause()?.disabled, { timeout: 60_000 }).toBe(false);
@@ -49,7 +49,7 @@ describe('play state on open and on select (s10 F-14)', () => {
     expect(playing()).toBe(false);
     expect(current(0)).toBe(true);
 
-    host.querySelector<HTMLButtonElement>('[aria-label="Select Episode 1"]')!.click();
+    host.querySelector<HTMLButtonElement>('[aria-label="Select Episode 2"]')!.click();
     await expect.poll(() => current(1), { timeout: 20_000 }).toBe(true);
     await ready();
     await settle();
@@ -68,7 +68,7 @@ describe('play state on open and on select (s10 F-14)', () => {
     if (!playing()) playPause()!.click();
     await expect.poll(playing).toBe(true);
 
-    host.querySelector<HTMLButtonElement>('[aria-label="Select Episode 1"]')!.click();
+    host.querySelector<HTMLButtonElement>('[aria-label="Select Episode 2"]')!.click();
     await expect.poll(() => current(1), { timeout: 20_000 }).toBe(true);
     await expect.poll(playing, { timeout: 20_000 }).toBe(true);
   });

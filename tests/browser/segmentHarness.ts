@@ -61,21 +61,17 @@ export async function waitForSegments(host: HTMLElement) {
       'button.rounded-full:has(> svg.lucide-play, > svg.lucide-pause)',
     );
   await expect.poll(() => playButton()?.disabled, { timeout: 60_000 }).toBe(false);
-  // Pause the way a person does, so autoplay stays off for this episode. A
-  // Play icon alone is not "paused": autoplay may not have started yet, and
-  // would start after this returns. So play first if needed, then pause.
-  let pausedByClick = false;
+  // The viewer opens paused (only a selection made while playing resumes), so
+  // pause only if something started playback; never start it here. A click on
+  // Play left running for more than 0.3 s (a 3-frame episode at 10 fps; a
+  // cold Vite cache or a loaded host stretches the poll) plays the episode to
+  // its end, and sequential playback moves on to the next episode.
   await expect
     .poll(
       () => {
         const button = playButton();
         if (button?.querySelector('.lucide-pause')) {
           button.click();
-          pausedByClick = true;
-          return false;
-        }
-        if (!pausedByClick) {
-          button?.click();
           return false;
         }
         return button?.querySelector('.lucide-play') != null;
@@ -83,7 +79,7 @@ export async function waitForSegments(host: HTMLElement) {
       { timeout: 30_000, interval: 200 },
     )
     .toBe(true);
-  // Autoplay may have moved the playhead before it stopped (a frame is 0.1 s
+  // Playback stopped above may have moved the playhead (a frame is 0.1 s
   // here); the key steps count segments from the start.
   viewerRoot(host).focus();
   await press('{Home}');

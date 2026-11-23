@@ -57,19 +57,18 @@ describe('browser: segments, review and change ops', () => {
     expect(host.textContent).toContain('2 takes');
     expect(host.textContent).not.toContain('INTERNAL COPY');
     await selectWithKeys(host, 1);
-    await press('a');
     await press('1');
+    await press('a');
     await expect.poll(() => host.textContent).toContain('1 of 2 reviewed');
     await expect
       .poll(() => log.value().episodes[0].segments[0].values)
       .toEqual({ outcome: 'success' });
     expect(log.changes.slice(0, 2)).toEqual([
-      { op: 'confirm', episodeIndex: 0, ids: ['a'] },
       { op: 'update', episodeIndex: 0, id: 'a', patch: { values: { outcome: 'success' } } },
+      { op: 'confirm', episodeIndex: 0, ids: ['a'] },
     ]);
 
-    // J selects #2 and seeks to its start; S at its first frame is refused with a reason.
-    await press('j');
+    // A went on to #2, the next to review, at its start; S at its first frame is refused with a reason.
     await expect
       .poll(() => host.querySelector('[data-testid="lerobot-segment-inspector"]')?.textContent)
       .toContain('#2');
@@ -205,7 +204,7 @@ describe('browser: segments, review and change ops', () => {
     expect(checked()).toBe('All 2');
   });
 
-  it('a row keeps each badge on one line: Excluded, Suggested 0.33, Check warnings 1 (s10 F-27)', async () => {
+  it('a row keeps each badge on one line: Excluded, Suggested · 33% confidence, Check warnings 1 (s10 F-27)', async () => {
     const log: HostLog = { changes: [], value: () => ({ episodes: {} }) };
     root.render(
       <Host
@@ -242,7 +241,7 @@ describe('browser: segments, review and change ops', () => {
     }
     expect(badges().map((badge) => badge.textContent)).toEqual([
       'Excluded',
-      'Suggested 0.33',
+      'Suggested · 33% confidence',
       'Check warnings 1',
     ]);
     // A badge never breaks inside, however narrow the row: whole badges wrap instead.
@@ -400,7 +399,7 @@ describe('browser: segments, review and change ops', () => {
     host.querySelector<HTMLButtonElement>('button[aria-label="Play/pause"]')!.click();
     // Sequential playback leaves episode 0 instead of holding on its last frame.
     await expect
-      .poll(() => host.querySelector('[aria-label="Select Episode 1"][aria-current="true"]'), {
+      .poll(() => host.querySelector('[aria-label="Select Episode 2"][aria-current="true"]'), {
         timeout: 30_000,
       })
       .not.toBeNull();

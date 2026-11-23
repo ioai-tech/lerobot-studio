@@ -1,4 +1,4 @@
-import React, { useId, useMemo } from 'react';
+import React, { useEffect, useId, useMemo, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { AlertTriangle, Ban, CircleDot, CircleCheck, Lock } from 'lucide-react';
 import {
@@ -15,6 +15,7 @@ import { cn } from '@/ui';
 import { useLeRobotData, useLeRobotSegments } from '../../contexts/LeRobotContext';
 import { onRadioGroupKeyDown, radioTabIndex } from './radioGroup';
 import { REVIEW_TEXT } from './reviewDisplay';
+import { useOriginText } from './annotationText';
 
 const FILTER_KEYS: Record<SegmentFilter, string> = {
   all: 'segments.filter.all',
@@ -60,6 +61,7 @@ export const SegmentList: React.FC<{ episodeIndex: number; showTitle?: boolean }
   showTitle = true,
 }) => {
   const { t } = useTranslation();
+  const originText = useOriginText();
   const listId = useId();
   const { info } = useLeRobotData();
   const segments = useLeRobotSegments();
@@ -76,6 +78,29 @@ export const SegmentList: React.FC<{ episodeIndex: number; showTitle?: boolean }
   const visible = all
     .map((segment, index) => ({ segment, number: index + 1 }))
     .filter(({ segment }) => matchesSegmentFilter(segment, filter, episodeMarkers));
+  const listRef = useRef<HTMLUListElement>(null);
+  const { selectedSegmentId } = segments;
+  // The selected row stays in view, and focus and selection never disagree
+  // (F-18): when the selection moves (J / K, a confirm that goes on to the next
+  // row) while another row of this list has focus, focus moves to the selected
+  // row. Focus anywhere else is never taken.
+  useEffect(() => {
+    const list = listRef.current;
+    if (!list || !selectedSegmentId) return;
+    const row = Array.from(list.querySelectorAll<HTMLElement>('[data-segment-id]')).find(
+      (item) => item.dataset.segmentId === selectedSegmentId,
+    );
+    if (!row) return;
+    const active = list.ownerDocument.activeElement;
+    if (active instanceof HTMLElement && active !== row && list.contains(active)) {
+      row.focus({ preventScroll: true });
+    }
+    // Scroll the list only, never the host page around the viewer.
+    const rowBox = row.getBoundingClientRect();
+    const listBox = list.getBoundingClientRect();
+    if (rowBox.top < listBox.top) list.scrollTop -= listBox.top - rowBox.top;
+    else if (rowBox.bottom > listBox.bottom) list.scrollTop += rowBox.bottom - listBox.bottom;
+  }, [selectedSegmentId]);
 
   return (
     <section
@@ -124,6 +149,7 @@ export const SegmentList: React.FC<{ episodeIndex: number; showTitle?: boolean }
         <p className="px-3 pb-3 text-xs text-muted-foreground">{t('segments.emptyFilter')}</p>
       ) : (
         <ul
+          ref={listRef}
           className="min-h-0 overflow-y-auto pb-1"
           aria-label={t('segments.title')}
           data-focus-group=""
@@ -134,6 +160,9 @@ export const SegmentList: React.FC<{ episodeIndex: number; showTitle?: boolean }
             const time = `${frameToInTime(segment.startFrame, fps)}–${frameToOutTime(segment.endFrame, fps)}`;
             const reviewText = t(REVIEW_TEXT[display]);
             const markerIssues = segmentIssueMarkers(segment, episodeMarkers);
+            // Who suggested it matters until a person confirmed it; then the
+            // row no longer repeats it (the details keep it).
+            const origin = display === 'confirmed' ? null : originText(segment.origin);
             // The row's label hides its content, so the badges are its description.
             const statusId = segment.status ? `${listId}-status-${number}` : null;
             const issuesId = markerIssues.length > 0 ? `${listId}-issues-${number}` : null;
@@ -151,6 +180,7 @@ export const SegmentList: React.FC<{ episodeIndex: number; showTitle?: boolean }
                       'bg-[repeating-linear-gradient(135deg,transparent_0_6px,rgba(115,115,115,0.10)_6px_12px)]',
                   )}
                   data-review={display}
+                  data-segment-id={segment.id}
                   aria-current={selected ? 'true' : undefined}
                   data-focus-item=""
                   aria-label={t('segments.row', { n: number, time, review: reviewText })}
@@ -183,10 +213,7 @@ export const SegmentList: React.FC<{ episodeIndex: number; showTitle?: boolean }
                       <span className="text-muted-foreground">{t('segments.inheritTask')}</span>
                     )}
                   </span>
-                  {display === 'excluded' ||
-                  segment.origin.kind === 'suggested' ||
-                  segment.status ||
-                  markerIssues.length > 0 ? (
+                  {display === 'excluded' || origin || segment.status || markerIssues.length > 0 ? (
                     <span
                       // Each badge stays on one line; a narrow row wraps whole badges (s10 F-27).
                       className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5 pl-5 text-[10px] text-muted-foreground [&>*]:whitespace-nowrap"
@@ -195,15 +222,7 @@ export const SegmentList: React.FC<{ episodeIndex: number; showTitle?: boolean }
                       {display === 'excluded' ? (
                         <span className="font-medium">{reviewText}</span>
                       ) : null}
-                      {segment.origin.kind === 'suggested' ? (
-                        <span>
-                          {segment.origin.confidence != null
-                            ? t('segments.origin.suggestedConfidence', {
-                                confidence: segment.origin.confidence.toFixed(2),
-                              })
-                            : t('segments.origin.suggested')}
-                        </span>
-                      ) : null}
+                      {origin ? <span>{origin}</span> : null}
                       {segment.status ? (
                         <span
                           id={statusId ?? undefined}

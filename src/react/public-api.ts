@@ -23,6 +23,7 @@ import {
 
 export { LeRobotViewer, LeRobotViewerContent } from './components/LeRobotViewer';
 export { preloadLeRobotViewer } from './preload';
+export type { LeRobotKeyboardScope } from './hooks/pageKeys';
 export type {
   LeRobotViewerError,
   LeRobotViewerErrorCode,
