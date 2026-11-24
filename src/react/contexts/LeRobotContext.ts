@@ -1,4 +1,4 @@
-import { createContext, useContext } from 'react';
+import { createContext, useContext, useEffect } from 'react';
 import { cameraDisplayName } from '@/core';
 import type {
   LeRobotInfo,
@@ -248,3 +248,26 @@ export const useCameraNamer = (): ((featureKey: string) => CameraName) => {
 /** The name of one camera. */
 export const useCameraName = (featureKey: string): CameraName =>
   cameraNameOf(featureKey, useContext(LeRobotCameraLabelsContext));
+
+/** A layout panel as naming needs it (structural: the entry imports no dockview). */
+interface NamedPanel {
+  readonly title?: string;
+  readonly params?: { readonly featureKey?: unknown };
+  readonly api: { setTitle(title: string): void };
+}
+
+/**
+ * The name of the feature a layout panel shows (null for a panel without one).
+ * The panel's own title follows it: the layout names the panel's region with
+ * that title, so the region is announced as the tab reads (host `cameraLabels`).
+ */
+export const usePanelCameraName = (panel: NamedPanel | undefined): CameraName | null => {
+  const labels = useContext(LeRobotCameraLabelsContext);
+  const featureKey = panel?.params?.featureKey;
+  const camera = typeof featureKey === 'string' ? cameraNameOf(featureKey, labels) : null;
+  const name = camera?.name;
+  useEffect(() => {
+    if (name && panel && panel.title !== name) panel.api.setTitle(name);
+  }, [name, panel]);
+  return camera;
+};

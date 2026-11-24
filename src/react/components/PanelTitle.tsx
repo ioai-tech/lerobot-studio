@@ -15,7 +15,7 @@ import {
 import { Plus, X, Video, Image, TrendingUp, FileText, ArrowDown, ArrowRight } from 'lucide-react';
 import type { IDockviewPanelHeaderProps } from 'dockview-react';
 import { useTranslation } from 'react-i18next';
-import { useCameraNamer, useLeRobotData } from '../contexts/LeRobotContext';
+import { useCameraNamer, useLeRobotData, usePanelCameraName } from '../contexts/LeRobotContext';
 import { safeAddPanel } from '../utils/dockviewPanelId';
 
 type PanelType = 'video' | 'image' | 'chart' | 'raw';
@@ -80,9 +80,9 @@ export const PanelTitle: React.FC<IDockviewPanelHeaderProps> = (props) => {
   };
 
   // A feature's panel is named at render time, so a host's `cameraLabels`
-  // apply to panels already laid out; the feature key stays in the tooltip.
-  const featureKey: unknown = panel?.params?.featureKey;
-  const camera = typeof featureKey === 'string' ? cameraName(featureKey) : null;
+  // apply to panels already laid out (tab, region and panel title alike); the
+  // feature key stays in the tooltip.
+  const camera = usePanelCameraName(panel);
   const headerTitle = camera?.name || (!panel ? api.title : panel.title) || t('common.appName');
   const headerTooltip = camera?.key ? `${headerTitle} · ${camera.key}` : headerTitle;
 

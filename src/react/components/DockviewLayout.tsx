@@ -233,7 +233,7 @@ export const DockviewLayout: React.FC = () => {
             {
               id: `${isVideo ? 'video' : 'image'}-${key}`,
               component: isVideo ? ('video' as const) : ('image' as const),
-              // The shown name is PanelTitle's (host `cameraLabels` at render time).
+              // PanelTitle renames it with the host's `cameraLabels` (tab and region).
               title: cameraDisplayName(key),
               params: { featureKey: key },
             },

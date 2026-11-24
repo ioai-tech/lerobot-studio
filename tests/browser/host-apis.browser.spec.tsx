@@ -240,8 +240,10 @@ describe('browser: display hints (taskHint, labelHint)', () => {
     expect(rowHint.textContent).toBe('Fold the white towel');
     expect(rowHint.className).toContain('text-muted-foreground');
     expect(list()!.textContent).not.toContain('Episode task');
-    const subtaskHint = host.querySelector('[aria-label="Subtasks"] [data-label-hint]');
-    expect(subtaskHint?.textContent).toBe('grasp');
+    // The subtask track draws once the episode's frames are known, which can
+    // land after the list (the host's document) is shown.
+    const subtaskHint = () => host.querySelector('[aria-label="Subtasks"] [data-label-hint]');
+    await expect.poll(() => subtaskHint()?.textContent).toBe('grasp');
 
     // Select it: the task input is empty, the hint is its placeholder.
     list()!.querySelector<HTMLElement>('[data-segment-id="a"]')!.click();
@@ -301,6 +303,32 @@ describe('browser: camera display names (cameraLabels)', () => {
     root.render(viewer({ cameraLabels: { 'observation.images.cam0': 'Front' } }));
     await expect.poll(titles).toEqual(expect.arrayContaining(['Front', 'cam1']));
     expect([...host.querySelectorAll('video')]).toEqual(videos);
+  });
+
+  it('a camera region is announced by the name its tab shows, never by the raw key', async () => {
+    await mount(viewer({ cameraLabels: { 'observation.images.cam0': 'Head camera' } }));
+    await ready();
+    const regions = () =>
+      [...host.querySelectorAll<HTMLElement>('[role="region"]')].map((region) =>
+        region.getAttribute('aria-label'),
+      );
+    await expect.poll(regions).toEqual(expect.arrayContaining(['Head camera', 'cam1']));
+    expect(regions()).not.toContain('cam0');
+    await expect
+      .element(page.getByRole('region', { name: 'Head camera', exact: true }))
+      .toBeVisible();
+    // The region contains the tab that reads the same name.
+    const head = page.getByRole('region', { name: 'Head camera', exact: true }).element();
+    expect(head.querySelector('.panel-title-text')?.textContent).toBe('Head camera');
+
+    // A label the host changes renames the region with the tab; a label removed
+    // falls back to the key's last part for both.
+    root.render(viewer({ cameraLabels: { 'observation.images.cam0': 'Front' } }));
+    await expect.poll(regions).toEqual(expect.arrayContaining(['Front', 'cam1']));
+    expect(regions()).not.toContain('Head camera');
+    root.render(viewer());
+    await expect.poll(regions).toEqual(expect.arrayContaining(['cam0', 'cam1']));
+    expect(regions()).not.toContain('Front');
   });
 
   it('without labels, cameras keep the last part of their key', async () => {
