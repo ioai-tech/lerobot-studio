@@ -1,4 +1,5 @@
 import { createContext, useContext } from 'react';
+import { cameraDisplayName } from '@/core';
 import type {
   LeRobotInfo,
   EpisodeMetadata,
@@ -216,3 +217,34 @@ export const useLeRobotSegments = () => {
   if (!context) throw new Error('useLeRobotSegments must be used within LeRobotDataProvider');
   return context;
 };
+
+/** Host display names of camera features, keyed by feature key (`cameraLabels`). */
+export const LeRobotCameraLabelsContext = createContext<
+  Readonly<Record<string, string>> | undefined
+>(undefined);
+
+/** How a camera is named for people. */
+export interface CameraName {
+  /** The host's label, else the last part of the key. */
+  name: string;
+  /** The feature key while a host label stands in for it (tooltips, technical details). */
+  key?: string;
+}
+
+function cameraNameOf(
+  featureKey: string,
+  labels: Readonly<Record<string, string>> | undefined,
+): CameraName {
+  const name = cameraDisplayName(featureKey, labels);
+  return name === cameraDisplayName(featureKey) ? { name } : { name, key: featureKey };
+}
+
+/** Names cameras (several keys per render). */
+export const useCameraNamer = (): ((featureKey: string) => CameraName) => {
+  const labels = useContext(LeRobotCameraLabelsContext);
+  return (featureKey) => cameraNameOf(featureKey, labels);
+};
+
+/** The name of one camera. */
+export const useCameraName = (featureKey: string): CameraName =>
+  cameraNameOf(featureKey, useContext(LeRobotCameraLabelsContext));

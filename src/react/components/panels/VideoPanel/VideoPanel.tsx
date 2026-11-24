@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react'
 import { AlertTriangle } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import {
+  useCameraName,
   useLeRobotData,
   useLeRobotPlayback,
   useLeRobotSelection,
@@ -374,11 +375,16 @@ const VideoPanelContent: React.FC<VideoPanelProps> = ({ params }) => {
     [],
   );
 
-  const cameraName = featureKey.split('.').pop() || featureKey;
+  // With a host label, the technical details keep the feature key.
+  const { name: cameraName, key: hiddenKey } = useCameraName(featureKey);
 
   return (
     <div className="group relative flex h-full w-full items-center justify-center overflow-hidden bg-black">
-      <MediaDebugOverlay metadata={debugMetadata} translationPrefix="panels.video.debug" />
+      <MediaDebugOverlay
+        metadata={debugMetadata}
+        translationPrefix="panels.video.debug"
+        featureKey={hiddenKey}
+      />
 
       <canvas
         ref={holdRef}

@@ -433,6 +433,25 @@ describe('exportDataFiles (v3 -> v2)', () => {
     const secondEp = await readParquetColumn(adapter, outPath1, 'episode_index');
     expect(Array.from(new Set(secondEp))).toEqual([1]);
   });
+
+  it('names exported episodes for people from 1 in its progress ("Data episode 1" is episode 0)', async () => {
+    if (episodes.length < 2) return;
+    const messages: string[] = [];
+    await exportDataFiles(
+      loader,
+      info,
+      episodes.slice(0, 2),
+      'v2.1',
+      new InMemoryExportAdapter(),
+      (progress) => messages.push(progress.message ?? ''),
+      undefined,
+      { tasks: loader.getTasks() },
+    );
+    expect(messages.filter((message) => message.startsWith('Data episode'))).toEqual([
+      'Data episode 1',
+      'Data episode 2',
+    ]);
+  });
 });
 
 describe('exportDataFiles (v3 -> v3 after filtering)', () => {

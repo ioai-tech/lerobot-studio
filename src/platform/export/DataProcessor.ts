@@ -2,7 +2,7 @@ import * as arrow from 'apache-arrow';
 import type { Table } from 'apache-arrow';
 import type { LeRobotDataLoader } from '../services/LeRobotDataLoader';
 import type { LeRobotInfo, EpisodeMetadata } from '@/core';
-import { isV3Info, isV3Metadata } from '@/core';
+import { episodeNumber, isV3Info, isV3Metadata } from '@/core';
 import type { ExportAdapter } from '@/core';
 import type { ExportProgress, V3DataLayout } from '@/core';
 import { tableToParquetBytes } from './ParquetWriter';
@@ -231,7 +231,8 @@ async function filterAndWriteSameVersion(
         phase: 'data',
         current: i + 1,
         total,
-        message: `Data episode ${i}`,
+        // People read episodes from 1 (`#1` is output episode 0).
+        message: `Data episode ${episodeNumber(i)}`,
         cancelable: false,
       });
     }
@@ -426,7 +427,8 @@ async function splitV3ToV2(
       phase: 'data',
       current: i + 1,
       total: episodes.length,
-      message: `Data episode ${i}`,
+      // People read episodes from 1 (`#1` is output episode 0).
+      message: `Data episode ${episodeNumber(i)}`,
       cancelable: false,
     });
   }

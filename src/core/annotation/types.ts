@@ -20,8 +20,15 @@ export interface SegmentSubtask {
   startFrame: number;
   /** Inclusive last frame within the episode. */
   endFrame: number;
-  /** Subtask name (non-empty). */
+  /** Subtask name; non-empty unless `labelHint` is set. */
   label: string;
+  /**
+   * Host display text for an empty `label` (for example the label in another
+   * language): shown muted on the subtask track and as the rename dialog's
+   * placeholder. An empty label with a hint is valid. It is never the label,
+   * never in a change the viewer emits and never exported.
+   */
+  labelHint?: string;
 }
 
 /** Who made the segment: a person, or a suggestion (motion, a model, another process). */
@@ -50,6 +57,14 @@ export interface Segment {
   endFrame: number;
   /** Task text; `null` keeps the dataset episode's own task. */
   task: string | null;
+  /**
+   * Host display text while `task` is `null` (for example the task in another
+   * language): shown muted in the segment list and details instead of the
+   * inherited-task copy, and as the task input's placeholder. It is never the
+   * task or the input's value, never in a change the viewer emits and never
+   * exported.
+   */
+  taskHint?: string;
   /** Subtasks inside this segment (episode frames), sorted, non-overlapping; gaps allowed. */
   subtasks: SegmentSubtask[];
   /** Values keyed by host field id. */

@@ -14,11 +14,19 @@ import {
   preflightRemoteArchive,
   translateRemotePreflightFailure,
 } from '../../platform/datasource/remotePreflight';
-import { useLeRobotData, useLeRobotSegments } from '../contexts/LeRobotContext';
+import {
+  LeRobotCameraLabelsContext,
+  useLeRobotData,
+  useLeRobotSegments,
+} from '../contexts/LeRobotContext';
 import type { LeRobotAnnotationProps } from '../contexts/annotationTypes';
 import type { LeRobotMessages } from '../i18n/messageKeys';
 import type { AnnotationField } from '../../core/annotation/types';
-import type { OverlaySegmentGroup, TimelineMarker } from '../../core/annotation/markers';
+import type {
+  OverlaySegmentGroup,
+  TimelineMarker,
+  TimelineMarkerLane,
+} from '../../core/annotation/markers';
 import type {
   LeRobotExtension,
   LeRobotInitialSelection,
@@ -131,6 +139,22 @@ export interface LeRobotViewerProps {
    */
   markers?: TimelineMarker[];
   /**
+   * Rows of the marker lane, top to bottom; a marker joins the row named by its
+   * `lane`. Markers without a declared row draw in the default row below them,
+   * as without rows. A `navigable` row gets next / previous keys (`Shift+.` /
+   * `Shift+,`) and header buttons that move the paused playhead to its next /
+   * previous marker start and announce the position ("3 of 39").
+   */
+  markerLanes?: TimelineMarkerLane[];
+  /**
+   * Display names of camera features, keyed by feature key (for example
+   * `{ 'observation.images.head_left': 'Head, left' }`): camera panel titles
+   * and messages that name a camera. A camera without one keeps the last part
+   * of its key; the key itself stays in the panel title's tooltip and in the
+   * camera's technical details.
+   */
+  cameraLabels?: Record<string, string>;
+  /**
    * Read-only segments in a thin band above the segment track (for example
    * another process's proposals); its legend is the `overlay.legend` message.
    */
@@ -167,6 +191,8 @@ export function LeRobotViewerContent({
   readOnly,
   fields,
   markers,
+  markerLanes,
+  cameraLabels,
   overlaySegments,
   extensions,
   initialSelection,
@@ -193,8 +219,8 @@ export function LeRobotViewerContent({
 
   // Segment configuration lives in the data provider; push the props before paint.
   useLayoutEffect(() => {
-    configure({ annotation, readOnly, fields, markers, overlaySegments });
-  }, [annotation, configure, fields, markers, overlaySegments, readOnly]);
+    configure({ annotation, readOnly, fields, markers, markerLanes, overlaySegments });
+  }, [annotation, configure, fields, markerLanes, markers, overlaySegments, readOnly]);
 
   /** Captures the current selection so a swap to the same timeline keeps it. */
   const captureSelectionRef = useRef<() => SelectionCarry | null>(() => null);
@@ -478,17 +504,19 @@ export function LeRobotViewerContent({
 
   return (
     <AuxiliarySeriesProvider series={auxiliarySeries} onWarning={onAuxiliarySeriesWarning}>
-      <ViewerLayout
-        showSidebar={showSidebar}
-        showPlaybackBar={showPlaybackBar}
-        showToaster={false}
-        sidebar={<EpisodeSidebar />}
-        sidebarHeader={sidebarHeader}
-        hostChrome={extensions && extensions.length > 0 ? hostChrome : null}
-        emptyState={emptyState}
-        blockingState={offlineWhileOpening ? offlineState : null}
-        onRetry={handleRetry}
-      />
+      <LeRobotCameraLabelsContext.Provider value={cameraLabels}>
+        <ViewerLayout
+          showSidebar={showSidebar}
+          showPlaybackBar={showPlaybackBar}
+          showToaster={false}
+          sidebar={<EpisodeSidebar />}
+          sidebarHeader={sidebarHeader}
+          hostChrome={extensions && extensions.length > 0 ? hostChrome : null}
+          emptyState={emptyState}
+          blockingState={offlineWhileOpening ? offlineState : null}
+          onRetry={handleRetry}
+        />
+      </LeRobotCameraLabelsContext.Provider>
       <SelectionBridge captureRef={captureSelectionRef} onSelectionChange={onSelectionChange} />
     </AuxiliarySeriesProvider>
   );
@@ -513,6 +541,8 @@ export const LeRobotViewer: React.FC<LeRobotViewerProps> = ({
   fields,
   messages,
   markers,
+  markerLanes,
+  cameraLabels,
   overlaySegments,
   extensions,
   initialSelection,
@@ -543,6 +573,8 @@ export const LeRobotViewer: React.FC<LeRobotViewerProps> = ({
         readOnly={readOnly}
         fields={fields}
         markers={markers}
+        markerLanes={markerLanes}
+        cameraLabels={cameraLabels}
         overlaySegments={overlaySegments}
         extensions={extensions}
         initialSelection={initialSelection}

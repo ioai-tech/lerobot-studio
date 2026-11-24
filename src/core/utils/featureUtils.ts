@@ -5,6 +5,20 @@
 import type { LeRobotInfo, LeRobotFeature } from '../types/lerobot';
 
 /**
+ * The name people read for a camera feature: the host's display name for the
+ * key (`cameraLabels`), else the last dot-separated part of the key
+ * (`observation.images.head_left` → `head_left`).
+ */
+export function cameraDisplayName(
+  featureKey: string,
+  labels?: Readonly<Record<string, string>>,
+): string {
+  const label = labels && Object.hasOwn(labels, featureKey) ? labels[featureKey] : undefined;
+  if (typeof label === 'string' && label.trim() !== '') return label;
+  return featureKey.split('.').pop() || featureKey;
+}
+
+/**
  * 检查特征是否是图像类型（保存在parquet中的嵌入图像）
  */
 export function isImageFeature(feature: LeRobotFeature): boolean {

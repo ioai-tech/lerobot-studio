@@ -139,7 +139,10 @@ export const SubtaskRangeTrack: React.FC<SubtaskRangeTrackProps> = ({
       {lane.map((item) => {
         const width = frameRangeFractions(item.startFrame, item.endFrame, totalFrames).width * 100;
         const isSegment = item.kind === 'segment';
-        const color = isSegment ? colorForSubtaskLabel(item.label, knownLabels) : undefined;
+        // A host hint stands in for an empty label, muted; it is never the label.
+        const hint = isSegment && !item.label ? (item.labelHint ?? null) : null;
+        const shown = isSegment ? item.label || hint || '' : '';
+        const color = isSegment ? colorForSubtaskLabel(shown, knownLabels) : undefined;
         return (
           <div
             key={`${item.kind}-${item.startFrame}-${item.endFrame}`}
@@ -158,7 +161,7 @@ export const SubtaskRangeTrack: React.FC<SubtaskRangeTrackProps> = ({
             }}
             title={
               isSegment
-                ? `${item.label} ${item.startFrame}–${item.endFrame}`
+                ? `${shown} ${item.startFrame}–${item.endFrame}`
                 : t('subtask.unlabeledGap', 'Unlabeled {{start}}–{{end}}', {
                     start: item.startFrame,
                     end: item.endFrame,
@@ -178,8 +181,14 @@ export const SubtaskRangeTrack: React.FC<SubtaskRangeTrackProps> = ({
             }}
           >
             {isSegment ? (
-              <span className="pointer-events-none block truncate px-1 text-[10px] leading-4">
-                {item.label}
+              <span
+                className={cn(
+                  'pointer-events-none block truncate px-1 text-[10px] leading-4',
+                  hint && 'italic opacity-75',
+                )}
+                data-label-hint={hint ? '' : undefined}
+              >
+                {shown}
               </span>
             ) : null}
             {editable && isSegment && onDelete ? (

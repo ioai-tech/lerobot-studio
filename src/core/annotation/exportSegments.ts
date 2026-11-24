@@ -30,7 +30,12 @@ export function annotationToExportSegments(
         startFrame: segment.startFrame,
         endFrame: segment.endFrame,
         task: segment.task,
-        subtasks: segment.subtasks.map((subtask) => ({ ...subtask })),
+        // Display hints (`taskHint`, `labelHint`) are never exported.
+        subtasks: segment.subtasks.map(({ startFrame, endFrame, label }) => ({
+          startFrame,
+          endFrame,
+          label,
+        })),
         columns: Object.fromEntries(
           fields.map((field) => {
             const value = segment.values[field.id];

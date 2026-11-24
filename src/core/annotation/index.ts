@@ -27,6 +27,7 @@ export {
   partitionSubtasks,
   sortSegments,
 } from './reducer';
+export { hasSubtaskLabel, segmentTaskHint, subtaskLabelHint, withoutDisplayHints } from './hints';
 export type { AnnotationHistory, AnnotationHistoryEntry } from './history';
 export {
   ANNOTATION_HISTORY_LIMIT,
@@ -40,10 +41,19 @@ export {
 export type { PendingChange } from './pending';
 export { composeUpdateSteps, rebasePending } from './pending';
 export type { OrderedSegment, SegmentFilter } from './queries';
-export type { OverlaySegment, OverlaySegmentGroup, TimelineMarker } from './markers';
+export type {
+  MarkerRow,
+  OverlaySegment,
+  OverlaySegmentGroup,
+  TimelineMarker,
+  TimelineMarkerLane,
+} from './markers';
 export {
   isIssueMarker,
+  laneMarkerAt,
+  markerRowsOf,
   markersOfEpisode,
+  stepLaneMarker,
   overlaySegmentsOfEpisode,
   segmentIssueMarkers,
 } from './markers';

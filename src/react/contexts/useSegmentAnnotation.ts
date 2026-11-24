@@ -10,6 +10,7 @@ import {
   getEpisodeSegments,
   inheritedValues,
   isNoopPatch,
+  markerRowsOf,
   markersOfEpisode,
   effectiveSegmentFilter,
   matchesSegmentFilter,
@@ -28,9 +29,11 @@ import {
   removeHistoryEntry,
   segmentAtFrame,
   segmentNumber,
+  stepLaneMarker,
   stepSegment,
   takeRedo,
   takeUndo,
+  withoutDisplayHints,
   type AnnotationChange,
   type AnnotationContext,
   type AnnotationDocument,
@@ -48,6 +51,17 @@ import {
   type TimelineMarker,
 } from '@/core';
 import type { AnnotationConfig } from './annotationTypes';
+
+/** The last next / previous step of a navigable marker row, and what it announces. */
+export interface MarkerStep {
+  laneId: string;
+  /** The marker the step went to (or stayed on when there was none further). */
+  markerId: string | null;
+  announce: 'markers.lane.position' | 'markers.lane.noNext' | 'markers.lane.noPrevious';
+  /** 1-based place of `markerId` in its row, with `markers.lane.position`. */
+  position?: number;
+  at: number;
+}
 
 /** What the status line says after the last action. */
 export type AnnotationNotice =
@@ -381,7 +395,10 @@ export function useSegmentAnnotation({
         for (const item of sent) remember(sentRef.current, item.changeId, item.tag);
         setPending([...pendingRef.current, ...sent]);
         for (const item of sent) {
-          current.annotation!.onChange?.(item.change, { changeId: item.changeId });
+          // Display hints stay in the viewer; the host gets its data only.
+          current.annotation!.onChange?.(withoutDisplayHints(item.change), {
+            changeId: item.changeId,
+          });
         }
       } else {
         setLocalDoc(working);
@@ -940,6 +957,77 @@ export function useSegmentAnnotation({
     () => markersOf(selectedEpisodeIndex),
     [markersOf, selectedEpisodeIndex],
   );
+  /** Rows of the marker lane for the selected episode (declared lanes, then the default row). */
+  const markerRows = useMemo(
+    () => markerRowsOf(episodeMarkers, config.markerLanes),
+    [config.markerLanes, episodeMarkers],
+  );
+  const markerRowsRef = useRef(markerRows);
+  markerRowsRef.current = markerRows;
+  /** The marker the last next / previous step of a navigable row went to. */
+  const [markerStep, setMarkerStep] = useState<MarkerStep | null>(null);
+  const markerStepRef = useRef(markerStep);
+  markerStepRef.current = markerStep;
+  useEffect(() => {
+    setMarkerStep(null);
+  }, [selectedEpisodeIndex]);
+  /**
+   * The navigable row the keys step through: the one stepped last, else the
+   * topmost navigable row of the episode.
+   */
+  const keyMarkerRow = useMemo(() => {
+    const navigable = markerRows.filter((row) => row.lane?.navigable);
+    return navigable.find((row) => row.lane!.id === markerStep?.laneId) ?? navigable[0] ?? null;
+  }, [markerRows, markerStep?.laneId]);
+  const keyMarkerRowRef = useRef(keyMarkerRow);
+  keyMarkerRowRef.current = keyMarkerRow;
+  /**
+   * Next / previous marker of a navigable row (`laneId`, else the keys' row):
+   * the playhead pauses on its first frame and the row announces its position.
+   * False when the episode has no such row (the key is not the viewer's).
+   */
+  const stepMarker = useCallback(
+    (direction: 1 | -1, laneId?: string): boolean => {
+      const row = laneId
+        ? markerRowsRef.current.find((item) => item.lane?.navigable && item.lane.id === laneId)
+        : keyMarkerRowRef.current;
+      if (!row?.lane) return false;
+      const lane = row.lane;
+      const last = markerStepRef.current;
+      const index = stepLaneMarker(
+        row.markers,
+        last?.laneId === lane.id ? last.markerId : null,
+        getFrameIndex(),
+        direction,
+      );
+      const at = Date.now();
+      if (index == null) {
+        const next: MarkerStep = {
+          laneId: lane.id,
+          markerId: last?.laneId === lane.id ? last.markerId : null,
+          announce: direction === 1 ? 'markers.lane.noNext' : 'markers.lane.noPrevious',
+          at,
+        };
+        markerStepRef.current = next;
+        setMarkerStep(next);
+        return true;
+      }
+      const marker = row.markers[index];
+      pausePlayback();
+      setFrameIndex(marker.startFrame);
+      const next: MarkerStep = {
+        laneId: lane.id,
+        markerId: marker.id,
+        announce: 'markers.lane.position',
+        position: index + 1,
+        at,
+      };
+      markerStepRef.current = next;
+      setMarkerStep(next);
+      return true;
+    },
+    [getFrameIndex, pausePlayback, setFrameIndex],
+  );
   /** How many segments of the selected episode each filter shows, and the filters offered. */
   const filterCounts = useMemo(
     () => segmentFilterCounts(episodeSegments, episodeMarkers),
@@ -998,6 +1086,10 @@ export function useSegmentAnnotation({
       setNarrow,
       markersOf,
       episodeMarkers,
+      markerRows,
+      markerStep,
+      keyMarkerRow,
+      stepMarker,
       readOnly,
       fields: resolvedFields,
       active,
@@ -1061,6 +1153,10 @@ export function useSegmentAnnotation({
       editNeedsWiderWindow,
       markersOf,
       episodeMarkers,
+      markerRows,
+      markerStep,
+      keyMarkerRow,
+      stepMarker,
       readOnly,
       resolvedFields,
       active,

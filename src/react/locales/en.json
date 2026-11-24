@@ -526,6 +526,7 @@
       "title": "Video Panel",
       "placeholder": "Waiting for video file...",
       "debug": {
+        "feature": "Feature",
         "fps": "FPS",
         "resolution": "Resolution",
         "codec": "Codec",
@@ -543,6 +544,7 @@
       "title": "Image Panel",
       "placeholder": "Waiting for image file...",
       "debug": {
+        "feature": "Feature",
         "fps": "FPS",
         "resolution": "Resolution",
         "codec": "Codec",
@@ -1016,7 +1018,15 @@
       "fail": "Failure"
     },
     "issueCount": "{count, plural, one {# issue} other {# issues}}",
-    "issueList": "Issues: {labels}"
+    "issueList": "Issues: {labels}",
+    "lane": {
+      "position": "{{label}} {{position}} of {{total}}",
+      "noNext": "{{label}}: no later marker",
+      "noPrevious": "{{label}}: no earlier marker",
+      "next": "Next in {{label}}",
+      "previous": "Previous in {{label}}",
+      "keys": "Previous / next in {{label}}"
+    }
   },
   "overlay": {
     "legend": "Suggestions (read-only)",

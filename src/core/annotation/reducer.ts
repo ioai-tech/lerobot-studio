@@ -10,6 +10,7 @@ import type {
   SegmentPatch,
   SegmentSubtask,
 } from './types';
+import { hasSubtaskLabel } from './hints';
 
 /** An empty document: every episode is whole and unannotated. */
 export const EMPTY_ANNOTATION_DOCUMENT: AnnotationDocument = Object.freeze({
@@ -107,7 +108,7 @@ function checkSubtasks(segment: Segment): void {
     if (
       !subtask ||
       typeof subtask.label !== 'string' ||
-      subtask.label.trim() === '' ||
+      !hasSubtaskLabel(subtask) ||
       !Number.isSafeInteger(subtask.startFrame) ||
       !Number.isSafeInteger(subtask.endFrame) ||
       subtask.startFrame > subtask.endFrame

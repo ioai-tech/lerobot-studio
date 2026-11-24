@@ -14,6 +14,7 @@ import { usePageKeys, type LeRobotKeyboardScope } from './pageKeys';
 import {
   isSegmentShortcutTarget,
   matchFieldOptionKey,
+  matchMarkerStepKey,
   matchSegmentShortcut,
   SEGMENT_SHORTCUTS,
   type SegmentShortcutId,
@@ -249,6 +250,17 @@ export const useKeyboardShortcuts = (
         !e.altKey &&
         ownsPageKeys();
       if (!inside && !onPage) return;
+      // Shift+. / Shift+,: the next / previous marker of a navigable marker row,
+      // with or without the segment UI. Taken only when the episode has such a
+      // row, so the keys stay the page's otherwise.
+      if (onPage || isSegmentShortcutTarget(target, portalContainer)) {
+        const step = matchMarkerStepKey(e);
+        if (step && segmentsRef.current.stepMarker(step)) {
+          e.preventDefault();
+          e.stopPropagation();
+          return;
+        }
+      }
       // Segment keys exist only while the segment UI does (a plain viewer is unchanged).
       if (
         segmentsRef.current.active &&

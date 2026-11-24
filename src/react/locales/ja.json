@@ -1024,7 +1024,15 @@
       "fail": "失敗"
     },
     "issueCount": "問題 {count} 件",
-    "issueList": "問題：{labels}"
+    "issueList": "問題：{labels}",
+    "lane": {
+      "position": "{{label}} {{total}} 件中 {{position}} 件目",
+      "noNext": "{{label}}：これより後はありません",
+      "noPrevious": "{{label}}：これより前はありません",
+      "next": "{{label}}：次へ",
+      "previous": "{{label}}：前へ",
+      "keys": "{{label}}：前へ / 次へ"
+    }
   },
   "overlay": {
     "legend": "提案（読み取り専用）",
