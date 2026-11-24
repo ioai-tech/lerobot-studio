@@ -119,6 +119,79 @@ describe('browser: the review loop (walk 2026-11-23)', () => {
     }
   });
 
+  it('a closed modal the host keeps mounted (hidden from people) does not take page keys; a shown one does', async () => {
+    const log: HostLog = { changes: [], value: () => ({ episodes: {} }) };
+    const selections: LeRobotSelection[] = [];
+    root.render(
+      <Host
+        log={log}
+        onSelectionChange={(selection) => selections.push(selection)}
+        initial={{
+          episodes: { 0: { segments: [seg('a', 0, 0), seg('b', 1, 1), seg('c', 2, 2)] } },
+        }}
+      />,
+    );
+    await waitUntouched(host);
+    const selected = () => selections.at(-1)?.segmentId;
+    const modal = '<div role="dialog" aria-modal="true" style="width:40px;height:40px">Menu</div>';
+    /** Each hides its modal from people one way, as hosts keep a closed modal mounted. */
+    const hidden: Record<string, string> = {
+      // A keepMounted drawer: the closed modal root is aria-hidden and invisible,
+      // its paper slid off screen (MUI Modal with keepMounted).
+      'keepMounted drawer': `<div role="presentation" aria-hidden="true" style="position:fixed;inset:0;visibility:hidden"><div role="dialog" aria-modal="true" style="position:fixed;left:0;top:0;width:200px;height:100%;transform:translateX(-200px)">Nav</div></div>`,
+      'aria-hidden subtree': `<div aria-hidden="true">${modal}</div>`,
+      'display: none subtree': `<div style="display:none">${modal}</div>`,
+      'inert subtree': `<div inert>${modal}</div>`,
+      'visibility: hidden subtree': `<div style="visibility:hidden">${modal}</div>`,
+      'hidden open dialog': '<dialog open hidden>Menu</dialog>',
+    };
+    const added: HTMLElement[] = [];
+    const add = (html: string) => {
+      const wrapper = document.createElement('div');
+      wrapper.innerHTML = html;
+      document.body.append(wrapper);
+      added.push(wrapper);
+      return wrapper;
+    };
+    try {
+      // J, J, J, K, K, J: a, b, c, b, a, b; one hidden modal more before each key.
+      const steps: [string, string][] = [
+        ['j', 'a'],
+        ['j', 'b'],
+        ['j', 'c'],
+        ['k', 'b'],
+        ['k', 'a'],
+        ['j', 'b'],
+      ];
+      const kinds = Object.keys(hidden);
+      for (const [index, [key, expected]] of steps.entries()) {
+        add(hidden[kinds[index]!]!);
+        expect(document.activeElement).toBe(document.body);
+        await press(key);
+        await expect.poll(selected, { message: kinds[index] }).toBe(expected);
+      }
+      // A modal a person can see still keeps its keys: an aria-modal dialog,
+      // then an open (non-modal) <dialog>.
+      const shown = add(modal);
+      await press('k');
+      await new Promise((resolve) => setTimeout(resolve, 200));
+      expect(selected()).toBe('b');
+      shown.remove();
+      const dialog = add('<dialog>Menu</dialog>').querySelector('dialog')!;
+      dialog.show();
+      (document.activeElement as HTMLElement | null)?.blur?.();
+      await press('k');
+      await new Promise((resolve) => setTimeout(resolve, 200));
+      expect(selected()).toBe('b');
+      dialog.close();
+      await press('k');
+      await expect.poll(selected).toBe('a');
+      expect(log.changes).toEqual([]);
+    } finally {
+      for (const element of added) element.remove();
+    }
+  });
+
   it('F-01: with two viewers on one page a key on <body> reaches one: the one opened or used last', async () => {
     const logA: HostLog = { changes: [], value: () => ({ episodes: {} }) };
     const logB: HostLog = { changes: [], value: () => ({ episodes: {} }) };
