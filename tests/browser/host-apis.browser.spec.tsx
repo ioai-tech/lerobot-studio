@@ -240,8 +240,10 @@ describe('browser: display hints (taskHint, labelHint)', () => {
     expect(rowHint.textContent).toBe('Fold the white towel');
     expect(rowHint.className).toContain('text-muted-foreground');
     expect(list()!.textContent).not.toContain('Episode task');
-    const subtaskHint = host.querySelector('[aria-label="Subtasks"] [data-label-hint]');
-    expect(subtaskHint?.textContent).toBe('grasp');
+    // The subtask track draws once the episode's frames are known, which can
+    // land after the list (the host's document) is shown.
+    const subtaskHint = () => host.querySelector('[aria-label="Subtasks"] [data-label-hint]');
+    await expect.poll(() => subtaskHint()?.textContent).toBe('grasp');
 
     // Select it: the task input is empty, the hint is its placeholder.
     list()!.querySelector<HTMLElement>('[data-segment-id="a"]')!.click();
