@@ -356,7 +356,7 @@ export function RecordingStudio({ view, url, navigate }: HostProps) {
 
 ### 提示文字与相机名称 {#hints-and-camera-names}
 
-- **`Segment.taskHint`** 是分段 `task` 为 `null` 时显示的文字（例如另一种语言的任务，而用户正在用自己的语言填写）。它以弱化样式显示在分段列表和详情中，取代“继承任务”文案，并作为任务输入框的占位符。**`SegmentSubtask.labelHint`** 对空的子任务 `label` 做同样的事，显示在子任务轨道和重命名对话框中；带提示的空标签是有效的。提示永远不是值：查看器发出的变更都不包含它，也永远不会被导出。
+- **`Segment.taskHint`** 是分段 `task` 为 `null` 时显示的文字（例如另一种语言的任务，而用户正在用自己的语言填写）。它以弱化样式显示在分段列表和详情中，取代“继承任务”文案，并作为任务输入框的占位符。**`SegmentSubtask.labelHint`** 对空的子任务 `label` 做同样的事，显示在子任务轨道和重命名对话框中；带提示的空标签是有效的，导出时它的帧算作未标注。提示永远不是值：查看器发出的变更都不包含它，也永远不会被导出。
 - **`cameraLabels`** 按特征键为相机命名，例如 `{ 'observation.images.head_left': t('cameras.headLeft') }`。面板标题和提到相机的文案使用它；更新名称会直接重命名已显示的面板，不会重新布局。没有名称的相机保留键的最后一段（`head_left`）。设置名称后，键仍显示在面板标题的提示框和相机的技术详情中。
 
 ### 选择与深层链接 {#selection-and-deep-links}

@@ -527,7 +527,7 @@
       "placeholder": "動画ファイルを待機中...",
       "debug": {
         "title": "メディアデバッグ",
-        "feature": "Feature",
+        "feature": "特徴量",
         "dtype": "DType",
         "shape": "Shape",
         "fps": "FPS",
@@ -548,7 +548,7 @@
       "placeholder": "画像ファイルを待機中...",
       "debug": {
         "title": "メディアデバッグ",
-        "feature": "Feature",
+        "feature": "特徴量",
         "dtype": "DType",
         "shape": "Shape",
         "fps": "FPS",

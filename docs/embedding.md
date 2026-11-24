@@ -356,7 +356,7 @@ Every message an embedded viewer can show can be replaced, not only segment copy
 
 ### Hints and camera names
 
-- **`Segment.taskHint`** is display text for a segment whose `task` is `null` (for example the task in another language, while a person writes it in theirs). It is shown muted in the segment list and the details, in place of the inherited-task copy, and as the task input's placeholder. **`SegmentSubtask.labelHint`** does the same for an empty subtask `label` on the subtask track and in the rename dialog; an empty label with a hint is valid. A hint is never a value: no change the viewer emits carries it, and it is never exported.
+- **`Segment.taskHint`** is display text for a segment whose `task` is `null` (for example the task in another language, while a person writes it in theirs). It is shown muted in the segment list and the details, in place of the inherited-task copy, and as the task input's placeholder. **`SegmentSubtask.labelHint`** does the same for an empty subtask `label` on the subtask track and in the rename dialog; an empty label with a hint is valid, and an export counts its frames as unlabeled. A hint is never a value: no change the viewer emits carries it, and it is never exported.
 - **`cameraLabels`** names cameras by feature key, for example `{ 'observation.images.head_left': t('cameras.headLeft') }`. Panel titles and messages that name a camera use it, and new labels rename the shown panels without laying them out again. A camera without a label keeps the last part of its key (`head_left`). With a label, the key stays in the panel title's tooltip and in the camera's technical details.
 
 ### Selection and deep links

@@ -10,7 +10,7 @@ import type {
   SegmentPatch,
   SegmentSubtask,
 } from './types';
-import { hasSubtaskLabel } from './hints';
+import { hasSubtaskLabel, subtaskLabelHint } from './hints';
 
 /** An empty document: every episode is whole and unannotated. */
 export const EMPTY_ANNOTATION_DOCUMENT: AnnotationDocument = Object.freeze({
@@ -273,7 +273,15 @@ export function concatSubtasks(
     .map((subtask) => ({ ...subtask }));
   const last = left[left.length - 1];
   const next = right[0];
-  if (last && next && last.label === next.label && last.endFrame + 1 === next.startFrame) {
+  // Two empty labels join only with the same hint: unnamed subtasks that differ
+  // are two subtasks, not one cut by a split.
+  if (
+    last &&
+    next &&
+    last.label === next.label &&
+    subtaskLabelHint(last) === subtaskLabelHint(next) &&
+    last.endFrame + 1 === next.startFrame
+  ) {
     last.endFrame = next.endFrame;
     right.shift();
   }

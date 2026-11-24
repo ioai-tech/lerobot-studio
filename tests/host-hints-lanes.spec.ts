@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import {
   annotationToExportSegments,
   applyChange,
+  concatSubtasks,
+  SubtaskCoverageError,
   buildSubtaskLane,
   cameraDisplayName,
   laneMarkerAt,
@@ -17,6 +19,8 @@ import {
   type TimelineMarker,
 } from '@/core';
 import { matchMarkerStepKey, matchSegmentShortcut } from '../src/react/hooks/segmentShortcuts';
+import { buildExportSubtaskPlan } from '../src/platform/export/SubtaskExportPlan';
+import type { LeRobotDataLoader } from '@/platform';
 
 function marker(id: string, startFrame: number, lane?: string): TimelineMarker {
   return {
@@ -264,6 +268,59 @@ describe('display hints (taskHint, labelHint)', () => {
       task: null,
       subtasks: [{ startFrame: 0, endFrame: 9, label: 'reach' }],
     });
+  });
+});
+
+describe('an empty subtask label is no label in data', () => {
+  it('exports leave a subtask with an empty label out: its frames are unlabeled, never the hint', async () => {
+    const exported = annotationToExportSegments({
+      episodes: {
+        0: {
+          segments: [
+            seg('a', 0, 9, {
+              subtasks: [
+                { startFrame: 0, endFrame: 4, label: 'reach' },
+                { startFrame: 5, endFrame: 9, label: '', labelHint: 'grasp' },
+              ],
+            }),
+          ],
+        },
+      },
+    });
+    expect(exported.get(0)?.[0].subtasks).toEqual([{ startFrame: 0, endFrame: 4, label: 'reach' }]);
+
+    // A v3.0 export with subtasks refuses the uncovered frames by name (the
+    // dialog offers to fill them), not with a generic "label is required".
+    const error = await buildExportSubtaskPlan({
+      dataLoader: {} as LeRobotDataLoader,
+      info: { codebase_version: 'v3.0', features: {} } as never,
+      episodes: [{ episode_index: 0, length: 10, tasks: ['pick'] }],
+      overlay: new Map([[0, exported.get(0)![0].subtasks]]),
+      sourceTable: {},
+      targetVersion: 'v3.0',
+    }).catch((err: unknown) => err);
+    expect(error).toBeInstanceOf(SubtaskCoverageError);
+    expect(error).toMatchObject({
+      coverage: expect.objectContaining({ labeledFrames: 5, totalFrames: 10 }),
+    });
+  });
+
+  it('a merge joins two empty labels only when their hints match (a split piece)', () => {
+    const left = [{ startFrame: 0, endFrame: 4, label: '', labelHint: 'grasp' }];
+    expect(
+      concatSubtasks(left, [{ startFrame: 5, endFrame: 9, label: '', labelHint: 'grasp' }]),
+    ).toEqual([{ startFrame: 0, endFrame: 9, label: '', labelHint: 'grasp' }]);
+    // Two different subtasks, both still unnamed in this language, stay two.
+    expect(
+      concatSubtasks(left, [{ startFrame: 5, endFrame: 9, label: '', labelHint: 'place' }]),
+    ).toHaveLength(2);
+    // A named label joins as before, whatever its (unshown) hint.
+    expect(
+      concatSubtasks(
+        [{ startFrame: 0, endFrame: 4, label: 'reach', labelHint: 'a' }],
+        [{ startFrame: 5, endFrame: 9, label: 'reach', labelHint: 'b' }],
+      ),
+    ).toHaveLength(1);
   });
 });
 
