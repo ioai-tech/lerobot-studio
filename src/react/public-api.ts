@@ -88,6 +88,7 @@ export type {
   OverlaySegment,
   OverlaySegmentGroup,
   TimelineMarker,
+  TimelineMarkerLane,
 } from '../core/annotation/markers';
 export { LEROBOT_MESSAGE_KEYS } from './i18n/messageKeys';
 export type { LeRobotMessageKey, LeRobotMessages } from './i18n/messageKeys';

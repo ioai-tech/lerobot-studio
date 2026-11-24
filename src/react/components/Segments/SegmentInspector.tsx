@@ -23,6 +23,7 @@ import {
   outTimeToFrame,
   segmentNumber,
   segmentReviewDisplay,
+  segmentTaskHint,
   type AnnotationField,
   type Segment,
 } from '@/core';
@@ -507,6 +508,8 @@ export const SegmentInspector: React.FC = () => {
   const framesPerSecond = Math.max(1, Math.round(fps));
   const selected = segments.selected;
   const segment = selected?.segment ?? null;
+  /** The host's display text while the segment has no task (never the input's value). */
+  const taskHint = segment ? segmentTaskHint(segment) : null;
   const editable = segments.canEdit && !segment?.readOnly;
   const number = useMemo(
     () => (selected ? segmentNumber(segments.doc, selected.episodeIndex, selected.segment.id) : 0),
@@ -732,7 +735,7 @@ export const SegmentInspector: React.FC = () => {
               <TextCommitInput
                 label={t('segments.inspector.task')}
                 value={segment.task ?? ''}
-                placeholder={t('segments.inspector.taskPlaceholder')}
+                placeholder={taskHint ?? t('segments.inspector.taskPlaceholder')}
                 onCommit={(text) =>
                   segments.updateSegment(segment.id, { task: text.trim() === '' ? null : text })
                 }
@@ -744,7 +747,16 @@ export const SegmentInspector: React.FC = () => {
               <span className="font-mono tabular-nums">
                 {frameToInTime(segment.startFrame, fps)}–{frameToOutTime(segment.endFrame, fps)}
               </span>
-              <span className="truncate">{segment.task ?? t('segments.inheritTask')}</span>
+              <span className="truncate">
+                {segment.task || (
+                  <span
+                    className="text-muted-foreground"
+                    data-task-hint={taskHint ? '' : undefined}
+                  >
+                    {taskHint ?? t('segments.inheritTask')}
+                  </span>
+                )}
+              </span>
             </span>
           )}
         </div>

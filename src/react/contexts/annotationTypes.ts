@@ -1,4 +1,8 @@
-import type { OverlaySegmentGroup, TimelineMarker } from '../../core/annotation/markers';
+import type {
+  OverlaySegmentGroup,
+  TimelineMarker,
+  TimelineMarkerLane,
+} from '../../core/annotation/markers';
 import type {
   AnnotationChange,
   AnnotationDocument,
@@ -64,5 +68,6 @@ export interface AnnotationConfig {
   readOnly?: boolean;
   fields?: readonly AnnotationField[];
   markers?: readonly TimelineMarker[];
+  markerLanes?: readonly TimelineMarkerLane[];
   overlaySegments?: readonly OverlaySegmentGroup[];
 }

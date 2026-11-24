@@ -15,7 +15,7 @@ import {
 import { Plus, X, Video, Image, TrendingUp, FileText, ArrowDown, ArrowRight } from 'lucide-react';
 import type { IDockviewPanelHeaderProps } from 'dockview-react';
 import { useTranslation } from 'react-i18next';
-import { useLeRobotData } from '../contexts/LeRobotContext';
+import { useCameraNamer, useLeRobotData } from '../contexts/LeRobotContext';
 import { safeAddPanel } from '../utils/dockviewPanelId';
 
 type PanelType = 'video' | 'image' | 'chart' | 'raw';
@@ -24,6 +24,7 @@ export const PanelTitle: React.FC<IDockviewPanelHeaderProps> = (props) => {
   const { api, containerApi } = props;
   const { t } = useTranslation();
   const { info } = useLeRobotData();
+  const cameraName = useCameraNamer();
   const panelId = api.id;
   const panel = containerApi.getPanel(panelId);
 
@@ -58,7 +59,7 @@ export const PanelTitle: React.FC<IDockviewPanelHeaderProps> = (props) => {
   const handleAddPanel = (direction: 'right' | 'below', featureKey: string) => {
     if (!panel) return;
     const type = getBestPanelTypeForFeature(featureKey);
-    const cleanName = featureKey.split('.').pop() || featureKey;
+    const cleanName = cameraName(featureKey).name;
 
     safeAddPanel(containerApi, {
       component: type,
@@ -78,16 +79,19 @@ export const PanelTitle: React.FC<IDockviewPanelHeaderProps> = (props) => {
     containerApi.removePanel(panel);
   };
 
-  const headerTitle = !panel
-    ? api.title || t('common.appName')
-    : panel.title || t('common.appName');
+  // A feature's panel is named at render time, so a host's `cameraLabels`
+  // apply to panels already laid out; the feature key stays in the tooltip.
+  const featureKey: unknown = panel?.params?.featureKey;
+  const camera = typeof featureKey === 'string' ? cameraName(featureKey) : null;
+  const headerTitle = camera?.name || (!panel ? api.title : panel.title) || t('common.appName');
+  const headerTooltip = camera?.key ? `${headerTitle} · ${camera.key}` : headerTitle;
 
   if (!panel) {
     return (
       <div className="panel-title-root flex h-full w-full min-w-0 box-border items-center gap-2 px-2">
         <span
           className="panel-title-text min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap text-sm"
-          title={headerTitle}
+          title={headerTooltip}
         >
           {headerTitle}
         </span>
@@ -99,7 +103,7 @@ export const PanelTitle: React.FC<IDockviewPanelHeaderProps> = (props) => {
     <div className="panel-title-root flex h-full w-full min-w-0 box-border items-center gap-2 px-2">
       <span
         className="panel-title-text min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap text-sm"
-        title={headerTitle}
+        title={headerTooltip}
       >
         {headerTitle}
       </span>

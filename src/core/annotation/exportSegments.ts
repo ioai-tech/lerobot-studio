@@ -30,7 +30,12 @@ export function annotationToExportSegments(
         startFrame: segment.startFrame,
         endFrame: segment.endFrame,
         task: segment.task,
-        subtasks: segment.subtasks.map((subtask) => ({ ...subtask })),
+        // Display hints (`taskHint`, `labelHint`) are never exported, and a
+        // subtask with an empty label (valid in the viewer while it has a
+        // hint) is no label: its frames export as unlabeled.
+        subtasks: segment.subtasks
+          .filter(({ label }) => label.trim() !== '')
+          .map(({ startFrame, endFrame, label }) => ({ startFrame, endFrame, label })),
         columns: Object.fromEntries(
           fields.map((field) => {
             const value = segment.values[field.id];

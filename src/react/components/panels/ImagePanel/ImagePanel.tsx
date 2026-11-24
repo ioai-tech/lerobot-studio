@@ -1,6 +1,10 @@
 import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useLeRobotData, useLeRobotSelection } from '../../../contexts/LeRobotContext';
+import {
+  useCameraName,
+  useLeRobotData,
+  useLeRobotSelection,
+} from '../../../contexts/LeRobotContext';
 import { buildMediaDebugMetadata, isDepthMapFeature } from '@/core';
 import { getFirstVisualFeatureName } from '@/core';
 import { MediaDebugOverlay } from '../Common/MediaDebugOverlay';
@@ -32,6 +36,8 @@ export const ImagePanel: React.FC<ImagePanelProps> = ({ params }) => {
     if (params?.featureKey) return params.featureKey;
     return getFirstVisualFeatureName(info) || 'observation.images.cam_high';
   }, [params?.featureKey, info]);
+  /** With a host label, the technical details keep the feature key. */
+  const hiddenKey = useCameraName(featureKey).key;
 
   // ─── UI 状态（仅在非播放路径上更新）───
   const [isLoading, setIsLoading] = useState(false);
@@ -281,7 +287,11 @@ export const ImagePanel: React.FC<ImagePanelProps> = ({ params }) => {
 
   return (
     <div className="group relative flex h-full w-full items-center justify-center overflow-hidden bg-black">
-      <MediaDebugOverlay metadata={debugMetadata} translationPrefix="panels.image.debug" />
+      <MediaDebugOverlay
+        metadata={debugMetadata}
+        translationPrefix="panels.image.debug"
+        featureKey={hiddenKey}
+      />
 
       {/* canvas 始终保留，帧更新直接 drawImage，无 React 渲染 */}
       <canvas

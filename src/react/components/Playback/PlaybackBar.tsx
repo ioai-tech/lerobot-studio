@@ -10,12 +10,17 @@ import {
 } from '../../contexts/LeRobotContext';
 import { EpisodeTrimControls } from './EpisodeTrimControls';
 import { SegmentTrack } from '../Segments/SegmentTrack';
-import { MarkerLane } from '../Timeline/MarkerLane';
+import { MarkerLanes } from '../Timeline/MarkerLane';
 import { OverlayBand } from '../Timeline/OverlayBand';
 import { LazySegmentInspector } from '../Segments/lazySegments';
 import { LazyEditSubtaskDialog } from '../dialogs/lazyDialogs';
 import { useLoading } from '../../contexts/LoadingContext';
-import { episodeTimeDomain, overlaySegmentsOfEpisode, shouldPlayShownEpisode } from '@/core';
+import {
+  episodeTimeDomain,
+  overlaySegmentsOfEpisode,
+  shouldPlayShownEpisode,
+  subtaskLabelHint,
+} from '@/core';
 import { PlaybackProgressSlider } from './PlaybackProgressSlider';
 import { Button } from '@/ui';
 import { Badge } from '@/ui';
@@ -216,6 +221,9 @@ export const PlaybackBar: React.FC = () => {
     setPlaying(false);
   }, [subtaskDialogOpen, setPlaying]);
 
+  /** The subtask being renamed (not a new range). */
+  const renamedSubtask =
+    !pendingRange && renameIndex != null ? currentSegments[renameIndex] : undefined;
   const dialogStartFrame =
     pendingRange?.startFrame ??
     (renameIndex != null ? currentSegments[renameIndex]?.startFrame : 0) ??
@@ -444,14 +452,7 @@ export const PlaybackBar: React.FC = () => {
                 ) : null}
               </>
             }
-            besideTrack={
-              <MarkerLane
-                markers={segments.episodeMarkers}
-                totalFrames={totalFrames}
-                fps={fps}
-                onSeek={setFrameIndex}
-              />
-            }
+            besideTrack={<MarkerLanes totalFrames={totalFrames} fps={fps} onSeek={setFrameIndex} />}
             segments={currentSegments}
             pendingRange={annotationEnabled ? pendingRange : null}
             editRanges={annotationEnabled && !subtaskDialogOpen}
@@ -536,6 +537,7 @@ export const PlaybackBar: React.FC = () => {
               ? ''
               : ((renameIndex != null ? currentSegments[renameIndex]?.label : '') ?? '')
           }
+          labelHint={renamedSubtask ? (subtaskLabelHint(renamedSubtask) ?? undefined) : undefined}
           knownLabels={knownLabels}
           onSave={(label) => {
             if (renameIndex != null && !pendingRange) {

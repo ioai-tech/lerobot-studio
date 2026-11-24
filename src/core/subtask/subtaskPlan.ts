@@ -121,7 +121,12 @@ export function validateSubtaskSegment(
     throw new Error('Subtask segment frames must be integers');
   }
   const label = normalizeSubtaskLabel(segment.label);
-  if (!label) {
+  // A host's display hint stands in for an empty label (it is never the label).
+  const labelHint =
+    typeof segment.labelHint === 'string' && segment.labelHint.trim() !== ''
+      ? segment.labelHint
+      : undefined;
+  if (!label && !labelHint) {
     throw new Error('Subtask label is required');
   }
   if (segment.startFrame < 0 || segment.endFrame < 0) {
@@ -135,7 +140,9 @@ export function validateSubtaskSegment(
       `Subtask segment ${segment.startFrame}-${segment.endFrame} is outside episode length ${episodeLength}`,
     );
   }
-  return { startFrame: segment.startFrame, endFrame: segment.endFrame, label };
+  return label || !labelHint
+    ? { startFrame: segment.startFrame, endFrame: segment.endFrame, label }
+    : { startFrame: segment.startFrame, endFrame: segment.endFrame, label, labelHint };
 }
 
 export function segmentsOverlap(left: SubtaskSegment, right: SubtaskSegment): boolean {
@@ -307,6 +314,8 @@ export type SubtaskLaneItem =
       startFrame: number;
       endFrame: number;
       label: string;
+      /** The host's display text while `label` is empty (never the label). */
+      labelHint?: string;
     }
   | {
       kind: 'gap';
@@ -332,6 +341,9 @@ export function buildSubtaskLane(
       startFrame: segment.startFrame,
       endFrame: segment.endFrame,
       label: segment.label,
+      ...(segment.label.trim() === '' && segment.labelHint?.trim()
+        ? { labelHint: segment.labelHint }
+        : {}),
     });
     cursor = segment.endFrame + 1;
   });

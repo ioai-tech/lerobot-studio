@@ -110,6 +110,7 @@ Keys work as soon as the viewer opens, without a click, and while you use it; no
 | `Shift+A`                     | Confirm every segment to review in the current filter (asks first)    |
 | `J` / `K`                     | Next / previous segment the list shows, across episodes               |
 | `G`                           | Jump to the next frame that is in no segment                          |
+| `Shift+.` / `Shift+,`         | Next / previous marker of a navigable marker row (host-declared)      |
 | `L`                           | Loop playback inside the selected segment                             |
 | `Shift+[` / `Shift+]`         | Start / end a subtask at the playhead                                 |
 | `Ctrl/⌘+Z` / `Shift+Ctrl/⌘+Z` | Undo / redo                                                           |

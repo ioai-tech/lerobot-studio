@@ -526,6 +526,7 @@
       "title": "视频面板",
       "placeholder": "等待加载视频文件...",
       "debug": {
+        "feature": "特征",
         "fps": "FPS",
         "resolution": "分辨率",
         "codec": "编码",
@@ -543,6 +544,7 @@
       "title": "图像面板",
       "placeholder": "等待加载图像文件...",
       "debug": {
+        "feature": "特征",
         "fps": "FPS",
         "resolution": "分辨率",
         "codec": "编码",
@@ -1016,7 +1018,15 @@
       "fail": "失败"
     },
     "issueCount": "{count} 个问题",
-    "issueList": "问题：{labels}"
+    "issueList": "问题：{labels}",
+    "lane": {
+      "position": "{{label}} 第 {{position}} 个，共 {{total}} 个",
+      "noNext": "{{label}}：后面没有了",
+      "noPrevious": "{{label}}：前面没有了",
+      "next": "{{label}}：下一个",
+      "previous": "{{label}}：上一个",
+      "keys": "{{label}}：上一个 / 下一个"
+    }
   },
   "overlay": {
     "legend": "建议（只读）",

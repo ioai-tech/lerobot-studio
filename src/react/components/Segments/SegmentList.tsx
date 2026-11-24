@@ -8,6 +8,7 @@ import {
   matchesSegmentFilter,
   segmentIssueMarkers,
   segmentReviewDisplay,
+  segmentTaskHint,
   reviewProgress,
   type SegmentFilter,
 } from '@/core';
@@ -157,6 +158,7 @@ export const SegmentList: React.FC<{ episodeIndex: number; showTitle?: boolean }
           {visible.map(({ segment, number }) => {
             const selected = segment.id === segments.selectedSegmentId;
             const display = segmentReviewDisplay(segment);
+            const hint = segmentTaskHint(segment);
             const time = `${frameToInTime(segment.startFrame, fps)}–${frameToOutTime(segment.endFrame, fps)}`;
             const reviewText = t(REVIEW_TEXT[display]);
             const markerIssues = segmentIssueMarkers(segment, episodeMarkers);
@@ -209,8 +211,15 @@ export const SegmentList: React.FC<{ episodeIndex: number; showTitle?: boolean }
                         : 'text-foreground/90',
                     )}
                   >
-                    {segment.task ?? (
-                      <span className="text-muted-foreground">{t('segments.inheritTask')}</span>
+                    {segment.task || (
+                      // The host's hint (e.g. the task in another language) is
+                      // display only, muted like the inherited-task copy it replaces.
+                      <span
+                        className="text-muted-foreground"
+                        data-task-hint={hint ? '' : undefined}
+                      >
+                        {hint ?? t('segments.inheritTask')}
+                      </span>
                     )}
                   </span>
                   {display === 'excluded' || origin || segment.status || markerIssues.length > 0 ? (

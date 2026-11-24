@@ -6,6 +6,8 @@ import type { MediaDebugMetadata } from '@/core';
 interface MediaDebugOverlayProps {
   metadata: MediaDebugMetadata | null;
   translationPrefix: 'panels.video.debug' | 'panels.image.debug';
+  /** The camera's feature key, listed first when the host names the camera. */
+  featureKey?: string;
   className?: string;
 }
 
@@ -28,6 +30,7 @@ function formatTimeline(metadata: MediaDebugMetadata): string | null {
 export const MediaDebugOverlay: React.FC<MediaDebugOverlayProps> = ({
   metadata,
   translationPrefix,
+  featureKey,
   className,
 }) => {
   const { t } = useTranslation();
@@ -44,6 +47,7 @@ export const MediaDebugOverlay: React.FC<MediaDebugOverlayProps> = ({
   }
 
   const items = [
+    { label: t(`${translationPrefix}.feature`), value: featureKey ?? null },
     {
       label: t(`${translationPrefix}.fps`),
       value: metadata.fps != null ? String(metadata.fps) : null,

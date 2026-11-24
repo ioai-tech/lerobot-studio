@@ -334,6 +334,15 @@ Every message an embedded viewer can show can be replaced, not only segment copy
 ### Markers and read-only suggestions
 
 - **`markers`** are ranges (or one-frame ticks) on the time axis, coloured by `severity`, with the `label` in a tooltip and in the accessible name. Clicking one seeks to its first frame; the lane is one tab stop and arrow keys move between markers. A segment that overlaps a `warn` or `fail` marker is in the **Issues** filter and shows an issue count. `checkId` is kept for the host and never shown.
+- **`markerLanes`** splits the marker lane into named rows, top to bottom: a marker joins the row its `lane` names. Markers without a `lane`, or with one no row declares, stay in the default row below the named ones, which looks and works as without `markerLanes`. Each named row has a header with its `label` (localize it first) and is its own tab stop. A row with `navigable: true` adds its position (`3 / 39`) and Previous / Next buttons, and `Shift+,` / `Shift+.` step through it: the playhead pauses on the previous / next marker's first frame, and the row announces `<label> 3 of 39` (or that there is none further). Markers that start on the same frame are each a step. With several navigable rows, the keys step the row stepped last (at first the topmost). The keys are taken only while the shown episode has a navigable row, and follow the same rules as every viewer key (see [Keyboard](#keyboard)). This is the pattern of Frame.io's next / previous comment and CVAT's next frame with an issue, for example to walk every possible face a privacy check found:
+
+  ```tsx
+  <LeRobotViewer
+    markers={faces.map((face) => ({ ...face, lane: 'faces', severity: 'warn' }))}
+    markerLanes={[{ id: 'faces', label: t('possibleFaces'), navigable: true }]}
+  />
+  ```
+
 - **`overlaySegments`** are read-only segments (for example another process's proposals) in a thin band above the segment track. The band's legend is the `overlay.legend` message (default "Suggestions (read-only)"). Clicking one seeks to it; nothing in the band edits.
 
 ### Toolbar and notices
@@ -344,6 +353,11 @@ Every message an embedded viewer can show can be replaced, not only segment copy
 - A disabled button with `disabledReason` stays focusable; the reason is its tooltip and its `aria-describedby`.
 - `notices` have a `severity` (`error` notices are announced at once), optional `progress` (`'indeterminate'` or 0–1) and one `action` (a link or a callback). Updating a notice re-renders only the notices, never the camera panels.
 - With a sidebar they sit at its top; without one, above the playback bar.
+
+### Hints and camera names
+
+- **`Segment.taskHint`** is display text for a segment whose `task` is `null` (for example the task in another language, while a person writes it in theirs). It is shown muted in the segment list and the details, in place of the inherited-task copy, and as the task input's placeholder. **`SegmentSubtask.labelHint`** does the same for an empty subtask `label` on the subtask track and in the rename dialog; an empty label with a hint is valid, and an export counts its frames as unlabeled. A hint is never a value: no change the viewer emits carries it, and it is never exported.
+- **`cameraLabels`** names cameras by feature key, for example `{ 'observation.images.head_left': t('cameras.headLeft') }`. Panel titles and messages that name a camera use it, and new labels rename the shown panels without laying them out again. A camera without a label keeps the last part of its key (`head_left`). With a label, the key stays in the panel title's tooltip and in the camera's technical details.
 
 ### Selection and deep links
 
@@ -496,6 +510,8 @@ Common props include:
 | `fields`                   | Values a person sets on each segment (`select`, `tags`, `text`)                        |
 | `messages`                 | Replace any built-in copy by key                                                       |
 | `markers`                  | Ranges on the time axis by severity; see [Markers](#markers-and-read-only-suggestions) |
+| `markerLanes`              | Named marker rows; `navigable` rows step with `Shift+.` / `Shift+,` and buttons        |
+| `cameraLabels`             | Camera names by feature key; see [Hints and camera names](#hints-and-camera-names)     |
 | `overlaySegments`          | Read-only segments in a band above the segment track                                   |
 | `extensions`               | Host toolbar items and notices; see [Toolbar and notices](#toolbar-and-notices)        |
 | `initialSelection`         | Open at an episode, segment and time, once                                             |
@@ -511,6 +527,8 @@ Keys pressed while focus is inside the viewer always reach it. Right after the v
 - `'auto'` (default): the viewer takes them when it is the shown viewer that opened or was used (focus or a click inside it) last. With two viewers on one page, one key reaches one viewer.
 - `'page'`: the same, preferred over `'auto'` viewers: give it to the page's main viewer when others are shown beside it.
 - `'viewer'`: only keys pressed inside the viewer.
+
+`Shift+.` / `Shift+,` step through a navigable marker row (see [`markerLanes`](#markers-and-read-only-suggestions)); without such a row in the shown episode the viewer leaves them to the page.
 
 The viewer never takes focus itself, and never acts on a key typed into a field, on a key while a control of the page has focus, or while a modal dialog (`aria-modal="true"` or an open `<dialog>`) is open. On the page, a key combined with Ctrl, ⌘ or Alt stays yours and the browser's (your own shortcuts such as Ctrl+K, Alt+← to go back), and so does a key that composes text (IME) or one pressed on an editable page (`contenteditable` body, `designMode`).
 

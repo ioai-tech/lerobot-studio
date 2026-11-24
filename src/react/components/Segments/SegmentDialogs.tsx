@@ -9,7 +9,7 @@ import {
   DialogTitle,
 } from '@/ui';
 import { useLeRobotSegments } from '../../contexts/LeRobotContext';
-import { SEGMENT_SHORTCUTS } from '../../hooks/segmentShortcuts';
+import { MARKER_STEP_KEYS, SEGMENT_SHORTCUTS } from '../../hooks/segmentShortcuts';
 
 /** Playback keys shown in the sheet next to the segment keys. */
 const PLAYBACK_KEYS: Array<{ keys: string; labelKey: string }> = [
@@ -25,6 +25,15 @@ function ShortcutSheet() {
   const segments = useLeRobotSegments();
   const rows = [
     ...PLAYBACK_KEYS.map((row) => ({ keys: row.keys, label: t(row.labelKey), edit: false })),
+    ...(segments.keyMarkerRow?.lane
+      ? [
+          {
+            keys: `${MARKER_STEP_KEYS.previous} / ${MARKER_STEP_KEYS.next}`,
+            label: t('markers.lane.keys', { label: segments.keyMarkerRow.lane.label }),
+            edit: false,
+          },
+        ]
+      : []),
     ...SEGMENT_SHORTCUTS.filter((item) => segments.canEdit || !item.edit).map((item) => ({
       keys: item.keys.join(' / '),
       label: t(`segments.actions.${item.id}`),
