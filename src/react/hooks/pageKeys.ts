@@ -11,7 +11,7 @@ import { useCallback, useEffect, useRef } from 'react';
  *   main view among several viewers on one page).
  * - `viewer`: only keys pressed while focus is inside it.
  *
- * Keys typed into a field, a focused control of the host page, or any open
+ * Keys typed into a field, a focused control of the host page, or any shown
  * modal dialog never reach a viewer this way.
  */
 export type LeRobotKeyboardScope = 'auto' | 'page' | 'viewer';
@@ -46,7 +46,9 @@ export function ownsPageKeys(entry: PageKeysEntry): boolean {
 
 /**
  * A modal dialog of the host page (or the viewer) is open: page keys belong to
- * it. Only a modal a person can see counts. Hosts keep closed modals mounted
+ * it. A non-modal `<dialog>` (`show()`, or `open` set directly) leaves the page
+ * usable, so it keeps only the keys pressed while focus is inside it (the
+ * target check). Only a modal a person can see counts. Hosts keep closed modals mounted
  * (a keepMounted drawer, a dialog kept for its exit transition, a hidden
  * portal): they stay marked `aria-modal` but are hidden from people with
  * `aria-hidden` or `inert` on themselves or an ancestor, `display: none`
@@ -54,7 +56,7 @@ export function ownsPageKeys(entry: PageKeysEntry): boolean {
  * check walks a handful of nodes per key.
  */
 function modalOpen(doc: Document): boolean {
-  for (const modal of doc.querySelectorAll('[aria-modal="true"], dialog[open]')) {
+  for (const modal of doc.querySelectorAll('[aria-modal="true"], dialog:modal')) {
     if (modal.closest('[aria-hidden="true"], [inert]')) continue;
     if (modal.getClientRects().length === 0) continue;
     if (doc.defaultView?.getComputedStyle(modal).visibility !== 'visible') continue;

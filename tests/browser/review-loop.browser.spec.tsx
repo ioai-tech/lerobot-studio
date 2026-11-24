@@ -119,7 +119,7 @@ describe('browser: the review loop (walk 2026-11-23)', () => {
     }
   });
 
-  it('a closed modal the host keeps mounted (hidden from people) does not take page keys; a shown one does', async () => {
+  it('a closed modal the host keeps mounted (hidden from people) or a non-modal dialog does not take page keys; a shown modal does', async () => {
     const log: HostLog = { changes: [], value: () => ({ episodes: {} }) };
     const selections: LeRobotSelection[] = [];
     root.render(
@@ -143,7 +143,7 @@ describe('browser: the review loop (walk 2026-11-23)', () => {
       'display: none subtree': `<div style="display:none">${modal}</div>`,
       'inert subtree': `<div inert>${modal}</div>`,
       'visibility: hidden subtree': `<div style="visibility:hidden">${modal}</div>`,
-      'hidden open dialog': '<dialog open hidden>Menu</dialog>',
+      'hidden modal': '<div role="dialog" aria-modal="true" hidden>Menu</div>',
     };
     const added: HTMLElement[] = [];
     const add = (html: string) => {
@@ -171,21 +171,30 @@ describe('browser: the review loop (walk 2026-11-23)', () => {
         await expect.poll(selected, { message: kinds[index] }).toBe(expected);
       }
       // A modal a person can see still keeps its keys: an aria-modal dialog,
-      // then an open (non-modal) <dialog>.
+      // then a modal <dialog> (showModal).
       const shown = add(modal);
       await press('k');
       await new Promise((resolve) => setTimeout(resolve, 200));
       expect(selected()).toBe('b');
       shown.remove();
-      const dialog = add('<dialog>Menu</dialog>').querySelector('dialog')!;
-      dialog.show();
+      const modalDialog = add('<dialog>Menu</dialog>').querySelector('dialog')!;
+      modalDialog.showModal();
       (document.activeElement as HTMLElement | null)?.blur?.();
+      expect(document.activeElement).toBe(document.body);
       await press('k');
       await new Promise((resolve) => setTimeout(resolve, 200));
       expect(selected()).toBe('b');
-      dialog.close();
+      modalDialog.close();
+      // A non-modal <dialog> (show(), or `open` set directly) leaves the page
+      // usable: a key on <body> still reaches the viewer.
+      const dialog = add('<dialog>Menu</dialog>').querySelector('dialog')!;
+      dialog.show();
+      add('<dialog open>Panel</dialog>');
+      (document.activeElement as HTMLElement | null)?.blur?.();
+      expect(document.activeElement).toBe(document.body);
       await press('k');
       await expect.poll(selected).toBe('a');
+      dialog.close();
       expect(log.changes).toEqual([]);
     } finally {
       for (const element of added) element.remove();

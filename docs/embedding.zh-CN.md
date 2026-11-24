@@ -530,7 +530,7 @@ const LeRobotViewer = dynamic(
 
 `Shift+.` / `Shift+,` 在可导航的标记行中逐个前进（见 [`markerLanes`](#markers-and-read-only-suggestions)）；当前片段没有这样的行时，查看器把这两个键留给页面。
 
-查看器自己从不抢焦点；在输入框中输入、页面上的控件有焦点，或有模态对话框（`aria-modal="true"` 或打开的 `<dialog>`）显示时，它都不响应按键。保持挂载的已关闭模态框（例如 keepMounted 的抽屉），只要它或其祖先带有 `aria-hidden="true"`、`inert`、`display: none` 或 `visibility: hidden`，就不算打开。在页面本身上，与 Ctrl、⌘ 或 Alt 组合的按键仍归你的页面和浏览器（例如你自己的 Ctrl+K、用 Alt+← 后退），正在输入法（IME）中组字的按键，以及在可编辑页面（`contenteditable` 的 body、`designMode`）上按下的键也一样。
+查看器自己从不抢焦点；在输入框中输入、页面上的控件有焦点，或有模态对话框（`aria-modal="true"`，或用 `showModal()` 打开的 `<dialog>`）显示时，它都不响应按键。非模态的 `<dialog>`（`show()`）不妨碍页面使用：它只保留焦点在它内部时按下的键。保持挂载的已关闭模态框（例如 keepMounted 的抽屉），只要它或其祖先带有 `aria-hidden="true"`、`inert`、`display: none` 或 `visibility: hidden`，就不算打开。在页面本身上，与 Ctrl、⌘ 或 Alt 组合的按键仍归你的页面和浏览器（例如你自己的 Ctrl+K、用 Alt+← 后退），正在输入法（IME）中组字的按键，以及在可编辑页面（`contenteditable` 的 body、`designMode`）上按下的键也一样。
 
 提供 `onFatalError` 后，查看器不会渲染内置的致命错误状态。请在应用中保存错误信息，并自行显示合适的提示。只有在尚未显示数据集时，失败才是致命的；数据集显示后，加载失败（某个 episode 的数据无法读取、切换数据源失败）留在查看器内：面板上方的一行提示说明它（浏览器离线时显示"当前处于离线状态"，否则说明失败的内容和原因），并带有重试；浏览器恢复在线后，查看器会自行重新加载。其间已显示的数据集保持不变。
 
