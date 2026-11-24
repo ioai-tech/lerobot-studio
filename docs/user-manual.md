@@ -97,25 +97,25 @@ Editing a segment never confirms it. Confirm is a separate step (`A`) and cannot
 
 Keys work as soon as the viewer opens, without a click, and while you use it; not while you type in a field, use a control of the page around the viewer, or have a dialog open. Press `?` for this list in the app.
 
-| Key                           | Action                                                                        |
-| ----------------------------- | ----------------------------------------------------------------------------- |
-| `N`                           | New segment from the playhead to the next segment or the episode end          |
-| `[` / `]`                     | Set In / Out of the selected segment at the playhead                          |
-| `,` / `.`                     | Move the edge nearer the playhead by one frame                                |
-| `Alt+,` / `Alt+.`             | Move the edge nearer the playhead by one second                               |
-| `S`                           | Split the selected segment at the playhead                                    |
-| `M`                           | Merge with the next segment                                                   |
-| `R` / `Delete`                | Delete the selected segment (Undo restores it)                                |
-| `A`                           | Confirm the selected segment and go on to the next one to review              |
-| `Shift+A`                     | Confirm every segment to review in the current filter (asks first)            |
-| `J` / `K`                     | Next / previous segment the list shows, across episodes                       |
-| `G`                           | Jump to the next frame that is in no segment                                  |
-| `Shift+.` / `Shift+,`         | Next / previous marker of a navigable marker row (when the host declares one) |
-| `L`                           | Loop playback inside the selected segment                                     |
-| `Shift+[` / `Shift+]`         | Start / end a subtask at the playhead                                         |
-| `Ctrl/⌘+Z` / `Shift+Ctrl/⌘+Z` | Undo / redo                                                                   |
-| `1`–`9`                       | Choose an option of a field that declares that key (embedded viewers)         |
-| `?`                           | Show the keys                                                                 |
+| Key                           | Action                                                                |
+| ----------------------------- | --------------------------------------------------------------------- |
+| `N`                           | New segment from the playhead to the next segment or the episode end  |
+| `[` / `]`                     | Set In / Out of the selected segment at the playhead                  |
+| `,` / `.`                     | Move the edge nearer the playhead by one frame                        |
+| `Alt+,` / `Alt+.`             | Move the edge nearer the playhead by one second                       |
+| `S`                           | Split the selected segment at the playhead                            |
+| `M`                           | Merge with the next segment                                           |
+| `R` / `Delete`                | Delete the selected segment (Undo restores it)                        |
+| `A`                           | Confirm the selected segment and go on to the next one to review      |
+| `Shift+A`                     | Confirm every segment to review in the current filter (asks first)    |
+| `J` / `K`                     | Next / previous segment the list shows, across episodes               |
+| `G`                           | Jump to the next frame that is in no segment                          |
+| `Shift+.` / `Shift+,`         | Next / previous marker of a navigable marker row (host-declared)      |
+| `L`                           | Loop playback inside the selected segment                             |
+| `Shift+[` / `Shift+]`         | Start / end a subtask at the playhead                                 |
+| `Ctrl/⌘+Z` / `Shift+Ctrl/⌘+Z` | Undo / redo                                                           |
+| `1`–`9`                       | Choose an option of a field that declares that key (embedded viewers) |
+| `?`                           | Show the keys                                                         |
 
 Splitting keeps the task, review state and field values on both halves and cuts a subtask that crosses the split point. A new segment (`N`) starts with the task of the segment before it (else the one after it); in an episode with no segment it keeps the episode's task. Merging keeps the first segment's task and values, joins tag lists, and is confirmed only if both segments were.
 
