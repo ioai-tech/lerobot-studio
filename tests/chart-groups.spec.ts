@@ -2,8 +2,8 @@ import { describe, expect, it } from 'vitest';
 import {
   buildFeatureChartGroups,
   decimateMinMax,
+  auxiliaryFilterNodes,
   defaultVisibleSeriesIds,
-  DEFAULT_VISIBLE_DIMENSIONS,
   featureUnit,
   nearestSampleIndex,
   visibleSampleRange,
@@ -30,11 +30,49 @@ describe('chart groups', () => {
     ]);
     expect(groups[0]!.series[3]!.label).toBe('joint_3');
     expect(groups[1]!.series[1]!.label).toBe('state[1]');
+    // Every dimension is visible by default; the filter menu narrows them.
     const visible = defaultVisibleSeriesIds(groups);
-    expect(visible.filter((id) => id.startsWith('action::'))).toHaveLength(
-      DEFAULT_VISIBLE_DIMENSIONS,
-    );
+    expect(visible.filter((id) => id.startsWith('action::'))).toHaveLength(18);
     expect(visible.filter((id) => id.startsWith('observation.state::'))).toHaveLength(2);
+  });
+
+  it('offers every auxiliary series in the filter menu, one node per series', () => {
+    const nodes = auxiliaryFilterNodes([
+      {
+        id: 'action',
+        title: 'action',
+        unit: null,
+        kind: 'feature',
+        series: [{ id: 'action::0', label: 'a', dimIndex: 0 }],
+      },
+      {
+        id: 'aux:imu',
+        title: 'IMU',
+        unit: null,
+        kind: 'auxiliary',
+        series: [
+          { id: 'aux:imu:acc::0', label: 'acc[0]', dimIndex: 0 },
+          { id: 'aux:imu:acc::1', label: 'acc[1]', dimIndex: 1 },
+        ],
+      },
+      { id: 'aux:empty', title: 'Empty', unit: null, kind: 'auxiliary', series: [] },
+    ]);
+    expect(nodes).toEqual([
+      {
+        id: 'aux:imu',
+        label: 'IMU',
+        subgroups: [
+          {
+            id: 'aux:imu::all',
+            label: 'IMU',
+            items: [
+              { id: 'aux:imu:acc::0', label: 'acc[0]' },
+              { id: 'aux:imu:acc::1', label: 'acc[1]' },
+            ],
+          },
+        ],
+      },
+    ]);
   });
 
   it('reads units from unit / units / info, and refuses to merge mixed units', () => {

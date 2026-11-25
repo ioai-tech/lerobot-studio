@@ -3,26 +3,27 @@ import { createRoot } from 'react-dom/client';
 import { expect, it } from 'vitest';
 import { I18nProvider } from '@/i18n/core';
 import {
-  FeatureChartGroups,
+  FeatureChart,
   type ChartGroupData,
-} from '@/components/panels/ChartPanel/FeatureChartGroups';
+  type FeatureChartProps,
+} from '@/components/panels/ChartPanel/FeatureChart';
 import type { ChartGroup } from '@/components/panels/ChartPanel/chartGroupsModel';
 import '../../src/react/index.css';
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
 const x = Float64Array.from([0, 0.1, 0.2, 0.3]);
-const group = (id: string): ChartGroup => ({
+const group = (id: string, kind: ChartGroup['kind'] = 'feature'): ChartGroup => ({
   id,
   title: id,
   unit: null,
-  kind: 'feature',
+  kind,
   series: [{ id: `${id}:0`, label: 'joint', dimIndex: 0 }],
 });
-const loaded = (id: string): ChartGroupData => ({
+const loaded = (id: string, values = [0, 1, 0, 1]): ChartGroupData => ({
   group: group(id),
   x,
-  values: () => Float64Array.from([0, 1, 0, 1]),
+  values: () => Float64Array.from(values),
 });
 
 function waitFor(predicate: () => boolean, timeoutMs = 10_000): Promise<void> {
@@ -37,20 +38,24 @@ function waitFor(predicate: () => boolean, timeoutMs = 10_000): Promise<void> {
   });
 }
 
-it('draws a chart group as soon as its columns arrive; groups still loading keep their place', async () => {
+const styleOf: FeatureChartProps['styleOf'] = () => ({ color: '#2563eb' });
+
+async function mount(width: number, height: number) {
   const host = document.createElement('div');
-  host.style.cssText = 'width:800px;height:400px';
+  host.style.cssText = `width:${width}px;height:${height}px`;
   document.body.append(host);
   const root = createRoot(host);
-  const render = (groups: ChartGroupData[]) =>
+  const render = (groups: ChartGroupData[], selectedIds: ReadonlySet<string>) =>
     act(async () =>
       root.render(
         <I18nProvider forcedLanguage="en">
-          <FeatureChartGroups
+          <FeatureChart
             groups={groups}
-            selectedIds={new Set(['observation.state:0', 'action:0'])}
-            onToggleSeries={() => undefined}
-            xRange={[0, 0.3]}
+            selectedIds={selectedIds}
+            highlightedIds={null}
+            styleOf={styleOf}
+            xRange={[0, 0.4]}
+            frameAt={(time) => Math.round(time * 10)}
             getPlayheadTime={() => 0}
             subscribePlayheadTime={() => () => undefined}
             onSeekTime={() => undefined}
@@ -59,42 +64,67 @@ it('draws a chart group as soon as its columns arrive; groups still loading keep
         </I18nProvider>,
       ),
     );
-  try {
-    await render([
-      loaded('observation.state'),
-      { group: group('action'), x, values: () => undefined, pending: true },
-    ]);
-    const container = () => host.querySelector('[data-testid="chart-groups"]')!;
-    const section = (id: string) => host.querySelector(`[data-chart-group="${id}"]`)!;
-    await waitFor(() => section('observation.state').querySelector('canvas') !== null);
-    expect(container().getAttribute('aria-busy')).toBe('true');
-    // The pending group shows its header in place, without a chart yet.
-    expect(section('action').getAttribute('aria-busy')).toBe('true');
-    expect(section('action').querySelector('h3')?.textContent).toBe('action');
-    expect(section('action').querySelector('canvas')).toBeNull();
-    const order = () =>
-      Array.from(host.querySelectorAll('[data-chart-group]')).map((el) =>
-        el.getAttribute('data-chart-group'),
-      );
-    expect(order()).toEqual(['observation.state', 'action']);
-
-    await render([loaded('observation.state'), loaded('action')]);
-    await waitFor(() => section('action').querySelector('canvas') !== null);
-    expect(container().getAttribute('aria-busy')).toBe('false');
-    expect(section('action').hasAttribute('aria-busy')).toBe(false);
-    expect(order()).toEqual(['observation.state', 'action']);
-  } finally {
+  const unmount = async () => {
     await act(async () => root.unmount());
     host.remove();
+  };
+  return { host, render, unmount };
+}
+
+/** Hovers the plot at a fraction of its width and returns the tooltip rows' series ids. */
+function hover(host: HTMLElement, fraction: number): HTMLElement {
+  const over = host.querySelector<HTMLElement>('.u-over')!;
+  const rect = over.getBoundingClientRect();
+  const init = {
+    bubbles: true,
+    clientX: rect.left + rect.width * fraction,
+    clientY: rect.top + rect.height / 2,
+  };
+  over.dispatchEvent(new MouseEvent('mouseenter', init));
+  over.dispatchEvent(new MouseEvent('mousemove', init));
+  return host.querySelector<HTMLElement>('[role="tooltip"]')!;
+}
+
+it('draws every feature in one chart; a feature still loading joins it when its columns arrive', async () => {
+  const { host, render, unmount } = await mount(800, 400);
+  const selected = new Set(['observation.state:0', 'action:0']);
+  const chart = () => host.querySelector('[data-testid="feature-chart"]')!;
+  try {
+    await render(
+      [
+        loaded('observation.state'),
+        { group: group('action'), x, values: () => undefined, pending: true },
+      ],
+      selected,
+    );
+    await waitFor(() => host.querySelector('canvas') !== null);
+    expect(chart().getAttribute('aria-busy')).toBe('true');
+    expect(host.querySelectorAll('.uplot')).toHaveLength(1);
+    let tip = hover(host, 0.5);
+    expect(tip.hidden).toBe(false);
+    expect([...tip.querySelectorAll('[data-series]')].map((el) => el.dataset.series)).toEqual([
+      'observation.state:0',
+    ]);
+
+    await render([loaded('observation.state'), loaded('action', [5, 6, 7, 8])], selected);
+    await waitFor(() => chart().getAttribute('aria-busy') === 'false');
+    // Still one chart, now with both series; no per-feature sections or legend.
+    expect(host.querySelectorAll('.uplot')).toHaveLength(1);
+    expect(host.querySelectorAll('[data-chart-group], button, [role="group"]')).toHaveLength(0);
+    tip = hover(host, 0.5);
+    // Highest value first, as drawn.
+    expect([...tip.querySelectorAll('[data-series]')].map((el) => el.dataset.series)).toEqual([
+      'action:0',
+      'observation.state:0',
+    ]);
+  } finally {
+    await unmount();
   }
 });
 
-it('a short chart panel never puts legend chips on a plot or its axis; the groups scroll (s10 F-25)', async () => {
-  const host = document.createElement('div');
+it('a short chart panel shows one plot that fits it, with no scrollbar and no legend (s10 F-25)', async () => {
   // A 1024 × 768 layout leaves the chart panel about this small.
-  host.style.cssText = 'width:330px;height:190px';
-  document.body.append(host);
-  const root = createRoot(host);
+  const { host, render, unmount } = await mount(330, 190);
   const wide = (id: string): ChartGroupData => ({
     group: {
       id,
@@ -110,45 +140,57 @@ it('a short chart panel never puts legend chips on a plot or its axis; the group
     x,
     values: () => Float64Array.from([0, 1, 0, 1]),
   });
-  const ids = ['action', 'observation.state'];
+  const ids = ['action', 'observation.state', 'observation.velocity'];
   const selected = new Set(ids.flatMap((id) => Array.from({ length: 14 }, (_, i) => `${id}:${i}`)));
   try {
-    await act(async () =>
-      root.render(
-        <I18nProvider forcedLanguage="en">
-          <FeatureChartGroups
-            groups={ids.map(wide)}
-            selectedIds={selected}
-            onToggleSeries={() => undefined}
-            xRange={[0, 0.3]}
-            getPlayheadTime={() => 0}
-            subscribePlayheadTime={() => () => undefined}
-            onSeekTime={() => undefined}
-            resolvedTheme="light"
-          />
-        </I18nProvider>,
-      ),
-    );
-    const section = (id: string) => host.querySelector<HTMLElement>(`[data-chart-group="${id}"]`)!;
-    await waitFor(() => ids.every((id) => section(id).querySelector('canvas') !== null));
-    for (const [index, id] of ids.entries()) {
-      const box = section(id).getBoundingClientRect();
-      const plot = section(id).querySelector('.uplot')!.getBoundingClientRect();
-      const chips = section(id).querySelector('[role="group"]')!.getBoundingClientRect();
-      // The plot (axes included) stays inside its own group, below its chips.
-      expect(plot.bottom, id).toBeLessThanOrEqual(box.bottom + 0.5);
-      expect(plot.top, id).toBeGreaterThanOrEqual(chips.bottom - 0.5);
-      const next = ids[index + 1];
-      if (next) {
-        // The next group's chips start below this plot's x-axis.
-        const nextChips = section(next).querySelector('[role="group"]')!.getBoundingClientRect();
-        expect(nextChips.top, next).toBeGreaterThanOrEqual(plot.bottom - 0.5);
-      }
-    }
-    const list = host.querySelector<HTMLElement>('[data-testid="chart-groups"]')!;
-    expect(list.scrollHeight).toBeGreaterThan(list.clientHeight);
+    await render(ids.map(wide), selected);
+    await waitFor(() => host.querySelector('canvas') !== null);
+    const chart = host.querySelector<HTMLElement>('[data-testid="feature-chart"]')!;
+    const plot = chart.querySelector('.uplot')!.getBoundingClientRect();
+    const box = chart.getBoundingClientRect();
+    expect(host.querySelectorAll('.uplot')).toHaveLength(1);
+    expect(plot.top).toBeGreaterThanOrEqual(box.top - 0.5);
+    expect(plot.bottom).toBeLessThanOrEqual(box.bottom + 0.5);
+    expect(chart.scrollHeight).toBeLessThanOrEqual(chart.clientHeight);
+    expect(chart.querySelectorAll('button, [role="group"]')).toHaveLength(0);
+    // 42 series: the tooltip lists the 12 nearest and counts the rest.
+    const tip = hover(host, 0.5);
+    expect(tip.querySelectorAll('[data-series]')).toHaveLength(12);
+    expect(tip.textContent).toContain('+ 30 more');
   } finally {
-    await act(async () => root.unmount());
-    host.remove();
+    await unmount();
+  }
+});
+
+it('joins series on their own clocks and reads tooltip values from their own samples', async () => {
+  const { host, render, unmount } = await mount(800, 400);
+  const aux: ChartGroupData = {
+    group: group('aux:imu', 'auxiliary'),
+    x: Float64Array.from([0.05, 0.15, 0.25, 0.35]),
+    values: () => Float64Array.from([10, 20, 30, 40]),
+  };
+  try {
+    await render([loaded('action', [1, 2, 3, 4]), aux], new Set(['action:0', 'aux:imu:0']));
+    await waitFor(() => host.querySelector('canvas') !== null);
+    // At 0.3 s of a 0.4 s axis: action's sample 0.3 (4) and the IMU's nearest, 0.35 (40) or 0.25 (30).
+    const tip = hover(host, 0.75);
+    const value = (id: string) =>
+      tip.querySelector<HTMLElement>(`[data-series="${id}"]`)!.lastElementChild!.textContent;
+    expect(value('action:0')).toBe('4.000');
+    expect(['30.00', '40.00']).toContain(value('aux:imu:0'));
+    expect(tip.textContent).toContain('frame 3');
+  } finally {
+    await unmount();
+  }
+});
+
+it('with nothing selected, says to pick series instead of drawing an empty plot', async () => {
+  const { host, render, unmount } = await mount(800, 400);
+  try {
+    await render([loaded('action')], new Set());
+    await waitFor(() => host.textContent?.includes('Please select') ?? false);
+    expect(host.querySelector('canvas')).toBeNull();
+  } finally {
+    await unmount();
   }
 });

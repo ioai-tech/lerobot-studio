@@ -253,3 +253,54 @@ export function computeChartDataCore(input: {
     seriesIdsByJoint,
   };
 }
+
+/** Dash of a state series drawn after the palette wrapped, so it differs from the first round. */
+export const WRAPPED_STATE_DASH: number[] = [2, 3];
+
+export type ChartSeriesStyle = { color: string; dash?: number[] };
+
+/**
+ * How each series of the one chart is drawn. An action and the state of the
+ * same joint share a color (action dashed, state solid), as in 1.4. Other
+ * features that reuse a name (three poses each named x, y, z …) get their own
+ * colors: the n-th series of a kind with a given name is keyed `name#n`. Once
+ * the palette wraps, state series are dotted so a repeated color still differs.
+ * Auxiliary series follow, in order, so they never shift the features' colors.
+ */
+export function buildSeriesStyles(
+  dimensions: ChartDimensionMeta[],
+  auxiliarySeriesIds: string[],
+  palette: string[],
+  fallback: string,
+): Map<string, ChartSeriesStyle> {
+  const seen = new Map<string, number>();
+  const keyOf = new Map<string, string>();
+  for (const dim of dimensions) {
+    const kindName = `${dim.kind}\u0000${dim.jointName}`;
+    const n = seen.get(kindName) ?? 0;
+    seen.set(kindName, n + 1);
+    keyOf.set(dim.id, n === 0 ? dim.jointName : `${dim.jointName}#${n}`);
+  }
+  const keys = [...new Set(keyOf.values())].sort();
+  const spread = makeSpreadIndices(keys.length);
+  const size = Math.max(1, palette.length);
+  const slotOf = new Map(keys.map((key, i) => [key, spread[i] ?? i]));
+  const styles = new Map<string, ChartSeriesStyle>();
+  for (const dim of dimensions) {
+    const slot = slotOf.get(keyOf.get(dim.id)!)!;
+    const color = palette[slot % size] ?? fallback;
+    const wrapped = slot >= size;
+    styles.set(dim.id, {
+      color,
+      dash: dim.kind === 'action' ? ACTION_DASH : wrapped ? WRAPPED_STATE_DASH : undefined,
+    });
+  }
+  auxiliarySeriesIds.forEach((id, i) => {
+    const slot = keys.length + i;
+    styles.set(id, {
+      color: palette[slot % size] ?? fallback,
+      dash: slot >= size ? WRAPPED_STATE_DASH : undefined,
+    });
+  });
+  return styles;
+}

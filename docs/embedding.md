@@ -100,14 +100,14 @@ Each entry needs a logical dataset path and an HTTP(S) URL. Optional `contentTyp
 The charts of an episode need its numeric columns, not the whole data file. The viewer reads parquet data files with HTTP Range requests:
 
 - The footer first (the last 64 KB), then only the selected columns' chunks of the row groups that hold the episode, nearby chunks in one request. Switching to another episode of the same file reuses the bytes already read.
-- The time axis and the top chart group arrive first, then the other groups: each chart draws as soon as its columns are in, and groups still loading show a placeholder (`aria-busy`). The raw panel's other columns are read after the charts.
+- The time axis and the top feature arrive first, then the other features. The chart panel draws one chart: each feature's lines join it as soon as its columns are in, and the chart stays `aria-busy` until every feature is drawn. The raw panel's other columns are read after the charts.
 - With `sizeBytes` the requests are plain `bytes=a-b` ranges, a CORS-safelisted header (no preflight). Without it the footer request is a suffix range and the size comes from `Content-Range`, which a cross-origin server must expose (`Access-Control-Expose-Headers: Content-Range`).
 - A server that ignores `Range` (answers `200`) costs one whole-file download, reused for every column; the viewer logs `RANGE_UNSUPPORTED` once and reads that source's files whole. `RANGE_SIZE_UNKNOWN` (no size) and a file that is not parquet fall back the same way, by name.
 - Reads of one file are combined only when they report the same size and, when the server exposes it, the same `ETag` (`Access-Control-Expose-Headers: ETag`). A file that changed is opened again from its new footer once; if it changes again, it is read whole (`FILE_CHANGED`).
 - A footer that cannot be trusted (spans outside the data, oversized lists, a footer over 64 MiB) is refused before anything is read with it, and the file is read whole (`FOOTER_INVALID`).
 - Each fallback reason is logged once per viewer.
 
-The first chart is drawn soon after the first video frame; the other charts are limited by how fast their bytes arrive on the link, which they share with the cameras.
+The first lines are drawn soon after the first video frame; the other features are limited by how fast their bytes arrive on the link, which they share with the cameras.
 
 Row groups are the smallest unit: a writer that puts many episodes in one row group (pyarrow's default for small files) still costs the episode's columns for the whole group.
 
@@ -186,7 +186,7 @@ const dataSource = createEpisodeSetDataSource(
 
 ## Plot extra time series
 
-`auxiliarySeries` adds time series from separate parquet files, such as a 200 Hz IMU or another process's outputs. They are drawn as extra chart groups on the same playhead. They are read after the episode's charts, so they never delay them:
+`auxiliarySeries` adds time series from separate parquet files, such as a 200 Hz IMU or another process's outputs. Their lines are drawn in the same chart, on the same playhead, and the chart's filter menu lists them after the dataset's features. They are read after the episode's charts, so they never delay them:
 
 ```tsx
 <LeRobotViewer
@@ -372,8 +372,8 @@ Every message an embedded viewer can show can be replaced, not only segment copy
 ### Layout
 
 - Cameras get the height first: their row takes what the frames need, at least 62 % of the panel area, and the charts below keep at least 200 px. The arrangement that shows the biggest frames is chosen (three or four cameras stay in one row while that is larger).
-- Before the charts' data arrives, the chart panel shows placeholders laid out like the charts, so nothing jumps.
-- One time axis: the slider, segment track, subtask track, markers, overlay band and every chart place a frame at the same fraction of their width (frame `k` of `N` starts at `k / N`; the axis ends at the end of the last frame). The lanes of the playback bar also share one left edge, and all charts share theirs.
+- Before the charts' data arrives, the chart panel shows a placeholder laid out like the chart, so nothing jumps.
+- One time axis: the slider, segment track, subtask track, markers, overlay band and the chart place a frame at the same fraction of their width (frame `k` of `N` starts at `k / N`; the axis ends at the end of the last frame). The lanes of the playback bar also share one left edge.
 - Below 768 px of viewer width, editable segments show one line, "Editing needs a wider window", instead of edit controls; playback, the segment list and navigation keys still work.
 
 ## Custom welcome page

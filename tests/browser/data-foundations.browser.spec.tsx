@@ -119,29 +119,35 @@ describe('browser: data foundations', () => {
 
   it('renders a labelled region, never a main landmark', async () => {
     await render(<LeRobotViewer dataSource={new SignedFixtureSource()} language="en" />);
-    await waitFor(() => host.querySelector('[data-chart-group]') !== null);
+    await waitFor(() => host.querySelector('[data-testid="feature-chart"]') !== null);
     expect(host.querySelector('main, [role="main"]')).toBeNull();
     const region = host.querySelector('.lerobot-root')!;
     expect(region.getAttribute('role')).toBe('region');
     expect(region.getAttribute('aria-label')).toBe('Dataset viewer');
   }, 60_000);
 
-  it('draws one chart per feature, titled by key, with declared dimension names', async () => {
+  it('draws every feature in one chart, with declared dimension names', async () => {
     await render(<LeRobotViewer dataSource={new SignedFixtureSource()} language="en" />);
-    // Groups show placeholders while their columns load; wait until all are drawn.
+    const chart = () => host.querySelector<HTMLElement>('[data-testid="feature-chart"]');
+    // Columns still loading join the chart when they arrive; wait until all are drawn.
     await waitFor(
-      () =>
-        host.querySelectorAll('[data-chart-group]').length >= 2 &&
-        host.querySelector('[data-testid="chart-groups"]')?.getAttribute('aria-busy') === 'false',
+      () => chart()?.getAttribute('aria-busy') === 'false' && !!chart()!.querySelector('canvas'),
     );
-    const titles = Array.from(host.querySelectorAll('[data-chart-group] h3')).map(
-      (h) => h.textContent,
-    );
-    expect(titles).toEqual(expect.arrayContaining(['observation.state', 'action']));
-    const chips = host.querySelectorAll('[data-chart-group="action"] button[aria-pressed]');
-    expect(Array.from(chips).map((chip) => chip.textContent?.trim())).toEqual(['joint1']);
-    expect(chips[0]!.getAttribute('aria-pressed')).toBe('true');
-    expect(host.querySelector('[data-chart-group="action"] [data-chart-playhead]')).not.toBeNull();
+    const series = chart()!.dataset.series!.split(' ');
+    expect(series).toEqual(expect.arrayContaining(['observation.state::0', 'action::0']));
+    // One plot, no per-feature sections, no legend chips.
+    expect(host.querySelectorAll('[data-testid="feature-chart"] .uplot')).toHaveLength(1);
+    expect(chart()!.querySelectorAll('button[aria-pressed], h3')).toHaveLength(0);
+    expect(chart()!.querySelector('[data-chart-playhead]')).not.toBeNull();
+    // The hover tooltip names the dimensions as declared.
+    const over = chart()!.querySelector<HTMLElement>('.u-over')!;
+    const box = over.getBoundingClientRect();
+    const at = { clientX: box.left + box.width / 2, clientY: box.top + box.height / 2 };
+    over.dispatchEvent(new MouseEvent('mouseenter', { ...at, bubbles: true }));
+    over.dispatchEvent(new MouseEvent('mousemove', { ...at, bubbles: true }));
+    const tip = chart()!.querySelector<HTMLElement>('[role="tooltip"]')!;
+    expect(tip.hidden).toBe(false);
+    expect(tip.querySelector('[data-series="action::0"]')!.textContent).toContain('joint1');
   }, 60_000);
 
   it('retries a dead video URL once and keeps the frame across a URL refresh', async () => {
@@ -150,10 +156,10 @@ describe('browser: data foundations', () => {
     await render(<LeRobotViewer dataSource={source} language="en" showPlaybackBar={false} />);
     await waitFor(() => (video()?.readyState ?? 0) >= 2);
     expect(source.invalidations).toBe(1);
-    await waitFor(() => host.querySelector('[data-chart-group="action"] .u-over') !== null);
+    await waitFor(() => host.querySelector('[data-testid="feature-chart"] .u-over') !== null);
 
     // Seek to a later frame by clicking the chart.
-    const over = host.querySelector<HTMLElement>('[data-chart-group="action"] .u-over')!;
+    const over = host.querySelector<HTMLElement>('[data-testid="feature-chart"] .u-over')!;
     const box = over.getBoundingClientRect();
     const at = { clientX: box.left + box.width * 0.8, clientY: box.top + box.height / 2 };
     await act(async () => {
@@ -287,10 +293,13 @@ describe('browser: data foundations', () => {
       />
     );
     await render(view(1));
-    await waitFor(() => host.querySelector('[data-chart-group="aux:extra"]') !== null);
-    const group = host.querySelector('[data-chart-group="aux:extra"]')!;
-    expect(group.querySelector('h3')!.textContent).toBe('Extra sensor');
-    expect(group.textContent).toContain('missing_column');
+    const chart = () => host.querySelector<HTMLElement>('[data-testid="feature-chart"]');
+    const drawsExtra = () => chart()?.dataset.series?.includes('aux:extra:') ?? false;
+    await waitFor(drawsExtra);
+    // The missing column is named once, over the chart, with the series' label.
+    const status = chart()!.querySelector('[role="status"]')!;
+    expect(status.textContent).toContain('Extra sensor');
+    expect(status.textContent).toContain('missing_column');
     expect(warnings).toEqual([
       expect.objectContaining({
         code: 'COLUMN_MISSING',
@@ -310,7 +319,7 @@ describe('browser: data foundations', () => {
     await render(view(2));
     await new Promise((resolve) => setTimeout(resolve, 300));
     expect(reads()).toBe(1);
-    expect(host.querySelector('[data-chart-group="aux:extra"]')).not.toBeNull();
+    expect(drawsExtra()).toBe(true);
   }, 60_000);
 
   it('reads auxiliary series only after the episode charts, never competing with them', async () => {
@@ -350,7 +359,13 @@ describe('browser: data foundations', () => {
         ]}
       />,
     );
-    await waitFor(() => host.querySelector('[data-chart-group="aux:extra"] canvas') !== null);
+    await waitFor(
+      () =>
+        (host.querySelector<HTMLElement>('[data-testid="feature-chart"]')?.dataset.series ?? '')
+          .split(' ')
+          .some((id) => id.startsWith('aux:extra:')) &&
+        host.querySelector('[data-testid="feature-chart"] canvas') !== null,
+    );
     expect(events.indexOf('aux')).toBeGreaterThan(events.indexOf('episode-data'));
     expect(events.indexOf('episode-data')).toBeGreaterThanOrEqual(0);
   }, 60_000);
@@ -386,14 +401,15 @@ describe('browser: data foundations', () => {
         auxiliarySeries={series}
       />,
     );
-    const chip = (group: string) =>
-      host.querySelector<HTMLButtonElement>(`[data-chart-group="${group}"] button[aria-pressed]`);
-    await waitFor(() => chip('action')?.getAttribute('aria-pressed') === 'true');
+    const drawn = () =>
+      (host.querySelector<HTMLElement>('[data-testid="feature-chart"]')?.dataset.series ?? '')
+        .split(' ')
+        .filter(Boolean);
+    await waitFor(() => drawn().includes('action::0'));
     releaseAux();
-    await waitFor(() => chip('aux:late') !== null);
-    // Defaults apply in the effect after the group first renders.
-    await waitFor(() => chip('aux:late')!.getAttribute('aria-pressed') === 'true', 3_000);
-    expect(chip('action')!.getAttribute('aria-pressed')).toBe('true');
+    // Defaults apply in the effect after the series first arrives.
+    await waitFor(() => drawn().some((id) => id.startsWith('aux:late:')), 3_000);
+    expect(drawn()).toContain('action::0');
   }, 60_000);
 
   it('reports an auxiliary-series warning once, not on every render', async () => {
@@ -428,7 +444,11 @@ describe('browser: data foundations', () => {
       />
     );
     await render(view());
-    await waitFor(() => host.querySelector('[data-chart-group="action"]') !== null);
+    await waitFor(() =>
+      (
+        host.querySelector<HTMLElement>('[data-testid="feature-chart"]')?.dataset.series ?? ''
+      ).includes('action::'),
+    );
     for (let i = 0; i < 4; i++) {
       await render(view());
       await new Promise((resolve) => setTimeout(resolve, 50));
