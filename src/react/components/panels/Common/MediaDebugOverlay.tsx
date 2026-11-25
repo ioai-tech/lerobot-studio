@@ -77,9 +77,14 @@ export const MediaDebugOverlay: React.FC<MediaDebugOverlayProps> = ({
 
   return (
     <div
+      // Hidden, it lets every pointer event through to the panel. Shown (the
+      // panel hovered), it takes them, so a long list scrolls with the wheel or
+      // its scrollbar; overscroll-contain keeps the page from scrolling instead.
+      data-testid="media-debug-overlay"
       className={cn(
-        'pointer-events-none absolute left-2 top-2 z-10 max-h-[50%] max-w-[min(16rem,calc(100%-1rem))] overflow-y-auto rounded-md border border-white/10 bg-black/70 px-2.5 py-2 text-[11px] text-white opacity-0 shadow-lg backdrop-blur-sm transition-opacity duration-150',
-        hoverArmed && 'group-hover:opacity-100 group-focus-within:opacity-100',
+        'pointer-events-none absolute left-2 top-2 z-10 max-h-[50%] max-w-[min(16rem,calc(100%-1rem))] overflow-y-auto overscroll-contain rounded-md border border-white/10 bg-black/70 px-2.5 py-2 text-[11px] text-white opacity-0 shadow-lg backdrop-blur-sm transition-opacity duration-150 [scrollbar-color:rgb(255_255_255/0.35)_transparent] [scrollbar-width:thin]',
+        hoverArmed &&
+          'group-hover:pointer-events-auto group-hover:opacity-100 group-focus-within:opacity-100',
         className,
       )}
     >

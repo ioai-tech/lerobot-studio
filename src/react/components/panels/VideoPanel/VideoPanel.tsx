@@ -32,6 +32,10 @@ type EpisodeVideo = { path: string; start: number; end: number };
  */
 /** The longest a camera holds its last frame while a new URL of the same file loads. */
 export const HOLD_CAP_MS = 4000;
+/** After a pause, how long a camera waits for the pause to settle before reloading at its frame. */
+const PAUSED_RELOAD_DELAY_MS = 250;
+/** How many times it waits again for the pause to land on the clock's frame (about 5 s). */
+const PAUSED_RELOAD_MAX_WAITS = 20;
 
 const VideoPanelContent: React.FC<VideoPanelProps> = ({ params }) => {
   const { t } = useTranslation();
@@ -367,6 +371,49 @@ const VideoPanelContent: React.FC<VideoPanelProps> = ({ params }) => {
     const video = videoRef.current;
     if (video && video.preload !== preload) video.preload = preload;
   }, [preload]);
+
+  /**
+   * A camera that played and is now paused reloads its file at the shown
+   * frame. Chromium may go on reading a file it read with preload="auto"
+   * after preload turns to "metadata": the whole file, at full rate, while
+   * `buffered` and `networkState` show nothing, holding one of the browser's
+   * six connections to the storage host. The reload ends that response and
+   * reads only what the frame needs (the bounded read of a camera opened
+   * paused); the follower puts it back on the clock's frame, and the shown
+   * frame is held over the element until the reloaded one is painted.
+   */
+  const wasPlayingRef = useRef(isPlaying);
+  useEffect(() => {
+    const video = videoRef.current;
+    const wasPlaying = wasPlayingRef.current;
+    wasPlayingRef.current = isPlaying;
+    if (!video || isPlaying || !wasPlaying) return;
+    let cancelled = false;
+    let waits = 0;
+    let timer = 0;
+    const reload = () => {
+      if (cancelled) return;
+      const current = sourceRef.current;
+      const url = video.getAttribute('src');
+      if (!current || !url || preloadRef.current !== 'metadata' || !video.paused) return;
+      // Once the pause has landed on the clock's frame, so that frame is the
+      // one held: a camera that ran past the clock steps back first.
+      const settled = followerRef.current?.isSettledWhilePaused() ?? !video.seeking;
+      if (!settled || video.readyState < 2) {
+        if (++waits > PAUSED_RELOAD_MAX_WAITS) return;
+        if (video.seeking) video.addEventListener('seeked', reload, { once: true });
+        else timer = window.setTimeout(reload, PAUSED_RELOAD_DELAY_MS);
+        return;
+      }
+      setSource(current.path, url, current.retried, current.loader, true);
+    };
+    timer = window.setTimeout(reload, PAUSED_RELOAD_DELAY_MS);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+      video.removeEventListener('seeked', reload);
+    };
+  }, [isPlaying, setSource]);
 
   useEffect(
     () => () => {

@@ -117,6 +117,33 @@ describe('CameraFollower', () => {
     t.follower.dispose();
   });
 
+  it('settled while paused: only once its seek back to the clock frame has landed', async () => {
+    const t = setup({ videoFrames: 100, dataFrames: 100 });
+    t.clock.seek(timeOfFrame(42, FPS));
+    await settle();
+    expect(t.follower.isSettledWhilePaused()).toBe(true);
+    // Playing, it is not paused at all.
+    t.clock.play();
+    await settle();
+    expect(t.follower.isSettledWhilePaused()).toBe(false);
+    // Paused while the element had run 3 frames past the clock (the pause
+    // reached it late): it seeks back, and is settled once that lands.
+    t.video.present(4.55, 0);
+    t.clock.pause();
+    expect(t.video.seeks.at(-1)).toBeCloseTo(4.25);
+    expect(t.follower.isSettledWhilePaused()).toBe(false);
+    await settle();
+    expect(t.video.currentTime).toBeCloseTo(4.25);
+    expect(t.follower.isSettledWhilePaused()).toBe(true);
+    // A seek that lands off target is settled too: it is not sought again.
+    t.video.snapToFrameStart = true;
+    t.clock.seek(timeOfFrame(10, FPS));
+    await settle();
+    expect(t.video.currentTime).toBeCloseTo(1.0);
+    expect(t.follower.isSettledWhilePaused()).toBe(true);
+    t.follower.dispose();
+  });
+
   it('coalesces scrubbing: one seek in flight, the latest target wins', async () => {
     const t = setup({ videoFrames: 100, dataFrames: 100 });
     t.clock.seek(timeOfFrame(10, FPS));
