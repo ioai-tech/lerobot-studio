@@ -8,7 +8,9 @@ import {
   createManualSegment,
   findSegment,
   getEpisodeSegments,
+  inheritedValues,
   isNoopPatch,
+  markerRowsOf,
   markersOfEpisode,
   effectiveSegmentFilter,
   matchesSegmentFilter,
@@ -16,7 +18,9 @@ import {
   segmentFilterCounts,
   segmentReviewDisplay,
   nearerEdge,
+  neighbourOfRange,
   newSegmentRangeAt,
+  nextSegmentToReview,
   nextUncoveredFrame,
   composeUpdateSteps,
   pushHistory,
@@ -24,8 +28,12 @@ import {
   reconcileHistory,
   removeHistoryEntry,
   segmentAtFrame,
+  segmentNumber,
+  stepLaneMarker,
+  stepSegment,
   takeRedo,
   takeUndo,
+  withoutDisplayHints,
   type AnnotationChange,
   type AnnotationContext,
   type AnnotationDocument,
@@ -35,6 +43,7 @@ import {
   type AnnotationRefusal,
   type EpisodeMetadata,
   type LeRobotVersionCapability,
+  type OrderedSegment,
   type Segment,
   type SegmentFilter,
   type SegmentPatch,
@@ -43,6 +52,17 @@ import {
 } from '@/core';
 import type { AnnotationConfig } from './annotationTypes';
 
+/** The last next / previous step of a navigable marker row, and what it announces. */
+export interface MarkerStep {
+  laneId: string;
+  /** The marker the step went to (or stayed on when there was none further). */
+  markerId: string | null;
+  announce: 'markers.lane.position' | 'markers.lane.noNext' | 'markers.lane.noPrevious';
+  /** 1-based place of `markerId` in its row, with `markers.lane.position`. */
+  position?: number;
+  at: number;
+}
+
 /** What the status line says after the last action. */
 export type AnnotationNotice =
   | { tone: 'error'; refusal: AnnotationRefusal; key?: undefined; undo?: undefined; at: number }
@@ -50,6 +70,8 @@ export type AnnotationNotice =
       tone: 'info' | 'error';
       key: string;
       values?: Record<string, string | number>;
+      /** A second sentence after the first (what happened next, e.g. where review went on). */
+      detail?: { key: string; values?: Record<string, string | number> };
       undo?: boolean;
       refusal?: undefined;
       at: number;
@@ -115,6 +137,8 @@ type UseSegmentAnnotationOptions = {
   getFrameIndex: () => number;
   setFrameIndex: (index: number) => void;
   selectEpisode: (index: number) => Promise<boolean>;
+  /** Stop playback (review moves on paused, at the next segment's start). */
+  pausePlayback: () => void;
 };
 
 export function useSegmentAnnotation({
@@ -126,6 +150,7 @@ export function useSegmentAnnotation({
   getFrameIndex,
   setFrameIndex,
   selectEpisode,
+  pausePlayback,
 }: UseSegmentAnnotationOptions) {
   const [config, setConfig] = useState<AnnotationConfig>({});
   const [localDoc, setLocalDoc] = useState<AnnotationDocument>(EMPTY_ANNOTATION_DOCUMENT);
@@ -146,6 +171,8 @@ export function useSegmentAnnotation({
   const [history, setHistory] = useState<AnnotationHistory>(EMPTY_ANNOTATION_HISTORY);
   const [selectedSegmentId, setSelectedSegmentId] = useState<string | null>(null);
   const [filter, setFilter] = useState<SegmentFilter>('all');
+  /** The filter in effect (set below), for key handlers that step through what the list shows. */
+  const effectiveFilterRef = useRef<SegmentFilter>('all');
   const [loop, setLoop] = useState(false);
   const [notice, setNotice] = useState<AnnotationNotice | null>(null);
   const [shortcutSheetOpen, setShortcutSheetOpen] = useState(false);
@@ -368,7 +395,10 @@ export function useSegmentAnnotation({
         for (const item of sent) remember(sentRef.current, item.changeId, item.tag);
         setPending([...pendingRef.current, ...sent]);
         for (const item of sent) {
-          current.annotation!.onChange?.(item.change, { changeId: item.changeId });
+          // Display hints stay in the viewer; the host gets its data only.
+          current.annotation!.onChange?.(withoutDisplayHints(item.change), {
+            changeId: item.changeId,
+          });
         }
       } else {
         setLocalDoc(working);
@@ -529,6 +559,18 @@ export function useSegmentAnnotation({
     return found;
   }, [selectedSegmentId, showNotice]);
 
+  /** Every segment in dataset order: episodes as listed, segments in time order. */
+  const segmentOrder = useCallback(
+    (from: AnnotationDocument): OrderedSegment[] =>
+      episodes.flatMap((episode) =>
+        getEpisodeSegments(from, episode.episode_index).map((segment) => ({
+          episodeIndex: episode.episode_index,
+          segment,
+        })),
+      ),
+    [episodes],
+  );
+
   const seedSubtasks = useCallback(
     (range: { startFrame: number; endFrame: number }) =>
       clipSubtasksToRange(sourceSubtasks, range).map((subtask) => ({ ...subtask })),
@@ -552,11 +594,18 @@ export function useSegmentAnnotation({
       showNotice('segments.notice.insideSegment', undefined, 'error');
       return false;
     }
+    // A new segment continues the one before it (else the one after it): it
+    // starts with that segment's task and inherited field values, as both
+    // halves of a split keep theirs (F-02). With no neighbour, `null` keeps
+    // the dataset episode's own task.
+    const seed = neighbourOfRange(getEpisodeSegments(docRef.current, episodeIndex), range);
     const segment = createManualSegment({
       id: createId(),
       ...range,
       review: newReview,
       subtasks: seedSubtasks(range),
+      task: seed?.task ?? null,
+      values: inheritedValues(seed, configRef.current.fields),
     });
     const ok = dispatch([{ op: 'create', episodeIndex, segment }], {
       notice: { key: 'segments.notice.created' },
@@ -760,8 +809,50 @@ export function useSegmentAnnotation({
       return false;
     }
     if (display !== 'to_review') return false;
-    return confirmIds([{ episodeIndex: found.episodeIndex, id: found.segment.id }]);
-  }, [canEdit, confirmIds, requireSelected, showNotice]);
+    if (!confirmIds([{ episodeIndex: found.episodeIndex, id: found.segment.id }])) return false;
+    // Review goes on at the next segment to review that the list shows (F-18):
+    // selection, details and playhead move together, paused at its start.
+    const order = segmentOrder(docRef.current);
+    const from = order.findIndex((item) => item.segment.id === found.segment.id);
+    const next = nextSegmentToReview(order, from, (item) =>
+      matchesSegmentFilter(
+        item.segment,
+        effectiveFilterRef.current,
+        markersOfEpisode(configRef.current.markers, item.episodeIndex),
+      ),
+    );
+    const confirmed = { key: 'segments.notice.confirmed', values: { count: 1 } };
+    if (!next) {
+      publishNotice({
+        tone: 'info',
+        ...confirmed,
+        detail: { key: 'segments.notice.noneToReview' },
+        at: Date.now(),
+      });
+      return true;
+    }
+    pausePlayback();
+    selectSegment(next.segment.id);
+    publishNotice({
+      tone: 'info',
+      ...confirmed,
+      detail: {
+        key: 'segments.notice.nextToReview',
+        values: { n: segmentNumber(docRef.current, next.episodeIndex, next.segment.id) },
+      },
+      at: Date.now(),
+    });
+    return true;
+  }, [
+    canEdit,
+    confirmIds,
+    pausePlayback,
+    publishNotice,
+    requireSelected,
+    segmentOrder,
+    selectSegment,
+    showNotice,
+  ]);
 
   const setFieldValue = useCallback(
     (fieldId: string, fieldValue: string | string[] | null) => {
@@ -791,21 +882,25 @@ export function useSegmentAnnotation({
     return true;
   }, [getFrameIndex, lengths, requireEpisode, setFrameIndex, showNotice]);
 
-  /** J / K: the next / previous segment, across episodes in dataset order. */
+  /** J / K: the next / previous segment the list shows (its filter), across episodes in dataset order. */
   const selectRelative = useCallback(
     (delta: 1 | -1) => {
-      const order = episodes.flatMap((episode) =>
-        getEpisodeSegments(docRef.current, episode.episode_index).map((segment) => ({
-          episodeIndex: episode.episode_index,
-          segment,
-        })),
-      );
+      const all = segmentOrder(docRef.current);
+      // Only what the list shows: stepping onto a segment the filter hides would
+      // leave the details on a row nobody can see (F-18).
+      const shows = (item: OrderedSegment) =>
+        matchesSegmentFilter(
+          item.segment,
+          effectiveFilterRef.current,
+          markersOfEpisode(configRef.current.markers, item.episodeIndex),
+        );
+      const order = all.filter(shows);
       if (order.length === 0) {
-        showNotice('segments.notice.none');
+        showNotice(all.length === 0 ? 'segments.notice.none' : 'segments.emptyFilter');
         return false;
       }
-      let position = selectedSegmentId
-        ? order.findIndex((item) => item.segment.id === selectedSegmentId)
+      const position = selectedSegmentId
+        ? all.findIndex((item) => item.segment.id === selectedSegmentId)
         : -1;
       if (position < 0) {
         // Start from the playhead: the first segment after it (or before it for K).
@@ -819,15 +914,22 @@ export function useSegmentAnnotation({
         selectSegment(target.segment.id);
         return true;
       }
-      position += delta;
-      if (position < 0 || position >= order.length) {
+      const target = stepSegment(all, position, delta, shows);
+      if (!target) {
         showNotice(delta === 1 ? 'segments.notice.last' : 'segments.notice.first');
         return false;
       }
-      selectSegment(order[position].segment.id);
+      selectSegment(target.segment.id);
       return true;
     },
-    [episodes, getFrameIndex, selectSegment, selectedEpisodeIndex, selectedSegmentId, showNotice],
+    [
+      getFrameIndex,
+      segmentOrder,
+      selectSegment,
+      selectedEpisodeIndex,
+      selectedSegmentId,
+      showNotice,
+    ],
   );
 
   const toggleLoop = useCallback(() => setLoop((previous) => !previous), []);
@@ -855,6 +957,77 @@ export function useSegmentAnnotation({
     () => markersOf(selectedEpisodeIndex),
     [markersOf, selectedEpisodeIndex],
   );
+  /** Rows of the marker lane for the selected episode (declared lanes, then the default row). */
+  const markerRows = useMemo(
+    () => markerRowsOf(episodeMarkers, config.markerLanes),
+    [config.markerLanes, episodeMarkers],
+  );
+  const markerRowsRef = useRef(markerRows);
+  markerRowsRef.current = markerRows;
+  /** The marker the last next / previous step of a navigable row went to. */
+  const [markerStep, setMarkerStep] = useState<MarkerStep | null>(null);
+  const markerStepRef = useRef(markerStep);
+  markerStepRef.current = markerStep;
+  useEffect(() => {
+    setMarkerStep(null);
+  }, [selectedEpisodeIndex]);
+  /**
+   * The navigable row the keys step through: the one stepped last, else the
+   * topmost navigable row of the episode.
+   */
+  const keyMarkerRow = useMemo(() => {
+    const navigable = markerRows.filter((row) => row.lane?.navigable);
+    return navigable.find((row) => row.lane!.id === markerStep?.laneId) ?? navigable[0] ?? null;
+  }, [markerRows, markerStep?.laneId]);
+  const keyMarkerRowRef = useRef(keyMarkerRow);
+  keyMarkerRowRef.current = keyMarkerRow;
+  /**
+   * Next / previous marker of a navigable row (`laneId`, else the keys' row):
+   * the playhead pauses on its first frame and the row announces its position.
+   * False when the episode has no such row (the key is not the viewer's).
+   */
+  const stepMarker = useCallback(
+    (direction: 1 | -1, laneId?: string): boolean => {
+      const row = laneId
+        ? markerRowsRef.current.find((item) => item.lane?.navigable && item.lane.id === laneId)
+        : keyMarkerRowRef.current;
+      if (!row?.lane) return false;
+      const lane = row.lane;
+      const last = markerStepRef.current;
+      const index = stepLaneMarker(
+        row.markers,
+        last?.laneId === lane.id ? last.markerId : null,
+        getFrameIndex(),
+        direction,
+      );
+      const at = Date.now();
+      if (index == null) {
+        const next: MarkerStep = {
+          laneId: lane.id,
+          markerId: last?.laneId === lane.id ? last.markerId : null,
+          announce: direction === 1 ? 'markers.lane.noNext' : 'markers.lane.noPrevious',
+          at,
+        };
+        markerStepRef.current = next;
+        setMarkerStep(next);
+        return true;
+      }
+      const marker = row.markers[index];
+      pausePlayback();
+      setFrameIndex(marker.startFrame);
+      const next: MarkerStep = {
+        laneId: lane.id,
+        markerId: marker.id,
+        announce: 'markers.lane.position',
+        position: index + 1,
+        at,
+      };
+      markerStepRef.current = next;
+      setMarkerStep(next);
+      return true;
+    },
+    [getFrameIndex, pausePlayback, setFrameIndex],
+  );
   /** How many segments of the selected episode each filter shows, and the filters offered. */
   const filterCounts = useMemo(
     () => segmentFilterCounts(episodeSegments, episodeMarkers),
@@ -868,6 +1041,7 @@ export function useSegmentAnnotation({
    * not come back silently when an issue appears later.
    */
   const effectiveFilter = effectiveSegmentFilter(filter, offeredFilters);
+  effectiveFilterRef.current = effectiveFilter;
   useEffect(() => {
     if (effectiveFilter !== filter) setFilter(effectiveFilter);
   }, [effectiveFilter, filter]);
@@ -912,6 +1086,10 @@ export function useSegmentAnnotation({
       setNarrow,
       markersOf,
       episodeMarkers,
+      markerRows,
+      markerStep,
+      keyMarkerRow,
+      stepMarker,
       readOnly,
       fields: resolvedFields,
       active,
@@ -975,6 +1153,10 @@ export function useSegmentAnnotation({
       editNeedsWiderWindow,
       markersOf,
       episodeMarkers,
+      markerRows,
+      markerStep,
+      keyMarkerRow,
+      stepMarker,
       readOnly,
       resolvedFields,
       active,

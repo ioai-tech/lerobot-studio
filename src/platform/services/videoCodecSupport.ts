@@ -1,7 +1,10 @@
 /**
  * Decide, before mounting a camera, whether this browser can decode the codec
- * a LeRobot dataset declares for it (`info.features[key].info["video.codec"]`).
+ * a LeRobot dataset declares for it (`video.codec` in the feature's `info` or
+ * `video_info`, read through `getFeatureInfoValue`).
  */
+import type { LeRobotFeature } from '../../core/types/lerobot';
+import { getFeatureInfoValue } from '../../core/utils/mediaFeatureMetadata';
 
 /** Result of a decode-support check for one camera. */
 export interface VideoCodecSupport {
@@ -22,9 +25,8 @@ const CODEC_STRINGS: Record<string, string[]> = {
 };
 
 /** Declared codec of a video feature, lower-cased, or null. */
-export function declaredVideoCodec(feature: unknown): string | null {
-  const info = (feature as { info?: Record<string, unknown> } | null | undefined)?.info;
-  const value = info?.['video.codec'];
+export function declaredVideoCodec(feature: LeRobotFeature | null | undefined): string | null {
+  const value = getFeatureInfoValue(feature, 'video.codec');
   return typeof value === 'string' && value.trim() ? value.trim().toLowerCase() : null;
 }
 
@@ -74,13 +76,14 @@ async function browserDecodes(codecStrings: string[], width: number, height: num
  * (`canPlayType`, `MediaSource.isTypeSupported`, `VideoDecoder.isConfigSupported`)
  * rejects it.
  */
-export async function checkVideoCodecSupport(feature: unknown): Promise<VideoCodecSupport> {
+export async function checkVideoCodecSupport(
+  feature: LeRobotFeature | null | undefined,
+): Promise<VideoCodecSupport> {
   const codec = declaredVideoCodec(feature);
   const codecStrings = codec ? CODEC_STRINGS[codec] : undefined;
   if (!codec || !codecStrings) return { codec, supported: true };
-  const info = (feature as { info?: Record<string, unknown> }).info ?? {};
-  const width = Number(info['video.width']) || 640;
-  const height = Number(info['video.height']) || 480;
+  const width = Number(getFeatureInfoValue(feature, 'video.width')) || 640;
+  const height = Number(getFeatureInfoValue(feature, 'video.height')) || 480;
   const key = `${codec}:${width}x${height}`;
   let pending = cache.get(key);
   if (!pending) {

@@ -56,8 +56,8 @@
     "message": {
       "initLoader": "データローダーを初期化中...",
       "readMetadata": "メタデータを読み込み中...",
-      "loadEpisode": "エピソード {{index}} を読み込み中...",
-      "fetchFrames": "エピソード {{index}} のフレームデータを取得中...",
+      "loadEpisode": "エピソード {{number}} を読み込み中...",
+      "fetchFrames": "エピソード {{number}} のフレームデータを取得中...",
       "processCharts": "チャートを処理中..."
     }
   },
@@ -65,6 +65,8 @@
     "generic": "データの読み込み中に問題が発生しました。",
     "loadFailed": "データセットの読み込みに失敗しました。",
     "offline": "オフラインです。接続が戻るとデータセットを読み込みます。",
+    "offlineShown": "オフラインです。接続が戻るとデータを読み込みます。",
+    "episodeLoadFailed": "このエピソードを読み込めませんでした。",
     "parquetEngineUnavailable": "Parquet リーダーを読み込めませんでした。ページがビューアーの Worker スクリプトを起動でき、そのスクリプトが WebAssembly ファイルを取得・コンパイルできる必要があります（埋め込みガイドのコンテンツセキュリティポリシーを参照）。",
     "details": "エラー詳細"
   },
@@ -430,7 +432,7 @@
     "emptyNoDataset": "LeRobot データセットを読み込むとエピソードを表示します",
     "emptyNoMatch": "検索に一致するエピソードはありません",
     "episodeAbbr": "EP",
-    "selectEpisode": "エピソード {{index}} を選択",
+    "selectEpisode": "エピソード {{number}} を選択",
     "expand": "サイドバーを展開",
     "collapse": "サイドバーを折りたたむ",
     "editTask": "タスクを編集",
@@ -446,6 +448,8 @@
     "clearSelection": "選択をクリア",
     "filterByTask": "タスク",
     "filterByDuration": "時間（秒）",
+    "durationMin": "最短時間（秒）",
+    "durationMax": "最長時間（秒）",
     "filterTaskAll": "すべてのタスク",
     "bulkEdit": "タスクを編集",
     "bulkDelete": "選択を削除",
@@ -523,7 +527,7 @@
       "placeholder": "動画ファイルを待機中...",
       "debug": {
         "title": "メディアデバッグ",
-        "feature": "Feature",
+        "feature": "特徴量",
         "dtype": "DType",
         "shape": "Shape",
         "fps": "FPS",
@@ -544,7 +548,7 @@
       "placeholder": "画像ファイルを待機中...",
       "debug": {
         "title": "メディアデバッグ",
-        "feature": "Feature",
+        "feature": "特徴量",
         "dtype": "DType",
         "shape": "Shape",
         "fps": "FPS",
@@ -580,8 +584,8 @@
       "copyingImage": "コピー中",
       "copiedImage": "コピーしました",
       "downloadedImage": "PNG をダウンロードしました",
-      "imageDtype": "IMAGE",
-      "videoDtype": "VIDEO",
+      "imageDtype": "画像",
+      "videoDtype": "動画",
       "allFeatures": "全 Feature",
       "none": "未選択",
       "featuresCount": "{{count}} Feature",
@@ -744,8 +748,8 @@
     "compactVideos": "未使用の動画区間を除去する（低速）",
     "sharedVideoHint": "高速エクスポートは共有動画を再エンコードせずコピーします。削除したエピソードやフレームは出力データから除外されますが、映像は共有ファイルに残る場合があります。有効にすると不要な映像も物理的に削除します。",
     "subtaskCoverageHint": "書き出す各エピソードはサブタスクをすべてラベルする必要があります。",
-    "subtaskCoverageMissing": "エピソード #{{index}} にはサブタスクのラベルがありません。",
-    "subtaskCoverageIncomplete": "エピソード #{{index}} のラベルが不完全です（{{labeled}}/{{total}}）。",
+    "subtaskCoverageMissing": "エピソード #{{number}} にはサブタスクのラベルがありません。",
+    "subtaskCoverageIncomplete": "エピソード #{{number}} のラベルが不完全です（{{labeled}}/{{total}}）。",
     "totalEpisodes": "エピソード総数",
     "metadataOnlyHint": "現在のエクスポートはメタデータのみ（info, episodes, tasks）です。",
     "export": "エクスポート",
@@ -764,7 +768,7 @@
     "fillSubtaskGaps": "空白を \"unlabeled\" で埋める",
     "segmentSummary": "セグメント: {episodes} 件のエピソードに {count} 件",
     "segmentFrames": "セグメントは {{original}} フレーム中 {{kept}} フレームを保持し、各セグメントを 1 つのエピソードとして書き出します。元のファイルは変更されません。",
-    "subtaskCoverageSegment": "エピソード #{{index}} のセグメント {{n}} にサブタスクのラベルが不足しています（{{labeled}}/{{total}}）。ラベルを付けるか「空白を埋める」をオンにしてください。"
+    "subtaskCoverageSegment": "エピソード #{{number}} のセグメント {{n}} にサブタスクのラベルが不足しています（{{labeled}}/{{total}}）。ラベルを付けるか「空白を埋める」をオンにしてください。"
   },
   "dialogs": {
     "remoteArchive": {
@@ -850,8 +854,8 @@
     "range": "保持範囲（クリックでプレビュー）",
     "removed": "削除時間",
     "status": "状態",
-    "select": "エピソード {{index}} を含める",
-    "preview": "エピソード {{index}} をプレビュー",
+    "select": "エピソード {{number}} を含める",
+    "preview": "エピソード {{number}} をプレビュー",
     "ready": "適用可能",
     "unchanged": "全体を保持",
     "existing": "スキップ: セグメントあり",
@@ -891,7 +895,7 @@
     },
     "origin": {
       "suggested": "提案",
-      "suggestedConfidence": "提案 {{confidence}}"
+      "suggestedConfidence": "提案 · 信頼度 {{confidence}}"
     },
     "readOnly": "読み取り専用",
     "inheritTask": "エピソードのタスク",
@@ -931,7 +935,8 @@
       "subtaskEnd": "サブタスク終了",
       "undo": "元に戻す",
       "redo": "やり直す",
-      "help": "キー"
+      "help": "キー",
+      "more": "その他の操作"
     },
     "confirmAll": {
       "title": "{count} 件のセグメントを確認しますか？",
@@ -973,7 +978,8 @@
       "subtaskOutside": "サブタスクは 1 つのセグメント内に収める必要があります。",
       "subtaskNeedsSegment": "先にセグメントを追加してください。サブタスクはセグメントに属します。",
       "suggestionsApplied": "{count} 件の提案セグメントをレビュー用に追加しました。",
-      "excludedNotConfirmed": "除外されたセグメントは確認できません。"
+      "excludedNotConfirmed": "除外されたセグメントは確認できません。",
+      "nextToReview": "次の要レビュー：#{{n}}。"
     },
     "refusal": {
       "EPISODE_UNKNOWN": "このエピソードはデータセットにありません。",
@@ -996,7 +1002,7 @@
     },
     "shortcuts": {
       "title": "キーボードショートカット",
-      "description": "ビューアにフォーカスがあり、入力中でないときにキーが有効になります。",
+      "description": "ビューアの使用中、入力欄で入力していなければキーが有効です。",
       "key": "キー",
       "action": "操作",
       "playPause": "再生 / 一時停止",
@@ -1018,7 +1024,15 @@
       "fail": "失敗"
     },
     "issueCount": "問題 {count} 件",
-    "issueList": "問題：{labels}"
+    "issueList": "問題：{labels}",
+    "lane": {
+      "position": "{{label}} {{total}} 件中 {{position}} 件目",
+      "noNext": "{{label}}：これより後はありません",
+      "noPrevious": "{{label}}：これより前はありません",
+      "next": "{{label}}：次へ",
+      "previous": "{{label}}：前へ",
+      "keys": "{{label}}：前へ / 次へ"
+    }
   },
   "overlay": {
     "legend": "提案（読み取り専用）",

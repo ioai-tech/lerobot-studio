@@ -334,6 +334,15 @@ export function RecordingStudio({ view, url, navigate }: HostProps) {
 ### 标记与只读建议 {#markers-and-read-only-suggestions}
 
 - **`markers`** 是时间轴上的区间（或单帧刻度），按 `severity` 着色，`label` 显示在提示框和无障碍名称中。点击标记跳到它的第一帧；标记行只占一个 Tab 停靠点，用方向键在标记间移动。与 `warn` 或 `fail` 标记重叠的分段会进入 **有问题** 筛选并显示问题数。`checkId` 留给宿主使用，不会显示。
+- **`markerLanes`** 把标记行分成从上到下的具名行：标记进入其 `lane` 所指的行。没有 `lane`、或 `lane` 未被任何行声明的标记留在具名行下方的默认行，外观和行为与不传 `markerLanes` 时相同。每个具名行有一个显示其 `label`（请先本地化）的行头，并各自占一个 Tab 停靠点。`navigable: true` 的行还显示当前位置（`3 / 39`）和“上一个 / 下一个”按钮，并可用 `Shift+,` / `Shift+.` 逐个前进：播放头暂停在上一个 / 下一个标记的第一帧，该行播报 `<label> 第 3 个，共 39 个`（没有更多时也会说明）。起点在同一帧的多个标记各算一步。有多个可导航行时，按键作用于最近一次导航过的行（起初是最上面的一行）。只有当前片段有可导航行时查看器才接收这两个键，其余规则与查看器的其他按键相同（见[键盘](#keyboard)）。这与 Frame.io 的上一条 / 下一条评论、CVAT 的“下一个有问题的帧”相同，例如逐个检查隐私检查找到的每一处可能的人脸：
+
+  ```tsx
+  <LeRobotViewer
+    markers={faces.map((face) => ({ ...face, lane: 'faces', severity: 'warn' }))}
+    markerLanes={[{ id: 'faces', label: t('possibleFaces'), navigable: true }]}
+  />
+  ```
+
 - **`overlaySegments`** 是只读分段（例如另一个程序的建议），显示在分段轨道上方的细条中。细条的图例是 `overlay.legend` 文案（默认“建议（只读）”）。点击其中一段会跳到该段；细条中的内容都不能编辑。
 
 ### 工具栏与通知 {#toolbar-and-notices}
@@ -344,6 +353,11 @@ export function RecordingStudio({ view, url, navigate }: HostProps) {
 - 带 `disabledReason` 的禁用按钮仍可获得焦点；原因同时作为提示框和 `aria-describedby`。
 - `notices` 有 `severity`（`error` 通知会立即朗读）、可选的 `progress`（`'indeterminate'` 或 0–1）和一个 `action`（链接或回调）。更新通知只重新渲染通知本身，不会触及相机面板。
 - 有侧栏时它们位于侧栏顶部；没有侧栏时位于播放栏上方。
+
+### 提示文字与相机名称 {#hints-and-camera-names}
+
+- **`Segment.taskHint`** 是分段 `task` 为 `null` 时显示的文字（例如另一种语言的任务，而用户正在用自己的语言填写）。它以弱化样式显示在分段列表和详情中，取代“继承任务”文案，并作为任务输入框的占位符。**`SegmentSubtask.labelHint`** 对空的子任务 `label` 做同样的事，显示在子任务轨道和重命名对话框中；带提示的空标签是有效的，导出时它的帧算作未标注。提示永远不是值：查看器发出的变更都不包含它，也永远不会被导出。
+- **`cameraLabels`** 按特征键为相机命名，例如 `{ 'observation.images.head_left': t('cameras.headLeft') }`。面板标题、读屏器为面板播报的区域名称和提到相机的文案使用它；更新名称会直接重命名已显示的面板，不会重新布局。没有名称的相机保留键的最后一段（`head_left`）。设置名称后，键仍显示在面板标题的提示框和相机的技术详情中。
 
 ### 选择与深层链接 {#selection-and-deep-links}
 
@@ -486,6 +500,7 @@ const LeRobotViewer = dynamic(
 | `showSidebar`              | 显示或隐藏 Episode 侧栏                                                    |
 | `showPlaybackBar`          | 显示或隐藏播放控制栏                                                       |
 | `enableKeyboardShortcuts`  | 启用或关闭查看器快捷键                                                     |
+| `keyboardScope`            | 查看器接收哪些在它外部按下的键；见[键盘](#keyboard)                        |
 | `onFatalError`             | 接收加载失败信息，并自行显示错误状态                                       |
 | `onExport`                 | 用户点击宿主导出按钮时的回调                                               |
 | `auxiliarySeries`          | 要绘制的额外时间序列，见[绘制额外的时间序列](#绘制额外的时间序列)          |
@@ -495,6 +510,8 @@ const LeRobotViewer = dynamic(
 | `fields`                   | 每个分段上可设置的值（`select`、`tags`、`text`）                           |
 | `messages`                 | 按键替换任意内置文案                                                       |
 | `markers`                  | 时间轴上按严重程度着色的区间，见[标记](#markers-and-read-only-suggestions) |
+| `markerLanes`              | 具名的标记行；`navigable` 行可用 `Shift+.` / `Shift+,` 和按钮逐个前进      |
+| `cameraLabels`             | 按特征键设置的相机名称，见[提示文字与相机名称](#hints-and-camera-names)    |
 | `overlaySegments`          | 分段轨道上方细条中的只读分段                                               |
 | `extensions`               | 宿主工具栏项和通知，见[工具栏与通知](#toolbar-and-notices)                 |
 | `initialSelection`         | 打开时定位到某个 episode、分段和时间（只应用一次）                         |
@@ -503,9 +520,23 @@ const LeRobotViewer = dynamic(
 
 `onExport` 只是回调，不包含独立应用中的导出引擎。
 
-提供 `onFatalError` 后，查看器不会渲染内置的致命错误状态。请在应用中保存错误信息，并自行显示合适的提示。只有在尚未显示数据集时，失败才是致命的；数据集显示后，加载失败（例如某个 episode 的数据无法读取）会作为查看器内的错误提示保留在查看器中。
+### 键盘 {#keyboard}
+
+焦点在查看器内时，按键总会到达查看器。查看器刚打开、页面内导航之后，或点击了不接收焦点的区域之后，焦点停在页面本身（`<body>`）；`keyboardScope` 决定这些按键是否也交给查看器，使查看器提示的按键（“按 N…”）无需先点击就能用：
+
+- `'auto'`（默认）：当它是最后打开或最后使用（焦点或点击在它内部）的可见查看器时接收。同一页面上有两个查看器时，一次按键只到达其中一个。
+- `'page'`：同上，并优先于 `'auto'` 查看器：页面上并列显示多个查看器时，把它给主查看器。
+- `'viewer'`：只接收在查看器内部按下的键。
+
+`Shift+.` / `Shift+,` 在可导航的标记行中逐个前进（见 [`markerLanes`](#markers-and-read-only-suggestions)）；当前片段没有这样的行时，查看器把这两个键留给页面。
+
+查看器自己从不抢焦点；在输入框中输入、页面上的控件有焦点，或有模态对话框（`aria-modal="true"`，或用 `showModal()` 打开的 `<dialog>`）显示时，它都不响应按键。非模态的 `<dialog>`（`show()`）不妨碍页面使用：它只保留焦点在它内部时按下的键。保持挂载的已关闭模态框（例如 keepMounted 的抽屉），只要它或其祖先带有 `aria-hidden="true"`、`inert`、`display: none` 或 `visibility: hidden`，就不算打开。在页面本身上，与 Ctrl、⌘ 或 Alt 组合的按键仍归你的页面和浏览器（例如你自己的 Ctrl+K、用 Alt+← 后退），正在输入法（IME）中组字的按键，以及在可编辑页面（`contenteditable` 的 body、`designMode`）上按下的键也一样。
+
+提供 `onFatalError` 后，查看器不会渲染内置的致命错误状态。请在应用中保存错误信息，并自行显示合适的提示。只有在尚未显示数据集时，失败才是致命的；数据集显示后，加载失败（某个 episode 的数据无法读取、切换数据源失败）留在查看器内：面板上方的一行提示说明它（浏览器离线时显示"当前处于离线状态"，否则说明失败的内容和原因），并带有重试；浏览器恢复在线后，查看器会自行重新加载。其间已显示的数据集保持不变。
 
 如果在数据集显示之前浏览器已离线，查看器会立即显示自己的"当前处于离线状态"提示，而不是转圈，并继续打开：`navigator.onLine` 在可用的网络上也可能为 false，读取成功时数据集仍会显示。只有在离线时确实失败的打开，才会以 `NETWORK_OFFLINE`（`recoverable: true`）报告给 `onFatalError`。浏览器恢复在线后，查看器会自行重新打开数据集；宿主若用自己的离线状态替换了查看器，可在浏览器的 `online` 事件时重新挂载它。
+
+卸载查看器（宿主切换到其他视图）会取消其进行中的读取：它们安静结束，不会成为控制台错误。查看器显示期间失败的读取仍会报告。
 
 分段、审核与修改操作见 [API — 分段与审核](./api#segments-and-review)。自定义 `DataSource` 和完整类型列表见 [API 参考](./api)。
 
@@ -513,7 +544,7 @@ const LeRobotViewer = dynamic(
 
 - 为查看器的父元素设置明确高度。
 - 查看器的根元素是带标签的 `region` 地标（不是 `main`），可以放在宿主页面自己的 `main` 里。
-- 加载前会检查每个相机声明的编码（`info.features[key].info["video.codec"]`）。浏览器无法解码时，该相机显示注明编码的提示，而不是一个坏掉的播放器。
+- 加载前会检查每个相机声明的编码（`info.features[key].info` 中的 `video.codec`，或 LeRobot v2.1 及较早的 Hub 数据集写在 `video_info` 中的同名字段）。浏览器无法解码时，该相机显示注明编码的提示，而不是一个坏掉的播放器。
 - 使用远程压缩包时，请检查 CORS 和 HTTP Range 响应头。
 - 在 Next.js 中，请将查看器置于 Client Component，并使用 `ssr: false`。本包无需任何 `next.config` 配置：`next build`（Turbopack 或 webpack）会输出 Worker 与 WASM，在 `basePath` 下同样如此。
 - 页面或 Worker 的内容安全策略见 [Worker、WebAssembly 与内容安全策略](#worker、webassembly-与内容安全策略)。

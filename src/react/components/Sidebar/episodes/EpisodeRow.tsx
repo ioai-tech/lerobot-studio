@@ -5,7 +5,7 @@ import type { EpisodeMetadata } from '@/core';
 import { Badge } from '@/ui';
 import { Button } from '@/ui';
 import { cn } from '@/ui';
-import { isEpisodeRowActivationKey } from '@/core';
+import { episodeNumber, isEpisodeRowActivationKey } from '@/core';
 
 interface EpisodeRowProps {
   episode: EpisodeMetadata;
@@ -74,10 +74,16 @@ export const EpisodeRow: React.FC<EpisodeRowProps> = ({
             onRowClick();
           }
         }}
-        aria-label={t('sidebar.selectEpisode', { index: episode.episode_index })}
+        aria-label={t('sidebar.selectEpisode', {
+          number: episodeNumber(episode.episode_index),
+          index: episode.episode_index,
+        })}
         aria-current={selectedActive ? 'true' : undefined}
         aria-disabled={!isInteractive}
-        title={t('sidebar.selectEpisode', { index: episode.episode_index })}
+        title={t('sidebar.selectEpisode', {
+          number: episodeNumber(episode.episode_index),
+          index: episode.episode_index,
+        })}
       >
         {multiSelectMode && (
           <span className="mt-0.5 shrink-0" onClick={(e) => e.stopPropagation()}>
@@ -120,7 +126,7 @@ export const EpisodeRow: React.FC<EpisodeRowProps> = ({
                     : 'opacity-70',
               )}
             >
-              # {episode.episode_index}
+              # {episodeNumber(episode.episode_index)}
             </Badge>
             <span
               className={cn(

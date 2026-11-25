@@ -124,6 +124,21 @@ export function matchSegmentShortcut(event: KeyLike): SegmentShortcutId | null {
   }
 }
 
+/** Keys that step through a navigable marker row (`markerLanes`), as shown to people. */
+export const MARKER_STEP_KEYS = { next: 'Shift+.', previous: 'Shift+,' } as const;
+
+/**
+ * `Shift+.` / `Shift+,` (the physical period and comma keys, or a printed `>` /
+ * `<`): the next / previous marker of a navigable row. Unbound otherwise:
+ * `.` / `,` nudge, `Alt+.` / `Alt+,` nudge a second.
+ */
+export function matchMarkerStepKey(event: KeyLike): 1 | -1 | null {
+  if (!event.shiftKey || event.altKey || event.ctrlKey || event.metaKey) return null;
+  if (event.code === 'Period' || event.key === '>') return 1;
+  if (event.code === 'Comma' || event.key === '<') return -1;
+  return null;
+}
+
 /** A select-field option key (`1`–`9`), without modifiers. */
 export function matchFieldOptionKey(event: KeyLike): string | null {
   if (event.ctrlKey || event.metaKey || event.altKey || event.shiftKey) return null;
@@ -143,8 +158,9 @@ type ElementLike = {
 const TEXT_ROLES = new Set(['textbox', 'combobox', 'searchbox', 'spinbutton']);
 
 /**
- * Segment keys need focus inside the viewer root and never act while a person
- * types (input, textarea, select, editable text) or a dialog is open.
+ * A key whose target is inside the viewer root is a segment key unless a
+ * person types (input, textarea, select, editable text) or a dialog is open.
+ * Keys pressed on the page itself (`<body>`) are decided by `usePageKeys`.
  */
 export function isSegmentShortcutTarget(
   target: EventTarget | null,

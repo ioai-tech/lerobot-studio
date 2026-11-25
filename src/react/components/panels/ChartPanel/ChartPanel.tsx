@@ -371,9 +371,9 @@ const ChartPanelContent: React.FC<ChartPanelProps> = ({ params }) => {
           />
         ) : (
           <div className="absolute inset-0">
-            {error && !isLoading ? (
-              <PanelEmptyState message={error} />
-            ) : selectedEpisodeIndex === null && !isLoading ? (
+            {/* A failed load is named once, by the viewer's failure line above the
+                panels (with Retry); the chart does not repeat it. */}
+            {error && !isLoading ? null : selectedEpisodeIndex === null && !isLoading ? (
               <PanelEmptyState message={t('playback.noData')} />
             ) : (
               <ChartGroupsPlaceholder groups={placeholderGroups} />

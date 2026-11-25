@@ -14,11 +14,19 @@ import {
   preflightRemoteArchive,
   translateRemotePreflightFailure,
 } from '../../platform/datasource/remotePreflight';
-import { useLeRobotData, useLeRobotSegments } from '../contexts/LeRobotContext';
+import {
+  LeRobotCameraLabelsContext,
+  useLeRobotData,
+  useLeRobotSegments,
+} from '../contexts/LeRobotContext';
 import type { LeRobotAnnotationProps } from '../contexts/annotationTypes';
 import type { LeRobotMessages } from '../i18n/messageKeys';
 import type { AnnotationField } from '../../core/annotation/types';
-import type { OverlaySegmentGroup, TimelineMarker } from '../../core/annotation/markers';
+import type {
+  OverlaySegmentGroup,
+  TimelineMarker,
+  TimelineMarkerLane,
+} from '../../core/annotation/markers';
 import type {
   LeRobotExtension,
   LeRobotInitialSelection,
@@ -28,6 +36,7 @@ import type {
 import { HostChrome } from './Host/HostChrome';
 import { SelectionBridge, type SelectionCarry } from './Host/SelectionBridge';
 import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts';
+import type { LeRobotKeyboardScope } from '../hooks/pageKeys';
 import { useBrowserOnline } from '../hooks/useBrowserOnline';
 import { ViewerLayout } from '../features/viewer/ViewerLayout';
 import { ErrorState } from './Commons/ErrorState';
@@ -92,6 +101,17 @@ export interface LeRobotViewerProps {
    */
   enableKeyboardShortcuts?: boolean;
   /**
+   * Which key presses outside the viewer it takes. Keys pressed while focus is
+   * inside the viewer always work. `auto` also takes keys pressed while focus
+   * is on the page itself (`<body>`: right after the viewer opens, after a
+   * navigation, after a click where nothing takes focus) when it is the shown
+   * viewer that opened or was used last; `page` does so in preference to
+   * `auto` viewers; `viewer` takes only keys pressed inside it. A field, a
+   * focused control of the page or an open modal dialog keeps its keys.
+   * @defaultValue 'auto'
+   */
+  keyboardScope?: LeRobotKeyboardScope;
+  /**
    * Extra time series from separate parquet files, aligned by their own time
    * column and plotted with the dataset's charts on the same playhead (native
    * rate; drawn with min/max-per-pixel decimation). Single-dataset views only.
@@ -118,6 +138,22 @@ export interface LeRobotViewerProps {
    * that overlaps a `warn` or `fail` marker is in the Issues filter.
    */
   markers?: TimelineMarker[];
+  /**
+   * Rows of the marker lane, top to bottom; a marker joins the row named by its
+   * `lane`. Markers without a declared row draw in the default row below them,
+   * as without rows. A `navigable` row gets next / previous keys (`Shift+.` /
+   * `Shift+,`) and header buttons that move the paused playhead to its next /
+   * previous marker start and announce the position ("3 of 39").
+   */
+  markerLanes?: TimelineMarkerLane[];
+  /**
+   * Display names of camera features, keyed by feature key (for example
+   * `{ 'observation.images.head_left': 'Head, left' }`): camera panel titles
+   * and messages that name a camera. A camera without one keeps the last part
+   * of its key; the key itself stays in the panel title's tooltip and in the
+   * camera's technical details.
+   */
+  cameraLabels?: Record<string, string>;
   /**
    * Read-only segments in a thin band above the segment track (for example
    * another process's proposals); its legend is the `overlay.legend` message.
@@ -146,6 +182,7 @@ export function LeRobotViewerContent({
   showPlaybackBar = true,
   onFatalError,
   enableKeyboardShortcuts = true,
+  keyboardScope = 'auto',
   onBack,
   onExport,
   auxiliarySeries,
@@ -154,6 +191,8 @@ export function LeRobotViewerContent({
   readOnly,
   fields,
   markers,
+  markerLanes,
+  cameraLabels,
   overlaySegments,
   extensions,
   initialSelection,
@@ -172,6 +211,7 @@ export function LeRobotViewerContent({
     getPendingSelection,
     info,
     getErrorCause,
+    retryEpisode,
   } = useLeRobotData();
   const online = useBrowserOnline();
   const hostChrome = useMemo(() => <HostChrome extensions={extensions} />, [extensions]);
@@ -179,15 +219,15 @@ export function LeRobotViewerContent({
 
   // Segment configuration lives in the data provider; push the props before paint.
   useLayoutEffect(() => {
-    configure({ annotation, readOnly, fields, markers, overlaySegments });
-  }, [annotation, configure, fields, markers, overlaySegments, readOnly]);
+    configure({ annotation, readOnly, fields, markers, markerLanes, overlaySegments });
+  }, [annotation, configure, fields, markerLanes, markers, overlaySegments, readOnly]);
 
   /** Captures the current selection so a swap to the same timeline keeps it. */
   const captureSelectionRef = useRef<() => SelectionCarry | null>(() => null);
   const initialSelectionRef = useRef(initialSelection);
   initialSelectionRef.current = initialSelection;
 
-  useKeyboardShortcuts(enableKeyboardShortcuts);
+  useKeyboardShortcuts(enableKeyboardShortcuts, keyboardScope);
 
   const lastSourceRef = useRef<DataSource | null>(null);
   const [resolvedSource, setResolvedSource] = useState<DataSource | null>(null);
@@ -358,6 +398,8 @@ export function LeRobotViewerContent({
   }, [fatalError, onFatalError]);
 
   const handleRetry = useCallback(() => {
+    // A shown dataset whose selected episode failed: that episode loads again.
+    if (info && retryEpisode()) return;
     clearError();
     lastSourceRef.current = null;
     setResolveError(null);
@@ -373,15 +415,16 @@ export function LeRobotViewerContent({
     } else {
       setResolveAttempt((attempt) => attempt + 1);
     }
-  }, [clearError, resolvedSource, initialize, dataSource]);
+  }, [info, retryEpisode, clearError, resolvedSource, initialize, dataSource]);
 
-  // Back online: an open that failed (most likely for being offline) runs again.
+  // Back online: what failed (most likely for being offline) runs again, once:
+  // an open, or, with a dataset shown, its episode or the source it swapped to.
   const wasOnlineRef = useRef(online);
   useEffect(() => {
     const cameBack = online && !wasOnlineRef.current;
     wasOnlineRef.current = online;
-    if (cameBack && !info && (error || resolveError)) handleRetry();
-  }, [online, info, error, resolveError, handleRetry]);
+    if (cameBack && (error || resolveError)) handleRetry();
+  }, [online, error, resolveError, handleRetry]);
 
   if (onFatalError && fatalError) {
     // The embedding host owns fatal-error rendering via onFatalError. Keeping a
@@ -461,17 +504,19 @@ export function LeRobotViewerContent({
 
   return (
     <AuxiliarySeriesProvider series={auxiliarySeries} onWarning={onAuxiliarySeriesWarning}>
-      <ViewerLayout
-        showSidebar={showSidebar}
-        showPlaybackBar={showPlaybackBar}
-        showToaster={false}
-        sidebar={<EpisodeSidebar />}
-        sidebarHeader={sidebarHeader}
-        hostChrome={extensions && extensions.length > 0 ? hostChrome : null}
-        emptyState={emptyState}
-        blockingState={offlineWhileOpening ? offlineState : null}
-        onRetry={handleRetry}
-      />
+      <LeRobotCameraLabelsContext.Provider value={cameraLabels}>
+        <ViewerLayout
+          showSidebar={showSidebar}
+          showPlaybackBar={showPlaybackBar}
+          showToaster={false}
+          sidebar={<EpisodeSidebar />}
+          sidebarHeader={sidebarHeader}
+          hostChrome={extensions && extensions.length > 0 ? hostChrome : null}
+          emptyState={emptyState}
+          blockingState={offlineWhileOpening ? offlineState : null}
+          onRetry={handleRetry}
+        />
+      </LeRobotCameraLabelsContext.Provider>
       <SelectionBridge captureRef={captureSelectionRef} onSelectionChange={onSelectionChange} />
     </AuxiliarySeriesProvider>
   );
@@ -486,6 +531,7 @@ export const LeRobotViewer: React.FC<LeRobotViewerProps> = ({
   className,
   onFatalError,
   enableKeyboardShortcuts = true,
+  keyboardScope,
   onBack,
   onExport,
   auxiliarySeries,
@@ -495,6 +541,8 @@ export const LeRobotViewer: React.FC<LeRobotViewerProps> = ({
   fields,
   messages,
   markers,
+  markerLanes,
+  cameraLabels,
   overlaySegments,
   extensions,
   initialSelection,
@@ -516,6 +564,7 @@ export const LeRobotViewer: React.FC<LeRobotViewerProps> = ({
         showPlaybackBar={showPlaybackBar}
         onFatalError={onFatalError}
         enableKeyboardShortcuts={enableKeyboardShortcuts}
+        keyboardScope={keyboardScope}
         onBack={onBack}
         onExport={onExport}
         auxiliarySeries={auxiliarySeries}
@@ -524,6 +573,8 @@ export const LeRobotViewer: React.FC<LeRobotViewerProps> = ({
         readOnly={readOnly}
         fields={fields}
         markers={markers}
+        markerLanes={markerLanes}
+        cameraLabels={cameraLabels}
         overlaySegments={overlaySegments}
         extensions={extensions}
         initialSelection={initialSelection}

@@ -31,6 +31,8 @@ export interface SubtaskSegment {
   /** Inclusive end frame within the episode. */
   endFrame: number;
   label: string;
+  /** Host display text for an empty `label` (see `SegmentSubtask.labelHint`). */
+  labelHint?: string;
 }
 
 export interface SubtaskGap {

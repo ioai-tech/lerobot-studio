@@ -18,6 +18,7 @@ import { VideoPanel, ImagePanel, ChartPanel, RawPanel, PanelErrorBoundary } from
 import { PanelTitle } from './PanelTitle';
 import {
   cameraAreaHeight,
+  cameraDisplayName,
   chooseCamerasPerRow,
   getAutoLayoutVisualRows,
   isStackedPanelsWidth,
@@ -232,7 +233,8 @@ export const DockviewLayout: React.FC = () => {
             {
               id: `${isVideo ? 'video' : 'image'}-${key}`,
               component: isVideo ? ('video' as const) : ('image' as const),
-              title: key.split('.').pop() || key,
+              // PanelTitle renames it with the host's `cameraLabels` (tab and region).
+              title: cameraDisplayName(key),
               params: { featureKey: key },
             },
           ] as const;

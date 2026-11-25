@@ -385,7 +385,7 @@ it('keeps an episode the person picks while the new source opens', async () => {
       initialSelection={{ episodeIndex: 0, timeS: 0.5 }}
     />,
   );
-  await expect.poll(currentEpisode, { timeout: 30_000 }).toBe('Select Episode 0');
+  await expect.poll(currentEpisode, { timeout: 30_000 }).toBe('Select Episode 1');
   await expect
     .poll(() => Number(slider()?.getAttribute('aria-valuemax') ?? 0) > 0, { timeout: 30_000 })
     .toBe(true);
@@ -400,12 +400,12 @@ it('keeps an episode the person picks while the new source opens', async () => {
   const next = new Slow(V3, { infoMs: 1500 });
   root!.render(<LeRobotViewer dataSource={next} language="en" />);
   await new Promise((resolve) => setTimeout(resolve, 200));
-  host!.querySelector<HTMLButtonElement>('[aria-label="Select Episode 1"]')!.click();
-  await expect.poll(currentEpisode, { timeout: 10_000 }).toBe('Select Episode 1');
+  host!.querySelector<HTMLButtonElement>('[aria-label="Select Episode 2"]')!.click();
+  await expect.poll(currentEpisode, { timeout: 10_000 }).toBe('Select Episode 2');
   // The new source opens and reloads the episode on screen: the picked one.
   await expect.poll(() => next.dataReads.includes('end'), { timeout: 15_000 }).toBe(true);
   await new Promise((resolve) => setTimeout(resolve, 500));
-  expect(currentEpisode()).toBe('Select Episode 1');
+  expect(currentEpisode()).toBe('Select Episode 2');
 });
 
 it('a swap during a swap resumes playback only once the newest source has its data', async () => {

@@ -1,4 +1,4 @@
-import type { DatasetStats, FeatureStats, LeRobotInfo } from '@/core';
+import { isDepthMapFeature, type DatasetStats, type FeatureStats, type LeRobotInfo } from '@/core';
 import type { ExportDataLoader } from './SegmentExportPlan';
 import type { ExportTrim } from './TrimExportPlan';
 
@@ -19,9 +19,9 @@ export async function computeTrimVisualStats(
     (_, i) => range.startFrame + Math.round((i * (length - 1)) / Math.max(1, count - 1)),
   );
   for (const [key, feature] of Object.entries(info.features)) {
-    if (!['image', 'video', 'depth'].includes(feature.dtype) && feature.info?.is_depth_map !== true)
-      continue;
-    if (feature.dtype === 'depth' || feature.info?.is_depth_map === true) {
+    const depth = isDepthMapFeature(feature);
+    if (!['image', 'video'].includes(feature.dtype) && !depth) continue;
+    if (depth) {
       throw new Error(`Cannot trim depth feature "${key}": raw depth statistics are not supported`);
     }
     const names = feature.names?.flat().map((name) => String(name).toLowerCase()) ?? [];

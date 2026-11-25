@@ -87,8 +87,10 @@ export type {
 } from './workers/types';
 export {
   PARQUET_ENGINE_UNAVAILABLE,
+  isAbortError,
   isParquetEngineError,
   parquetEngineError,
+  workerReleasedError,
 } from './workers/engineError';
 export {
   DATASET_READ_FAILED,
@@ -102,4 +104,5 @@ export * from './subtask';
 export * from './export/trim';
 export { fixedTrim, suggestTrim } from './export/suggestTrim';
 export * from './annotation';
+export { episodeNumber } from './utils/episodeNumber';
 export * from './timeline/scale';

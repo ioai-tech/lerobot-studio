@@ -14,6 +14,7 @@ export const ChartLineStyleKey: React.FC<ChartLineStyleKeyProps> = ({
   onVisibleChange,
 }) => {
   const { t } = useTranslation();
+  const toggleId = React.useId();
   const isAction = kind === 'action';
   const toggleTitle = isAction ? t('chart.legend.toggleAction') : t('chart.legend.toggleState');
   const lineTone = visible
@@ -33,6 +34,8 @@ export const ChartLineStyleKey: React.FC<ChartLineStyleKeyProps> = ({
     >
       <input
         type="checkbox"
+        id={toggleId}
+        aria-label={toggleTitle}
         checked={visible}
         onChange={(e) => {
           e.stopPropagation();

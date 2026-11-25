@@ -9,6 +9,12 @@ import type {
   SegmentSubtask,
 } from './types';
 
+/** A segment with the dataset episode it belongs to (dataset order lists). */
+export interface OrderedSegment {
+  episodeIndex: number;
+  segment: Segment;
+}
+
 /** The segment that contains `frame`, if any. */
 export function segmentAtFrame(segments: readonly Segment[], frame: number): Segment | null {
   return segments.find((item) => frame >= item.startFrame && frame <= item.endFrame) ?? null;
@@ -210,4 +216,76 @@ export function fieldOptionForKey(
 /** Number of the segment (1-based) in its episode, by start frame. */
 export function segmentNumber(doc: AnnotationDocument, episodeIndex: number, id: string): number {
   return getEpisodeSegments(doc, episodeIndex).findIndex((item) => item.id === id) + 1;
+}
+
+/**
+ * The segment a new range continues: the nearest one that ends before it,
+ * else the nearest one that starts after it; `null` in an empty episode.
+ */
+export function neighbourOfRange(
+  segments: readonly Segment[],
+  range: { startFrame: number; endFrame: number },
+): Segment | null {
+  let before: Segment | null = null;
+  let after: Segment | null = null;
+  for (const segment of segments) {
+    if (segment.endFrame < range.startFrame) {
+      if (!before || segment.endFrame > before.endFrame) before = segment;
+    } else if (segment.startFrame > range.endFrame) {
+      if (!after || segment.startFrame < after.startFrame) after = segment;
+    }
+  }
+  return before ?? after;
+}
+
+/** The values of the fields marked `inherit` that `from` holds (a new segment's start). */
+export function inheritedValues(
+  from: Segment | null,
+  fields: readonly AnnotationField[] | undefined,
+): Segment['values'] {
+  const values: Segment['values'] = {};
+  if (!from) return values;
+  for (const field of fields ?? []) {
+    if (!field.inherit) continue;
+    const value = from.values[field.id];
+    if (value == null || (Array.isArray(value) && value.length === 0)) continue;
+    values[field.id] = Array.isArray(value) ? [...value] : value;
+  }
+  return values;
+}
+
+/**
+ * The item `delta` steps from `order[from]` among those `shows` accepts
+ * (`order[from]` itself may be hidden); `null` past either end.
+ */
+export function stepSegment<T extends OrderedSegment>(
+  order: readonly T[],
+  from: number,
+  delta: 1 | -1,
+  shows: (item: T) => boolean,
+): T | null {
+  for (let at = from + delta; at >= 0 && at < order.length; at += delta) {
+    if (shows(order[at]!)) return order[at]!;
+  }
+  return null;
+}
+
+/**
+ * The segment review goes on with after `order[from]`: the next one that is to
+ * review, editable and shown (`shows`), after it in order, else the first such
+ * one before it; `null` when none is left.
+ */
+export function nextSegmentToReview<T extends OrderedSegment>(
+  order: readonly T[],
+  from: number,
+  shows: (item: T) => boolean,
+): T | null {
+  const open = (item: T) =>
+    segmentReviewDisplay(item.segment) === 'to_review' && !item.segment.readOnly && shows(item);
+  for (let step = 1; step <= order.length; step++) {
+    const item = order[(((from + step) % order.length) + order.length) % order.length]!;
+    if (from >= 0 && item === order[from]) continue;
+    if (open(item)) return item;
+  }
+  return null;
 }

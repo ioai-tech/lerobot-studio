@@ -1,4 +1,5 @@
-import { createContext, useContext } from 'react';
+import { createContext, useContext, useEffect } from 'react';
+import { cameraDisplayName } from '@/core';
 import type {
   LeRobotInfo,
   EpisodeMetadata,
@@ -48,6 +49,15 @@ export interface LeRobotDataContextType {
   error: string | null;
   /** The original failure behind `error` (for example a named read failure), when there is one. */
   getErrorCause: () => unknown;
+  /**
+   * Load the selected episode again when its load failed (`error` names why);
+   * returns false when no episode load failed, so there is nothing to retry.
+   */
+  retryEpisode: () => boolean;
+  /** The selected episode, when its load failed (`error` names why); `null` otherwise. */
+  failedEpisode: number | null;
+  /** Bumped by `retryEpisode`: a panel whose file failed requests it again. */
+  loadAttempt: number;
   isLoading: boolean;
   /** Open this selection once its episode loads (deep link, data-source swap); `null` drops it. */
   setPendingSelection: (selection: PendingSelection | null) => void;
@@ -206,4 +216,58 @@ export const useLeRobotSegments = () => {
   const context = useContext(LeRobotSegmentContext);
   if (!context) throw new Error('useLeRobotSegments must be used within LeRobotDataProvider');
   return context;
+};
+
+/** Host display names of camera features, keyed by feature key (`cameraLabels`). */
+export const LeRobotCameraLabelsContext = createContext<
+  Readonly<Record<string, string>> | undefined
+>(undefined);
+
+/** How a camera is named for people. */
+export interface CameraName {
+  /** The host's label, else the last part of the key. */
+  name: string;
+  /** The feature key while a host label stands in for it (tooltips, technical details). */
+  key?: string;
+}
+
+function cameraNameOf(
+  featureKey: string,
+  labels: Readonly<Record<string, string>> | undefined,
+): CameraName {
+  const name = cameraDisplayName(featureKey, labels);
+  return name === cameraDisplayName(featureKey) ? { name } : { name, key: featureKey };
+}
+
+/** Names cameras (several keys per render). */
+export const useCameraNamer = (): ((featureKey: string) => CameraName) => {
+  const labels = useContext(LeRobotCameraLabelsContext);
+  return (featureKey) => cameraNameOf(featureKey, labels);
+};
+
+/** The name of one camera. */
+export const useCameraName = (featureKey: string): CameraName =>
+  cameraNameOf(featureKey, useContext(LeRobotCameraLabelsContext));
+
+/** A layout panel as naming needs it (structural: the entry imports no dockview). */
+interface NamedPanel {
+  readonly title?: string;
+  readonly params?: { readonly featureKey?: unknown };
+  readonly api: { setTitle(title: string): void };
+}
+
+/**
+ * The name of the feature a layout panel shows (null for a panel without one).
+ * The panel's own title follows it: the layout names the panel's region with
+ * that title, so the region is announced as the tab reads (host `cameraLabels`).
+ */
+export const usePanelCameraName = (panel: NamedPanel | undefined): CameraName | null => {
+  const labels = useContext(LeRobotCameraLabelsContext);
+  const featureKey = panel?.params?.featureKey;
+  const camera = typeof featureKey === 'string' ? cameraNameOf(featureKey, labels) : null;
+  const name = camera?.name;
+  useEffect(() => {
+    if (name && panel && panel.title !== name) panel.api.setTitle(name);
+  }, [name, panel]);
+  return camera;
 };

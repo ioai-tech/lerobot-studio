@@ -7,6 +7,8 @@ import { Toaster } from '../../components/ui/toaster';
 import { useLeRobotData, useLeRobotSegments } from '../../contexts/LeRobotContext';
 import { useLoading } from '../../contexts/LoadingContext';
 import { ErrorState } from '../../components/Commons/ErrorState';
+import { LoadFailureLine } from '../../components/Commons/LoadFailureLine';
+import { useBrowserOnline } from '../../hooks/useBrowserOnline';
 import {
   EDITING_MIN_WIDTH_PX,
   useNarrowerThan,
@@ -86,7 +88,8 @@ export function ViewerLayout({
   onRetry,
 }: ViewerLayoutProps) {
   const { t } = useTranslation();
-  const { episodes, info, clearError, error } = useLeRobotData();
+  const { episodes, info, clearError, error, failedEpisode, retryEpisode } = useLeRobotData();
+  const online = useBrowserOnline();
   const { tasks } = useLoading();
   const layoutRef = useRef<HTMLDivElement>(null);
   const stacked = useStackedLayout(layoutRef);
@@ -113,7 +116,7 @@ export function ViewerLayout({
   const handleRetry =
     onRetry ??
     (() => {
-      clearError();
+      if (!retryEpisode()) clearError();
     });
 
   const sidebarElement = shouldShowSidebar ? (
@@ -136,14 +139,19 @@ export function ViewerLayout({
     <div key="main" className="flex-1 flex flex-col min-w-0 min-h-0">
       <div className="flex-1 min-w-0 min-h-0 overflow-hidden relative">
         {info ? (
-          <>
+          <div className="flex h-full w-full flex-col">
             {error ? (
-              <div className="absolute inset-x-0 top-0 z-10 px-3 py-2 text-xs bg-destructive/10 text-destructive border-b border-destructive/20">
-                {error}
-              </div>
+              <LoadFailureLine
+                offline={!online}
+                episode={failedEpisode !== null}
+                detail={error}
+                onRetry={handleRetry}
+              />
             ) : null}
-            <LazyDockviewLayout />
-          </>
+            <div className="relative min-h-0 flex-1">
+              <LazyDockviewLayout />
+            </div>
+          </div>
         ) : blockingState ? (
           blockingState
         ) : activeTask ? (

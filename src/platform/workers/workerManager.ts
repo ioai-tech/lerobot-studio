@@ -12,6 +12,9 @@
  *   message that cannot be read, the WASM failing to load) fails every pending
  *   and later call with a named PARQUET_ENGINE_UNAVAILABLE error, never a
  *   call that waits forever.
+ * - A released worker (its loader disposed: the viewer went away) cancels its
+ *   pending and later calls with an `AbortError` (`workerReleasedError`), so a
+ *   caller can tell a read nobody waits for any more from a failed one.
  * - `prewarmParquetWorker` (behind `preloadLeRobotViewer`) starts one worker
  *   early so the download and compile overlap the host's own work; the next
  *   loader adopts it, and an unadopted one is terminated after a short idle.
@@ -19,7 +22,7 @@
 
 import * as Comlink from 'comlink';
 import type { ParquetWorkerAPI, ParquetImageWorkerAPI } from '@/core';
-import { parquetEngineError } from '../../core/workers/engineError';
+import { parquetEngineError, workerReleasedError } from '../../core/workers/engineError';
 import type { InitParquetWasmMessage, ParquetWorkerStatusMessage } from './parquetWasmModule';
 
 import parquetWorkerUrl from './parquet.worker?worker&url';
@@ -36,6 +39,11 @@ interface WorkerHandle<T> {
   failed: Promise<never>;
   /** The failure, once there is one. */
   failure(): Error | null;
+  /**
+   * Called when the worker is released (`terminateWorker`): its pending calls
+   * and every later one reject as cancelled (`workerReleasedError`).
+   */
+  release(): void;
   /** The WASM URL this worker was given. */
   wasmUrl: string;
 }
@@ -100,14 +108,22 @@ function spawn<T>(scriptUrl: string, label: string): WorkerHandle<T> {
   });
   failed.catch(() => undefined); // for the image service's raw requests and the spare
   const pending = new Set<(error: Error) => void>();
-  const fail = (detail: string) => {
-    if (failure) return;
-    const error = parquetEngineError(detail);
+  const settleAll = (error: Error) => {
     failure = error;
     rejectFailed(error);
     const calls = [...pending];
     pending.clear();
     calls.forEach((reject) => reject(error));
+  };
+  const fail = (detail: string) => {
+    if (failure) return;
+    settleAll(parquetEngineError(detail));
+  };
+  // A released worker never answers again: what waits on it is cancelled now,
+  // and a later call is cancelled at once (never Comlink's "Proxy has been released").
+  const release = () => {
+    if (failure?.name === 'AbortError') return;
+    settleAll(workerReleasedError(label));
   };
 
   let worker: Worker | null = null;
@@ -140,7 +156,14 @@ function spawn<T>(scriptUrl: string, label: string): WorkerHandle<T> {
     worker.postMessage(init);
   }
   const remote = guard(worker ? Comlink.wrap<T>(worker) : null, pending, () => failure);
-  const handle: WorkerHandle<T> = { remote, raw: worker, failed, failure: () => failure, wasmUrl };
+  const handle: WorkerHandle<T> = {
+    remote,
+    raw: worker,
+    failed,
+    failure: () => failure,
+    release,
+    wasmUrl,
+  };
   handles.set(remote as object, handle as WorkerHandle<unknown>);
   return handle;
 }
@@ -220,6 +243,7 @@ export function createParquetImageWorker(): {
 /** Release a worker made here. */
 export function terminateWorker(worker: Comlink.Remote<unknown>): void {
   const handle = handles.get(worker as object);
+  handle?.release();
   try {
     worker[Comlink.releaseProxy]();
   } catch {

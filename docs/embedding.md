@@ -334,6 +334,15 @@ Every message an embedded viewer can show can be replaced, not only segment copy
 ### Markers and read-only suggestions
 
 - **`markers`** are ranges (or one-frame ticks) on the time axis, coloured by `severity`, with the `label` in a tooltip and in the accessible name. Clicking one seeks to its first frame; the lane is one tab stop and arrow keys move between markers. A segment that overlaps a `warn` or `fail` marker is in the **Issues** filter and shows an issue count. `checkId` is kept for the host and never shown.
+- **`markerLanes`** splits the marker lane into named rows, top to bottom: a marker joins the row its `lane` names. Markers without a `lane`, or with one no row declares, stay in the default row below the named ones, which looks and works as without `markerLanes`. Each named row has a header with its `label` (localize it first) and is its own tab stop. A row with `navigable: true` adds its position (`3 / 39`) and Previous / Next buttons, and `Shift+,` / `Shift+.` step through it: the playhead pauses on the previous / next marker's first frame, and the row announces `<label> 3 of 39` (or that there is none further). Markers that start on the same frame are each a step. With several navigable rows, the keys step the row stepped last (at first the topmost). The keys are taken only while the shown episode has a navigable row, and follow the same rules as every viewer key (see [Keyboard](#keyboard)). This is the pattern of Frame.io's next / previous comment and CVAT's next frame with an issue, for example to walk every possible face a privacy check found:
+
+  ```tsx
+  <LeRobotViewer
+    markers={faces.map((face) => ({ ...face, lane: 'faces', severity: 'warn' }))}
+    markerLanes={[{ id: 'faces', label: t('possibleFaces'), navigable: true }]}
+  />
+  ```
+
 - **`overlaySegments`** are read-only segments (for example another process's proposals) in a thin band above the segment track. The band's legend is the `overlay.legend` message (default "Suggestions (read-only)"). Clicking one seeks to it; nothing in the band edits.
 
 ### Toolbar and notices
@@ -344,6 +353,11 @@ Every message an embedded viewer can show can be replaced, not only segment copy
 - A disabled button with `disabledReason` stays focusable; the reason is its tooltip and its `aria-describedby`.
 - `notices` have a `severity` (`error` notices are announced at once), optional `progress` (`'indeterminate'` or 0–1) and one `action` (a link or a callback). Updating a notice re-renders only the notices, never the camera panels.
 - With a sidebar they sit at its top; without one, above the playback bar.
+
+### Hints and camera names
+
+- **`Segment.taskHint`** is display text for a segment whose `task` is `null` (for example the task in another language, while a person writes it in theirs). It is shown muted in the segment list and the details, in place of the inherited-task copy, and as the task input's placeholder. **`SegmentSubtask.labelHint`** does the same for an empty subtask `label` on the subtask track and in the rename dialog; an empty label with a hint is valid, and an export counts its frames as unlabeled. A hint is never a value: no change the viewer emits carries it, and it is never exported.
+- **`cameraLabels`** names cameras by feature key, for example `{ 'observation.images.head_left': t('cameras.headLeft') }`. Panel titles, the regions screen readers announce for the panels, and messages that name a camera use it, and new labels rename the shown panels without laying them out again. A camera without a label keeps the last part of its key (`head_left`). With a label, the key stays in the panel title's tooltip and in the camera's technical details.
 
 ### Selection and deep links
 
@@ -486,6 +500,7 @@ Common props include:
 | `showSidebar`              | Show or hide the episode sidebar                                                       |
 | `showPlaybackBar`          | Show or hide playback controls                                                         |
 | `enableKeyboardShortcuts`  | Enable or disable viewer shortcuts                                                     |
+| `keyboardScope`            | Which keys pressed outside the viewer it takes; see [Keyboard](#keyboard)              |
 | `onFatalError`             | Receive a loading error and render your own error state                                |
 | `onExport`                 | Respond when a user clicks your export button                                          |
 | `auxiliarySeries`          | Extra time series to plot; see [Plot extra time series](#plot-extra-time-series)       |
@@ -495,6 +510,8 @@ Common props include:
 | `fields`                   | Values a person sets on each segment (`select`, `tags`, `text`)                        |
 | `messages`                 | Replace any built-in copy by key                                                       |
 | `markers`                  | Ranges on the time axis by severity; see [Markers](#markers-and-read-only-suggestions) |
+| `markerLanes`              | Named marker rows; `navigable` rows step with `Shift+.` / `Shift+,` and buttons        |
+| `cameraLabels`             | Camera names by feature key; see [Hints and camera names](#hints-and-camera-names)     |
 | `overlaySegments`          | Read-only segments in a band above the segment track                                   |
 | `extensions`               | Host toolbar items and notices; see [Toolbar and notices](#toolbar-and-notices)        |
 | `initialSelection`         | Open at an episode, segment and time, once                                             |
@@ -503,9 +520,23 @@ Common props include:
 
 `onExport` is a callback only. It does not include the standalone app's export engine.
 
-When you provide `onFatalError`, the viewer does not render its built-in fatal-error state. Keep the error in your application state and display an appropriate message yourself. A failure is fatal only while no dataset is shown; once one is, a failed load (an episode whose data cannot be read) stays inside the viewer as its error line.
+### Keyboard
+
+Keys pressed while focus is inside the viewer always reach it. Right after the viewer opens, after a client-side navigation, or after a click where nothing takes focus, focus is on the page itself (`<body>`); `keyboardScope` decides whether those keys reach the viewer too, so the keys the viewer names (`Press N…`) work without a first click:
+
+- `'auto'` (default): the viewer takes them when it is the shown viewer that opened or was used (focus or a click inside it) last. With two viewers on one page, one key reaches one viewer.
+- `'page'`: the same, preferred over `'auto'` viewers: give it to the page's main viewer when others are shown beside it.
+- `'viewer'`: only keys pressed inside the viewer.
+
+`Shift+.` / `Shift+,` step through a navigable marker row (see [`markerLanes`](#markers-and-read-only-suggestions)); without such a row in the shown episode the viewer leaves them to the page.
+
+The viewer never takes focus itself, and never acts on a key typed into a field, on a key while a control of the page has focus, or while a modal dialog (`aria-modal="true"`, or a `<dialog>` opened with `showModal()`) is shown. A non-modal `<dialog>` (`show()`) leaves the page usable: it keeps only the keys pressed while focus is inside it. A closed modal you keep mounted does not count while it or an ancestor is `aria-hidden="true"`, `inert`, `display: none` or `visibility: hidden` (a keepMounted drawer, for example). On the page, a key combined with Ctrl, ⌘ or Alt stays yours and the browser's (your own shortcuts such as Ctrl+K, Alt+← to go back), and so does a key that composes text (IME) or one pressed on an editable page (`contenteditable` body, `designMode`).
+
+When you provide `onFatalError`, the viewer does not render its built-in fatal-error state. Keep the error in your application state and display an appropriate message yourself. A failure is fatal only while no dataset is shown; once one is, a failed load (an episode whose data cannot be read, a data source swap that failed) stays inside the viewer: one line above the panels names it ("You're offline" while the browser is offline, otherwise what failed and why) with Retry, and the viewer loads it again by itself when the browser is back online. The shown dataset stays meanwhile.
 
 If the browser is offline before the dataset is shown, the viewer shows its own "You're offline" state at once instead of a spinner, and keeps opening: `navigator.onLine` can be wrong on a working network, so the dataset still appears if the reads succeed. Only an open that actually failed while the browser is offline is reported to `onFatalError`, as `NETWORK_OFFLINE` (`recoverable: true`). When the browser is back online the viewer opens the dataset again by itself; a host that replaced the viewer with its own offline state can remount it on the browser's `online` event.
+
+Unmounting the viewer (the host shows another view) cancels its reads in flight: they end quietly, never as console errors. A read that fails while the viewer is shown is still reported.
 
 For segments, review and change ops, see [API — Segments and review](./api.md#segments-and-review). For custom `DataSource` implementations and the full type list, see [API reference](./api.md).
 
@@ -513,7 +544,7 @@ For segments, review and change ops, see [API — Segments and review](./api.md#
 
 - Give the viewer's parent an explicit height.
 - The viewer's root is a labelled `region` landmark (never `main`), so it can sit inside your page's own `main`.
-- Each camera's declared codec (`info.features[key].info["video.codec"]`) is checked before loading. If the browser cannot decode it, the camera shows a notice naming the codec instead of a broken player.
+- Each camera's declared codec (`video.codec` under `info.features[key].info`, or under `video_info` as LeRobot v2.1 and older Hub datasets write it) is checked before loading. If the browser cannot decode it, the camera shows a notice naming the codec instead of a broken player.
 - For a remote archive, check CORS and HTTP Range headers.
 - In Next.js, keep the viewer in a Client Component with `ssr: false`. It needs no `next.config` entry for the package: `next build` (Turbopack or webpack) emits the workers and the WASM, also under a `basePath`.
 - For a page or worker Content Security Policy, see [Workers, WebAssembly and Content Security Policy](#workers-webassembly-and-content-security-policy).

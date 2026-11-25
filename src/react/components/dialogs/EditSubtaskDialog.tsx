@@ -21,6 +21,8 @@ export interface EditSubtaskDialogProps {
   endSeconds?: number;
   knownLabels: string[];
   initialLabel?: string;
+  /** The host's display text for an empty label: the placeholder, never the value. */
+  labelHint?: string;
   onSave: (label: string) => void;
 }
 
@@ -33,6 +35,7 @@ export const EditSubtaskDialog: React.FC<EditSubtaskDialogProps> = ({
   endSeconds,
   knownLabels,
   initialLabel = '',
+  labelHint,
   onSave,
 }) => {
   const { t } = useTranslation();
@@ -97,7 +100,6 @@ export const EditSubtaskDialog: React.FC<EditSubtaskDialogProps> = ({
         </DialogHeader>
         <div className="space-y-3 py-2">
           <Input
-            id="subtask-label"
             value={label}
             onChange={(event) => setLabel(event.target.value)}
             onKeyDown={(event) => {
@@ -107,7 +109,7 @@ export const EditSubtaskDialog: React.FC<EditSubtaskDialogProps> = ({
                 handleSave();
               }
             }}
-            placeholder={t('subtask.labelPlaceholder', 'Grasp the apple')}
+            placeholder={labelHint || t('subtask.labelPlaceholder', 'Grasp the apple')}
             aria-label={t('subtask.label', 'Name')}
             autoFocus
             autoComplete="off"

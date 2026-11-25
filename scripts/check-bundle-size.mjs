@@ -47,8 +47,18 @@ if (!Number.isFinite(scale) || scale <= 0 || scale > 1) {
 //   136,134 (preloadLeRobotViewer, setParquetWasmUrl, the new error code and
 //   its message; c801b91 435,721 / 134,749); library Workers 447,748 /
 //   103,186 (each worker now downloads and compiles the WASM itself).
+//
+// 2026-11-23 review (walk 2, the review loop): library entry 448,976 raw /
+// 135.3 KiB gzip (the #131 head build 446,376 raw, under 0.4% left): one owner
+// for keys pressed on the page (usePageKeys), Confirm going on to the next
+// segment to review, J / K through the filter, N's task seed and the 1-based
+// episode number all run in the provider, which the entry holds. Ceiling
+// 448,000 / 138,500 -> 462,400 / 142,700 (~3%). After merging #132 and the
+// review's page-key guards (IME, Ctrl / Cmd / Alt, editable page, shadow DOM
+// target): 449,304 / 139,076. None of it can load lazily: the provider and the
+// key handler run before any segment UI chunk does.
 const budgets = {
-  libEntry: { raw: 448_000, gzip: 138_500 },
+  libEntry: { raw: 462_400, gzip: 142_700 },
   libCss: { raw: 360_000, gzip: 107_000 },
   webInitialJs: { raw: 2_465_000, gzip: 699_000 },
   webInitialCss: { raw: 199_000, gzip: 24_700 },

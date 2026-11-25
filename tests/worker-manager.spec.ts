@@ -88,6 +88,35 @@ describe('workerManager', () => {
     expect(worker.posted).toHaveLength(posts); // nothing sent to a failed worker
   });
 
+  it('cancels a pending call and every later one as AbortError once the worker is released', async () => {
+    const { createParquetWorker, terminateWorker } = await load();
+    const remote = createParquetWorker();
+    const worker = FakeWorker.created[0];
+    worker.started();
+    // A call the worker never answers: its loader is disposed (the viewer went away).
+    const pending = remote.clearCache();
+    terminateWorker(remote as never);
+    expect(worker.terminated).toBe(true);
+    await expect(pending).rejects.toMatchObject({ name: 'AbortError' });
+    await expect(pending).rejects.toThrow('the call was cancelled');
+    // A later call is cancelled at once, never Comlink's "Proxy has been released".
+    const posts = worker.posted.length;
+    const later = remote.readParquet(new ArrayBuffer(1));
+    await expect(later).rejects.toMatchObject({ name: 'AbortError' });
+    await expect(later).rejects.not.toThrow('Proxy has been released');
+    expect(worker.posted).toHaveLength(posts);
+  });
+
+  it('a worker that failed keeps its named failure for pending calls; once released, calls are cancelled', async () => {
+    const { createParquetWorker, terminateWorker } = await load();
+    const remote = createParquetWorker();
+    const pending = remote.clearCache();
+    FakeWorker.created[0].emit('error');
+    await expect(pending).rejects.toThrow(ENGINE);
+    terminateWorker(remote as never);
+    await expect(remote.clearCache()).rejects.toMatchObject({ name: 'AbortError' });
+  });
+
   it('keeps a worker whose handler threw after it started', async () => {
     const { createParquetWorker } = await load();
     const remote = createParquetWorker();

@@ -87,7 +87,7 @@ Studio 只映射官方 LeRobot 的 `subtask_index`。
 
 ## 深度图空白或无法解码
 
-官方深度数据集（如 [`lerobot/outdoor-depth`](https://huggingface.co/datasets/lerobot/outdoor-depth)）把 16 位灰度 TIFF 存在 parquet 中（`info.is_depth_map: true`）。Studio 会识别 TIFF/PNG/JPEG，将 16 位深度伪彩化后播放，而不是只按 JPEG 解码。若面板一直空白，请确认 feature 的 dtype 是 `image` 或 `depth`，并且存在 `observation.images.*`。
+官方深度数据集（如 [`lerobot/outdoor-depth`](https://huggingface.co/datasets/lerobot/outdoor-depth)）把 16 位灰度 TIFF 存在 parquet 中（`info.is_depth_map: true`）。Studio 会识别 TIFF/PNG/JPEG，将 16 位深度伪彩化后播放，而不是只按 JPEG 解码。若面板一直空白，请确认 feature 的 dtype 是 `image` 或 `depth`，并且存在 `observation.images.*`。只要 LeRobot 的任一标记成立，feature 就按深度图处理：`info.is_depth_map`，或 `info` / `video_info` 下较早的 `video.is_depth_map`。
 
 ---
 

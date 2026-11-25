@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useMemo, useRef, useEffect } from 'react';
+import React, { useState, useCallback, useMemo, useRef, useEffect, useId } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   Dialog,
@@ -19,7 +19,7 @@ import { ExportService } from '@/platform';
 import { WebExportAdapter } from '@/platform';
 import type { ExportFormat } from '@/core';
 import type { ExportProgress } from '@/core';
-import { SubtaskCoverageError, annotationToExportSegments } from '@/core';
+import { SubtaskCoverageError, annotationToExportSegments, episodeNumber } from '@/core';
 
 export interface ExportDialogProps {
   open: boolean;
@@ -28,6 +28,7 @@ export interface ExportDialogProps {
 
 export const ExportDialog: React.FC<ExportDialogProps> = ({ open, onOpenChange }) => {
   const { t } = useTranslation();
+  const fieldId = useId();
   const { dataLoader, info, tasks, subtasks } = useLeRobotData();
   const { episodesForExport, modifiedEpisodes, deletedEpisodes } = useLeRobotSelection();
   const { doc, fields } = useLeRobotSegments();
@@ -182,19 +183,22 @@ export const ExportDialog: React.FC<ExportDialogProps> = ({ open, onOpenChange }
           setExportError(
             segmentNumber > 0
               ? t('export.subtaskCoverageSegment', {
+                  number: episodeNumber(e.episodeIndex),
                   index: e.episodeIndex,
                   n: segmentNumber,
                   labeled: e.coverage.labeledFrames,
                   total: e.coverage.totalFrames,
                 })
               : e.coverage.labeledFrames === 0
-                ? t('export.subtaskCoverageMissing', 'Episode #{{index}} has no subtask labels.', {
+                ? t('export.subtaskCoverageMissing', 'Episode #{{number}} has no subtask labels.', {
+                    number: episodeNumber(e.episodeIndex),
                     index: e.episodeIndex,
                   })
                 : t(
                     'export.subtaskCoverageIncomplete',
-                    'Episode #{{index}} is missing labels ({{labeled}}/{{total}}).',
+                    'Episode #{{number}} is missing labels ({{labeled}}/{{total}}).',
                     {
+                      number: episodeNumber(e.episodeIndex),
                       index: e.episodeIndex,
                       labeled: e.coverage.labeledFrames,
                       total: e.coverage.totalFrames,
@@ -319,6 +323,7 @@ export const ExportDialog: React.FC<ExportDialogProps> = ({ open, onOpenChange }
                 <label className="flex items-start gap-2 text-sm">
                   <input
                     type="checkbox"
+                    id={`${fieldId}-include-subtasks`}
                     className="mt-0.5 h-3.5 w-3.5 shrink-0 accent-primary"
                     checked={includeSubtasks}
                     onChange={(event) => setIncludeSubtasks(event.target.checked)}
@@ -329,6 +334,7 @@ export const ExportDialog: React.FC<ExportDialogProps> = ({ open, onOpenChange }
                   <label className="ml-5 flex items-start gap-2 text-sm">
                     <input
                       type="checkbox"
+                      id={`${fieldId}-fill-subtask-gaps`}
                       className="mt-0.5 h-3.5 w-3.5 shrink-0 accent-primary"
                       checked={fillSubtaskGaps}
                       onChange={(event) => setFillSubtaskGaps(event.target.checked)}
@@ -343,6 +349,7 @@ export const ExportDialog: React.FC<ExportDialogProps> = ({ open, onOpenChange }
                 <label className="flex items-start gap-2">
                   <input
                     type="checkbox"
+                    id={`${fieldId}-compact-videos`}
                     className="mt-0.5 accent-primary"
                     checked={compactVideos}
                     onChange={(event) => setCompactVideos(event.target.checked)}

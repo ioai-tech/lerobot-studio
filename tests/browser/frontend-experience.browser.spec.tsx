@@ -150,7 +150,6 @@ describe('browser: frontend experience safeguards', () => {
 
       return (
         <EpisodeList
-          error={null}
           episodes={rows.map((row) => row.episode)}
           filteredEpisodes={rows}
           isLoading={false}

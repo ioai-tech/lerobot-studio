@@ -9,10 +9,12 @@ import {
 } from '../contexts/LeRobotContext';
 import { usePortalContainer } from '@/ui';
 import { fieldOptionForKey } from '@/core';
-import { isEventInsideStudio, isPlaybackShortcutBlocked } from './shortcutTarget';
+import { isPageKeyTarget, isPlaybackShortcutBlocked } from './shortcutTarget';
+import { usePageKeys, type LeRobotKeyboardScope } from './pageKeys';
 import {
   isSegmentShortcutTarget,
   matchFieldOptionKey,
+  matchMarkerStepKey,
   matchSegmentShortcut,
   SEGMENT_SHORTCUTS,
   type SegmentShortcutId,
@@ -33,8 +35,12 @@ export function episodeStepKey(event: {
   return null;
 }
 
-export const useKeyboardShortcuts = (enabled: boolean = true) => {
+export const useKeyboardShortcuts = (
+  enabled: boolean = true,
+  scope: LeRobotKeyboardScope = 'auto',
+) => {
   const portalContainer = usePortalContainer();
+  const ownsPageKeys = usePageKeys(portalContainer, scope, enabled);
   const { episodes, getFrameIndex, isLoading, info } = useLeRobotData();
   const { selectedEpisodeIndex, selectEpisode } = useLeRobotSelection();
   const { setFrameIndex, setPlaying, currentFrames, isPlaying } = useLeRobotPlayback();
@@ -223,10 +229,43 @@ export const useKeyboardShortcuts = (enabled: boolean = true) => {
     (e: KeyboardEvent) => {
       if (!enabledRef.current || isLoadingRef.current) return;
       if (e.defaultPrevented) return;
+      // A key that composes text (IME) belongs to the composition.
+      if (e.isComposing || e.keyCode === 229) return;
 
-      const target = e.target;
+      // The element the key was pressed on, also inside a shadow root (the
+      // window sees the shadow host as the target).
+      const target = e.composedPath?.()[0] ?? e.target;
+      const inside =
+        !portalContainer || (target instanceof Node && portalContainer.contains(target));
+      // A key pressed on the page itself (focus on <body>: the viewer just opened,
+      // the host navigated, a click landed where nothing takes focus) belongs to
+      // one viewer only: the one shown that opened or was used last (F-01). A
+      // combination with Ctrl, Cmd or Alt stays the page's and the browser's
+      // (a host's Ctrl+K, Alt+← back), and an editable page keeps every key.
+      const onPage =
+        !inside &&
+        isPageKeyTarget(target) &&
+        !e.ctrlKey &&
+        !e.metaKey &&
+        !e.altKey &&
+        ownsPageKeys();
+      if (!inside && !onPage) return;
+      // Shift+. / Shift+,: the next / previous marker of a navigable marker row,
+      // with or without the segment UI. Taken only when the episode has such a
+      // row, so the keys stay the page's otherwise.
+      if (onPage || isSegmentShortcutTarget(target, portalContainer)) {
+        const step = matchMarkerStepKey(e);
+        if (step && segmentsRef.current.stepMarker(step)) {
+          e.preventDefault();
+          e.stopPropagation();
+          return;
+        }
+      }
       // Segment keys exist only while the segment UI does (a plain viewer is unchanged).
-      if (segmentsRef.current.active && isSegmentShortcutTarget(target, portalContainer)) {
+      if (
+        segmentsRef.current.active &&
+        (onPage || isSegmentShortcutTarget(target, portalContainer))
+      ) {
         const id = matchSegmentShortcut(e);
         if (id) {
           if (runSegmentShortcut(id)) {
@@ -248,7 +287,6 @@ export const useKeyboardShortcuts = (enabled: boolean = true) => {
         }
       }
 
-      if (!isEventInsideStudio(target, portalContainer)) return;
       if (isPlaybackShortcutBlocked(target, e.key)) return;
 
       // One key map (s10 F-12): J / K step to the next / previous item. With the
@@ -392,7 +430,14 @@ export const useKeyboardShortcuts = (enabled: boolean = true) => {
         }
       }
     },
-    [selectEpisode, setFrameIndex, getFrameIndex, portalContainer, runSegmentShortcut],
+    [
+      selectEpisode,
+      setFrameIndex,
+      getFrameIndex,
+      portalContainer,
+      ownsPageKeys,
+      runSegmentShortcut,
+    ],
   );
 
   useEffect(() => {

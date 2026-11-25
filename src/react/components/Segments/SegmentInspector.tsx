@@ -5,6 +5,7 @@ import {
   CornerDownRight,
   Keyboard,
   Merge,
+  MoreHorizontal,
   Plus,
   Redo2,
   Repeat,
@@ -22,10 +23,19 @@ import {
   outTimeToFrame,
   segmentNumber,
   segmentReviewDisplay,
+  segmentTaskHint,
   type AnnotationField,
   type Segment,
 } from '@/core';
-import { Button, cn } from '@/ui';
+import {
+  Button,
+  cn,
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuShortcut,
+  DropdownMenuTrigger,
+} from '@/ui';
 import {
   useLeRobotData,
   useLeRobotPlayback,
@@ -35,7 +45,7 @@ import {
 } from '../../contexts/LeRobotContext';
 import { shortcutKeys, type SegmentShortcutId } from '../../hooks/segmentShortcuts';
 import { TimeField } from './TimeField';
-import { useNoticeText } from './annotationText';
+import { useNoticeText, useOriginText } from './annotationText';
 import { onRadioGroupKeyDown, radioTabIndex } from './radioGroup';
 import { BADGE_LOOK, REVIEW_TEXT } from './reviewDisplay';
 
@@ -55,6 +65,7 @@ function ActionButton({
   disabled,
   variant = 'ghost',
   pressed,
+  iconOnly = false,
 }: {
   shortcut: SegmentShortcutId;
   label: string;
@@ -63,24 +74,123 @@ function ActionButton({
   disabled?: boolean;
   variant?: 'ghost' | 'outline' | 'default';
   pressed?: boolean;
+  /** Compact bar: the icon alone; the label and key stay in the name and tooltip. */
+  iconOnly?: boolean;
 }) {
   const keys = shortcutKeys(shortcut);
+  const bare = iconOnly && icon != null;
   return (
     <Button
       type="button"
       size="xs"
       variant={variant}
-      className="h-7 gap-1 px-2"
+      className={cn('h-7 gap-1', bare ? 'w-7 px-0' : 'px-2')}
       onClick={onClick}
       disabled={disabled}
-      aria-keyshortcuts={keys.replace(/ \/ /g, ' ').replace('Ctrl/⌘', 'Control')}
+      aria-keyshortcuts={ariaKeys(keys)}
       aria-pressed={pressed}
+      aria-label={bare ? label : undefined}
       title={`${label} (${keys})`}
     >
       {icon}
-      <span>{label}</span>
-      <Kbd>{keys.split(' / ')[0]}</Kbd>
+      {bare ? null : (
+        <>
+          <span>{label}</span>
+          <Kbd>{keys.split(' / ')[0]}</Kbd>
+        </>
+      )}
     </Button>
+  );
+}
+
+function ariaKeys(keys: string): string {
+  return keys.replace(/ \/ /g, ' ').replace('Ctrl/⌘', 'Control');
+}
+
+/** The details panel uses its compact form below this width of its own (px)… */
+export const COMPACT_INSPECTOR_MAX_WIDTH_PX = 960;
+/** …or while the whole viewer is shorter than this (px): the panels keep their room. */
+export const COMPACT_INSPECTOR_MAX_VIEWER_HEIGHT_PX = 760;
+
+/**
+ * True while the details panel should be compact (F-07): narrower than
+ * `COMPACT_INSPECTOR_MAX_WIDTH_PX`, or in a viewer shorter than
+ * `COMPACT_INSPECTOR_MAX_VIEWER_HEIGHT_PX`. Both are inputs the compact form
+ * does not change, so it never flips back and forth.
+ */
+function useCompactInspector(ref: React.RefObject<HTMLElement | null>): boolean {
+  const [compact, setCompact] = useState(false);
+  React.useLayoutEffect(() => {
+    const section = ref.current;
+    if (!section) return;
+    const viewer = section.closest<HTMLElement>('[data-testid="lerobot-viewer-layout"]');
+    const update = () => {
+      const width = section.getBoundingClientRect().width;
+      const height = viewer?.getBoundingClientRect().height ?? Number.POSITIVE_INFINITY;
+      if (width <= 0) return;
+      setCompact(
+        width < COMPACT_INSPECTOR_MAX_WIDTH_PX ||
+          (height > 0 && height < COMPACT_INSPECTOR_MAX_VIEWER_HEIGHT_PX),
+      );
+    };
+    update();
+    if (typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver(update);
+    observer.observe(section);
+    if (viewer) observer.observe(viewer);
+    return () => observer.disconnect();
+  }, [ref]);
+  return compact;
+}
+
+type MoreAction = {
+  shortcut: SegmentShortcutId;
+  label: string;
+  onSelect: () => void;
+  disabled?: boolean;
+  checked?: boolean;
+};
+
+/** The compact bar's overflow: the less frequent actions, each with its key. */
+function MoreActions({ actions }: { actions: MoreAction[] }) {
+  const { t } = useTranslation();
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger
+        render={
+          <Button
+            type="button"
+            size="xs"
+            variant="ghost"
+            className="h-7 w-7 px-0"
+            aria-label={t('segments.actions.more')}
+            title={t('segments.actions.more')}
+          />
+        }
+      >
+        <MoreHorizontal />
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="start" className="min-w-56">
+        {actions.map((action) => {
+          const keys = shortcutKeys(action.shortcut);
+          return (
+            <DropdownMenuItem
+              key={action.shortcut}
+              disabled={action.disabled}
+              aria-keyshortcuts={ariaKeys(keys)}
+              onClick={action.onSelect}
+              className="text-xs"
+            >
+              {action.checked != null ? (
+                <Check className={cn('h-3.5 w-3.5', !action.checked && 'invisible')} aria-hidden />
+              ) : null}
+              <span>{action.label}</span>
+              <DropdownMenuShortcut>{keys.split(' / ')[0]}</DropdownMenuShortcut>
+            </DropdownMenuItem>
+          );
+        })}
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
 
@@ -101,6 +211,7 @@ function TextCommitInput({
   list?: string;
   className?: string;
 }) {
+  const id = React.useId();
   const [text, setText] = useState(value);
   const [editing, setEditing] = useState(false);
   useEffect(() => {
@@ -118,10 +229,12 @@ function TextCommitInput({
   };
   return (
     <label
+      htmlFor={id}
       className={cn('flex min-w-0 items-center gap-1 text-xs text-muted-foreground', className)}
     >
       <span className="shrink-0">{label}</span>
       <input
+        id={id}
         type="text"
         className="h-7 min-w-0 flex-1 rounded-md border border-input bg-transparent px-1.5 text-xs text-foreground focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/50 focus-visible:outline-none disabled:opacity-60"
         value={text}
@@ -168,8 +281,9 @@ function FieldControl({
 }) {
   const { t } = useTranslation();
   const value = segment.values[field.id] ?? null;
-  // Unique per viewer instance: two viewers on one page never share a datalist.
-  const listId = `${React.useId()}-suggestions`;
+  // Unique per viewer instance: two viewers on one page never share an id.
+  const baseId = React.useId();
+  const listId = `${baseId}-suggestions`;
   if (field.kind === 'select' && !editable) {
     // Read-only shows the chosen value as text, not disabled toggles that look
     // pressable (s10 F-16), like a read-only text field.
@@ -249,6 +363,7 @@ function FieldControl({
         {editable ? (
           <>
             <input
+              id={`${baseId}-add-tag`}
               type="text"
               aria-label={t('segments.inspector.addTag', { field: field.label })}
               placeholder={t('segments.inspector.addTagPlaceholder')}
@@ -388,10 +503,13 @@ export const SegmentInspector: React.FC = () => {
   const { beginPendingRange } = useLeRobotSubtask();
   const { setSubtaskDialogOpen } = useLeRobotUi();
   const noticeText = useNoticeText();
+  const originText = useOriginText();
   const fps = info?.fps || 30;
   const framesPerSecond = Math.max(1, Math.round(fps));
   const selected = segments.selected;
   const segment = selected?.segment ?? null;
+  /** The host's display text while the segment has no task (never the input's value). */
+  const taskHint = segment ? segmentTaskHint(segment) : null;
   const editable = segments.canEdit && !segment?.readOnly;
   const number = useMemo(
     () => (selected ? segmentNumber(segments.doc, selected.episodeIndex, selected.segment.id) : 0),
@@ -427,13 +545,116 @@ export const SegmentInspector: React.FC = () => {
   };
 
   const display = segment ? segmentReviewDisplay(segment) : null;
+  const origin = segment ? originText(segment.origin) : null;
   const reviewLabel = display ? t(REVIEW_TEXT[display]) : '';
+  const sectionRef = React.useRef<HTMLElement>(null);
+  const compact = useCompactInspector(sectionRef);
+
+  const startSubtask = () => {
+    segments.setSubtaskStart(getFrameIndex());
+    segments.showNotice('segments.notice.subtaskStartSet');
+  };
+  const nudgeActions: MoreAction[] = editable
+    ? [
+        {
+          shortcut: 'nudgeBack',
+          label: t('segments.actions.nudgeBack'),
+          onSelect: () => segments.nudgeEdgeNearPlayhead(-1),
+        },
+        {
+          shortcut: 'nudgeForward',
+          label: t('segments.actions.nudgeForward'),
+          onSelect: () => segments.nudgeEdgeNearPlayhead(1),
+        },
+        {
+          shortcut: 'nudgeBackSecond',
+          label: t('segments.actions.nudgeBackSecond'),
+          onSelect: () => segments.nudgeEdgeNearPlayhead(-framesPerSecond),
+        },
+        {
+          shortcut: 'nudgeForwardSecond',
+          label: t('segments.actions.nudgeForwardSecond'),
+          onSelect: () => segments.nudgeEdgeNearPlayhead(framesPerSecond),
+        },
+      ]
+    : [];
+  // The compact bar keeps the review loop's actions in sight and folds the rest
+  // into More, each still on its key (F-07).
+  const moreActions: MoreAction[] = compact
+    ? [
+        ...(editable
+          ? [
+              {
+                shortcut: 'setIn' as const,
+                label: t('segments.actions.setIn'),
+                onSelect: () => segments.setEdgeAtPlayhead('start'),
+              },
+              {
+                shortcut: 'setOut' as const,
+                label: t('segments.actions.setOut'),
+                onSelect: () => segments.setEdgeAtPlayhead('end'),
+              },
+            ]
+          : []),
+        ...nudgeActions,
+        {
+          shortcut: 'nextUncovered',
+          label: t('segments.actions.nextUncovered'),
+          onSelect: segments.jumpToNextUncovered,
+        },
+        {
+          shortcut: 'loop',
+          label: t('segments.actions.loop'),
+          onSelect: segments.toggleLoop,
+          checked: segments.loop,
+        },
+        ...(segments.canEditSubtasks
+          ? [
+              {
+                shortcut: 'subtaskStart' as const,
+                label: t('segments.actions.subtaskStart'),
+                onSelect: startSubtask,
+                checked: segments.subtaskStart != null,
+              },
+              {
+                shortcut: 'subtaskEnd' as const,
+                label: t('segments.actions.subtaskEnd'),
+                onSelect: subtaskEnd,
+                disabled: segments.subtaskStart == null,
+              },
+            ]
+          : []),
+        ...(segments.canEdit
+          ? [
+              {
+                shortcut: 'undo' as const,
+                label: t('segments.actions.undo'),
+                onSelect: segments.undo,
+                disabled: !segments.canUndo,
+              },
+              {
+                shortcut: 'redo' as const,
+                label: t('segments.actions.redo'),
+                onSelect: segments.redo,
+                disabled: !segments.canRedo,
+              },
+            ]
+          : []),
+        {
+          shortcut: 'help',
+          label: t('segments.actions.help'),
+          onSelect: () => segments.setShortcutSheetOpen(true),
+        },
+      ]
+    : [];
 
   return (
     <section
+      ref={sectionRef}
       className="flex min-w-0 flex-col gap-1.5 border-t border-border/50 px-2 pt-1.5"
       aria-label={t('segments.inspector.label')}
       data-testid="lerobot-segment-inspector"
+      data-compact={compact ? '' : undefined}
     >
       {segments.editNeedsWiderWindow ? (
         <p className="text-xs text-muted-foreground" data-testid="lerobot-narrow-editing">
@@ -449,15 +670,7 @@ export const SegmentInspector: React.FC = () => {
             >
               {reviewLabel}
             </span>
-            {segment.origin.kind === 'suggested' ? (
-              <span className="text-[10px] text-muted-foreground">
-                {segment.origin.confidence != null
-                  ? t('segments.origin.suggestedConfidence', {
-                      confidence: segment.origin.confidence.toFixed(2),
-                    })
-                  : t('segments.origin.suggested')}
-              </span>
-            ) : null}
+            {origin ? <span className="text-[10px] text-muted-foreground">{origin}</span> : null}
             {segment.status ? (
               <span
                 className={cn(
@@ -481,11 +694,13 @@ export const SegmentInspector: React.FC = () => {
                   value={frameToInTime(segment.startFrame, fps)}
                   onCommit={(text) => commitTime('start', text)}
                 />
-                <ActionButton
-                  shortcut="setIn"
-                  label={t('segments.actions.setIn')}
-                  onClick={() => segments.setEdgeAtPlayhead('start')}
-                />
+                {compact ? null : (
+                  <ActionButton
+                    shortcut="setIn"
+                    label={t('segments.actions.setIn')}
+                    onClick={() => segments.setEdgeAtPlayhead('start')}
+                  />
+                )}
               </span>
               <span className="flex items-start gap-1">
                 <TimeField
@@ -493,46 +708,38 @@ export const SegmentInspector: React.FC = () => {
                   value={frameToOutTime(segment.endFrame, fps)}
                   onCommit={(text) => commitTime('end', text)}
                 />
-                <ActionButton
-                  shortcut="setOut"
-                  label={t('segments.actions.setOut')}
-                  onClick={() => segments.setEdgeAtPlayhead('end')}
-                />
+                {compact ? null : (
+                  <ActionButton
+                    shortcut="setOut"
+                    label={t('segments.actions.setOut')}
+                    onClick={() => segments.setEdgeAtPlayhead('end')}
+                  />
+                )}
               </span>
-              <span
-                className="flex items-center gap-0.5"
-                role="group"
-                aria-label={t('segments.actions.nudge')}
-              >
-                <ActionButton
-                  shortcut="nudgeBack"
-                  label={t('segments.actions.nudgeBack')}
-                  onClick={() => segments.nudgeEdgeNearPlayhead(-1)}
-                />
-                <ActionButton
-                  shortcut="nudgeForward"
-                  label={t('segments.actions.nudgeForward')}
-                  onClick={() => segments.nudgeEdgeNearPlayhead(1)}
-                />
-                <ActionButton
-                  shortcut="nudgeBackSecond"
-                  label={t('segments.actions.nudgeBackSecond')}
-                  onClick={() => segments.nudgeEdgeNearPlayhead(-framesPerSecond)}
-                />
-                <ActionButton
-                  shortcut="nudgeForwardSecond"
-                  label={t('segments.actions.nudgeForwardSecond')}
-                  onClick={() => segments.nudgeEdgeNearPlayhead(framesPerSecond)}
-                />
-              </span>
+              {compact ? null : (
+                <span
+                  className="flex items-center gap-0.5"
+                  role="group"
+                  aria-label={t('segments.actions.nudge')}
+                >
+                  {nudgeActions.map((action) => (
+                    <ActionButton
+                      key={action.shortcut}
+                      shortcut={action.shortcut}
+                      label={action.label}
+                      onClick={action.onSelect}
+                    />
+                  ))}
+                </span>
+              )}
               <TextCommitInput
                 label={t('segments.inspector.task')}
                 value={segment.task ?? ''}
-                placeholder={t('segments.inspector.taskPlaceholder')}
+                placeholder={taskHint ?? t('segments.inspector.taskPlaceholder')}
                 onCommit={(text) =>
                   segments.updateSegment(segment.id, { task: text.trim() === '' ? null : text })
                 }
-                className="min-w-56 flex-1"
+                className={compact ? 'min-w-40 flex-1' : 'min-w-56 flex-1'}
               />
             </>
           ) : (
@@ -540,7 +747,16 @@ export const SegmentInspector: React.FC = () => {
               <span className="font-mono tabular-nums">
                 {frameToInTime(segment.startFrame, fps)}–{frameToOutTime(segment.endFrame, fps)}
               </span>
-              <span className="truncate">{segment.task ?? t('segments.inheritTask')}</span>
+              <span className="truncate">
+                {segment.task || (
+                  <span
+                    className="text-muted-foreground"
+                    data-task-hint={taskHint ? '' : undefined}
+                  >
+                    {taskHint ?? t('segments.inheritTask')}
+                  </span>
+                )}
+              </span>
             </span>
           )}
         </div>
@@ -562,7 +778,10 @@ export const SegmentInspector: React.FC = () => {
           ))}
         </div>
       ) : null}
-      <div className="flex min-w-0 flex-wrap items-center gap-1">
+      <div
+        className="flex min-w-0 flex-wrap items-center gap-1"
+        data-testid="lerobot-segment-actions"
+      >
         {segments.canEdit ? (
           <>
             <ActionButton
@@ -570,6 +789,7 @@ export const SegmentInspector: React.FC = () => {
               label={t('segments.actions.new')}
               icon={<Plus />}
               onClick={segments.createAtPlayhead}
+              iconOnly={compact}
             />
             <ActionButton
               shortcut="split"
@@ -577,6 +797,7 @@ export const SegmentInspector: React.FC = () => {
               icon={<Scissors />}
               onClick={segments.splitAtPlayhead}
               disabled={segments.episodeSegments.length === 0}
+              iconOnly={compact}
             />
             <ActionButton
               shortcut="merge"
@@ -584,6 +805,7 @@ export const SegmentInspector: React.FC = () => {
               icon={<Merge />}
               onClick={segments.mergeWithNext}
               disabled={!editable}
+              iconOnly={compact}
             />
             <ActionButton
               shortcut="delete"
@@ -591,17 +813,15 @@ export const SegmentInspector: React.FC = () => {
               icon={<Trash2 />}
               onClick={segments.deleteSelected}
               disabled={!editable}
+              iconOnly={compact}
             />
-            {segments.canEditSubtasks ? (
+            {segments.canEditSubtasks && !compact ? (
               <>
                 <ActionButton
                   shortcut="subtaskStart"
                   label={t('segments.actions.subtaskStart')}
                   icon={<CornerDownRight />}
-                  onClick={() => {
-                    segments.setSubtaskStart(getFrameIndex());
-                    segments.showNotice('segments.notice.subtaskStartSet');
-                  }}
+                  onClick={startSubtask}
                   pressed={segments.subtaskStart != null}
                 />
                 <ActionButton
@@ -614,58 +834,66 @@ export const SegmentInspector: React.FC = () => {
             ) : null}
           </>
         ) : null}
-        <span className="mx-1 h-5 w-px bg-border" aria-hidden />
+        <span className="mx-1 h-5 w-px shrink-0 bg-border" aria-hidden />
         <ActionButton
           shortcut="previous"
           label={t('segments.actions.previous')}
           icon={<SkipBack />}
           onClick={() => segments.selectRelative(-1)}
+          iconOnly={compact}
         />
         <ActionButton
           shortcut="next"
           label={t('segments.actions.next')}
           icon={<SkipForward />}
           onClick={() => segments.selectRelative(1)}
+          iconOnly={compact}
         />
-        <ActionButton
-          shortcut="nextUncovered"
-          label={t('segments.actions.nextUncovered')}
-          onClick={segments.jumpToNextUncovered}
-        />
-        <ActionButton
-          shortcut="loop"
-          label={t('segments.actions.loop')}
-          icon={<Repeat />}
-          onClick={segments.toggleLoop}
-          pressed={segments.loop}
-          variant={segments.loop ? 'outline' : 'ghost'}
-        />
-        {segments.canEdit ? (
+        {compact ? (
+          <MoreActions actions={moreActions} />
+        ) : (
           <>
             <ActionButton
-              shortcut="undo"
-              label={t('segments.actions.undo')}
-              icon={<Undo2 />}
-              onClick={segments.undo}
-              disabled={!segments.canUndo}
+              shortcut="nextUncovered"
+              label={t('segments.actions.nextUncovered')}
+              onClick={segments.jumpToNextUncovered}
             />
             <ActionButton
-              shortcut="redo"
-              label={t('segments.actions.redo')}
-              icon={<Redo2 />}
-              onClick={segments.redo}
-              disabled={!segments.canRedo}
+              shortcut="loop"
+              label={t('segments.actions.loop')}
+              icon={<Repeat />}
+              onClick={segments.toggleLoop}
+              pressed={segments.loop}
+              variant={segments.loop ? 'outline' : 'ghost'}
+            />
+            {segments.canEdit ? (
+              <>
+                <ActionButton
+                  shortcut="undo"
+                  label={t('segments.actions.undo')}
+                  icon={<Undo2 />}
+                  onClick={segments.undo}
+                  disabled={!segments.canUndo}
+                />
+                <ActionButton
+                  shortcut="redo"
+                  label={t('segments.actions.redo')}
+                  icon={<Redo2 />}
+                  onClick={segments.redo}
+                  disabled={!segments.canRedo}
+                />
+              </>
+            ) : null}
+            <ActionButton
+              shortcut="help"
+              label={t('segments.actions.help')}
+              icon={<Keyboard />}
+              onClick={() => segments.setShortcutSheetOpen(true)}
             />
           </>
-        ) : null}
-        <ActionButton
-          shortcut="help"
-          label={t('segments.actions.help')}
-          icon={<Keyboard />}
-          onClick={() => segments.setShortcutSheetOpen(true)}
-        />
+        )}
         {segments.canEdit ? (
-          <span className="ml-auto flex items-center gap-1">
+          <span className="ml-auto flex shrink-0 items-center gap-1">
             <ActionButton
               shortcut="confirmAll"
               label={t('segments.actions.confirmAll')}

@@ -8,7 +8,7 @@ import {
   useLeRobotUi,
 } from '../../contexts/LeRobotContext';
 import { LazySegmentList } from '../Segments/lazySegments';
-import type { EpisodeMetadata } from '@/core';
+import { episodeNumber, type EpisodeMetadata } from '@/core';
 import { LazyEditTaskDialog } from '../dialogs/lazyDialogs';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/ui';
 import { Button } from '@/ui';
@@ -26,7 +26,7 @@ const BatchTrimDialog = lazyChunk(
 
 export const EpisodeSidebar: React.FC = () => {
   const { t } = useTranslation();
-  const { episodes, tasks, isLoading, error, info, dataLoader, versionCapability, isReadOnly } =
+  const { episodes, tasks, isLoading, info, dataLoader, versionCapability, isReadOnly } =
     useLeRobotData();
   const {
     selectEpisode,
@@ -92,7 +92,8 @@ export const EpisodeSidebar: React.FC = () => {
         const task = tasks[effective.task_index || 0] || '';
         const taskStr = (effective.tasks && effective.tasks[0]) || task;
         return (
-          String(ep.episode_index).includes(lowerSearch) ||
+          // People search by the number they read (#1 is episode_index 0).
+          String(episodeNumber(ep.episode_index)).includes(lowerSearch) ||
           taskStr.toLowerCase().includes(lowerSearch) ||
           (Array.isArray(effective.tasks) &&
             effective.tasks.some((s: string) => s.toLowerCase().includes(lowerSearch)))
@@ -290,7 +291,6 @@ export const EpisodeSidebar: React.FC = () => {
 
       <div className="flex flex-1 min-h-0 min-w-0 flex-col overflow-hidden">
         <EpisodeList
-          error={error}
           episodes={episodes}
           filteredEpisodes={listRows}
           isLoading={isLoading}
@@ -343,6 +343,7 @@ export const EpisodeSidebar: React.FC = () => {
                 {t('editTask.taskDescription')}
               </p>
               <Textarea
+                aria-label={t('editTask.taskDescription')}
                 value={bulkEditText}
                 onChange={(e) => setBulkEditText(e.target.value)}
                 placeholder={t('editTask.taskPlaceholder', 'Enter task description...')}
