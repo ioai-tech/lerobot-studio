@@ -664,7 +664,7 @@ describe('browser: embedding — layout and time axis', () => {
       .toBeGreaterThanOrEqual(360);
     const tops = videos().map((video) => Math.round(video.getBoundingClientRect().top));
     expect(new Set(tops).size).toBe(1);
-    const chart = host.querySelector('[data-testid="chart-groups"]')!.getBoundingClientRect();
+    const chart = host.querySelector('[data-testid="feature-chart"]')!.getBoundingClientRect();
     expect(chart.height).toBeGreaterThan(100);
   });
 
@@ -680,9 +680,11 @@ describe('browser: embedding — layout and time axis', () => {
     await expect
       .poll(() => Math.abs(groupOf(videos()[0]).height - expected()), { timeout: 10_000 })
       .toBeLessThanOrEqual(2);
-    // The chart panel (its charts, or their placeholders while loading).
+    // The chart panel (its chart, or its placeholder while loading).
     const chartPanel = () =>
-      host.querySelector('[data-testid="chart-groups"], [data-testid="chart-groups-placeholder"]');
+      host.querySelector(
+        '[data-testid="feature-chart"], [data-testid="feature-chart-placeholder"]',
+      );
     await expect.poll(() => chartPanel() != null, { timeout: 30_000 }).toBe(true);
     const chart = groupOf(chartPanel()!);
     expect(Math.abs(chart.height - (dock().height - expected()))).toBeLessThanOrEqual(2);
@@ -836,7 +838,7 @@ describe('browser: embedding — layout and time axis', () => {
     await pause();
     await expect
       .poll(() => host.querySelectorAll('[data-chart-playhead]').length, { timeout: 30_000 })
-      .toBeGreaterThanOrEqual(2);
+      .toBe(1);
     const track = slider().getBoundingClientRect();
     const xOfFrame = (frame: number) => track.left + (frame / FRAMES) * track.width;
 
@@ -861,8 +863,7 @@ describe('browser: embedding — layout and time axis', () => {
       // Slider thumb centre.
       const thumb = slider().lastElementChild!.getBoundingClientRect();
       expect(thumb.left + thumb.width / 2).toBeCloseTo(xOfFrame(frame), 0);
-      // Every chart: the playhead sits at the same fraction of its plot, and
-      // all charts share one left edge.
+      // The chart: the playhead sits at the same fraction of its plot.
       const playheads = [...host.querySelectorAll<HTMLElement>('[data-chart-playhead]')];
       const lefts = new Set<number>();
       for (const line of playheads) {

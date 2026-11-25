@@ -141,13 +141,36 @@ const CHART_VAR_KEYS = [
   '--primary',
 ] as const;
 
-/** Palette of 14 colors from design tokens (--chart-1..5, --primary, then repeat). */
+/**
+ * Colors after the theme's own (`--chart-1..5`, `--primary`): hues between the
+ * default tokens' (blue 255, orange 45, green 145, purple 300, red 20) and
+ * darker / lighter variants of them, with a lightness for each theme. A chart
+ * with many lines (three 7-dim poses and a state) gets 14 distinct colors
+ * before any repeats, instead of the 6 tokens cycling.
+ */
+const EXTRA_CHART_COLORS: ReadonlyArray<{ light: string; dark: string; fallback: string }> = [
+  { light: 'oklch(0.6 0.12 205)', dark: 'oklch(0.76 0.12 205)', fallback: '#0891b2' },
+  { light: 'oklch(0.6 0.14 95)', dark: 'oklch(0.8 0.14 95)', fallback: '#a16207' },
+  { light: 'oklch(0.58 0.21 340)', dark: 'oklch(0.74 0.17 340)', fallback: '#db2777' },
+  { light: 'oklch(0.5 0.1 180)', dark: 'oklch(0.82 0.1 180)', fallback: '#0f766e' },
+  { light: 'oklch(0.45 0.16 260)', dark: 'oklch(0.86 0.08 260)', fallback: '#1e3a8a' },
+  { light: 'oklch(0.48 0.12 50)', dark: 'oklch(0.86 0.08 50)', fallback: '#92400e' },
+  { light: 'oklch(0.45 0.12 145)', dark: 'oklch(0.88 0.1 145)', fallback: '#166534' },
+  { light: 'oklch(0.45 0.16 305)', dark: 'oklch(0.86 0.08 305)', fallback: '#6b21a8' },
+];
+
+/**
+ * Palette of 14 canvas-safe colors: the design tokens first (--chart-1..5,
+ * --primary), so a host's theme leads, then {@link EXTRA_CHART_COLORS}.
+ */
 export function getChartPalette(root: HTMLElement | null): string[] {
-  const out: string[] = [];
   const fallbacks = ['#2563eb', '#dc2626', '#059669', '#ca8a04', '#7c3aed', '#0d9488'];
-  for (let i = 0; i < 14; i++) {
-    const key = CHART_VAR_KEYS[i % CHART_VAR_KEYS.length];
-    out.push(getCssVarColor(root, key!, fallbacks[i % fallbacks.length]));
+  const out = CHART_VAR_KEYS.map((key, i) => getCssVarColor(root, key, fallbacks[i]));
+  const dark = !!(
+    root ?? (typeof document !== 'undefined' ? document.documentElement : null)
+  )?.closest?.('.dark');
+  for (const color of EXTRA_CHART_COLORS) {
+    out.push(resolveCssColorToRgb(dark ? color.dark : color.light, root, color.fallback));
   }
   return out;
 }

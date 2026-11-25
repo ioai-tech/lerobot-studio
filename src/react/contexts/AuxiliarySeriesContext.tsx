@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { makeChartSeriesId } from '../components/panels/ChartPanel/chartPanelModel';
-import type { ChartGroupData } from '../components/panels/ChartPanel/FeatureChartGroups';
+import type { ChartGroupData } from '../components/panels/ChartPanel/FeatureChart';
 import { nearestSampleIndex } from '../components/panels/ChartPanel/chartGroupsModel';
 import { EpisodeSetDataSource } from '../../platform/datasource/EpisodeSetDataSource';
 import {

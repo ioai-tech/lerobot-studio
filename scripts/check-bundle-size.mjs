@@ -57,6 +57,19 @@ if (!Number.isFinite(scale) || scale <= 0 || scale > 1) {
 // review's page-key guards (IME, Ctrl / Cmd / Alt, editable page, shadow DOM
 // target): 449,304 / 139,076. None of it can load lazily: the provider and the
 // key handler run before any segment UI chunk does.
+//
+// 2026-11-25 review (1.7.2: one chart again; dependencies updated):
+// - Web lazy Dockview 96,289 / 29,162 (main bf68fcf 90.1 KiB / 26.9 KiB, under
+//   0.6% left): the chart panel's FeatureChart (one uPlot for every series,
+//   the clock join, the hover tooltip that fits the chart, the filter-menu
+//   emphasis), buildSeriesStyles and the 14-color palette. It is the chart
+//   panel itself, already lazy. Ceiling 92,800 / 27,600 -> 99,200 / 30,100.
+// - Largest web chunk: vendor-*.js 1,227,586 / 344,806 (main 1.10 MiB /
+//   315.1 KiB). Not growth: Vite 8.3.8 places more shared code in vendor, and
+//   the web initial synchronous JS that holds it fell from 2.31 MiB / 671.1 KiB
+//   to 2.24 MiB / 644.0 KiB. Ceiling 1,186,000 / 332,000 -> 1,264,500 / 355,200.
+// - Library lazy Dockview 585.9 KiB / 137.8 KiB (main 583.8 / 136.8): within
+//   its ceiling, unchanged.
 const budgets = {
   libEntry: { raw: 462_400, gzip: 142_700 },
   libCss: { raw: 360_000, gzip: 107_000 },
@@ -65,13 +78,13 @@ const budgets = {
   libDataLoader: { raw: 66_200, gzip: 17_600 },
   webDataLoader: { raw: 54_100, gzip: 15_800 },
   libDockview: { raw: 638_000, gzip: 149_500 },
-  webDockview: { raw: 92_800, gzip: 27_600 },
+  webDockview: { raw: 99_200, gzip: 30_100 },
   libWorkerWasm: { raw: 5_100_000, gzip: 1_735_000 },
   libWorkers: { raw: 459_000, gzip: 105_600 },
   webWorkerWasm: { raw: 5_100_000, gzip: 1_735_000 },
   webWorkers: { raw: 459_000, gzip: 105_600 },
   largestLibJs: { raw: 638_000, gzip: 149_500 },
-  largestWebJs: { raw: 1_186_000, gzip: 332_000 },
+  largestWebJs: { raw: 1_264_500, gzip: 355_200 },
   npmTarball: { raw: 8_020_000, gzip: 2_505_000 },
 };
 

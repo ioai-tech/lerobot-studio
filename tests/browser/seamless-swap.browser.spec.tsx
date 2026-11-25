@@ -190,7 +190,7 @@ function watchView(done: () => boolean) {
       if (/Reading data|Initializing|Loading layout/.test(text)) seen.loadingText = true;
       if (!slider()) seen.noSlider = true;
       if (videos().length !== 2) seen.noVideo = true;
-      if (!host!.querySelector('[data-testid="chart-groups"]')) seen.noCharts = true;
+      if (!host!.querySelector('[data-testid="feature-chart"]')) seen.noCharts = true;
       // Each camera shows a decoded frame, or the frame held while its new URL loads.
       for (const video of videos()) {
         const hold = video.parentElement?.querySelector<HTMLElement>(

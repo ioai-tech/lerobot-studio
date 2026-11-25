@@ -1,7 +1,5 @@
 import React, { useEffect, useRef, useMemo, useState, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
-import 'uplot/dist/uPlot.min.css';
-import './uplot-theme.css';
 import {
   useLeRobotPlayback,
   useLeRobotData,
@@ -15,20 +13,24 @@ import { ChartJointFilterDropdown } from './ChartJointFilterDropdown';
 import { buildFeatureFilterTree, getVisibleJointNamesFromSelected } from '@/core';
 import { applyGroupSelection, episodeTimeDomain } from '@/core';
 import { getChartSeriesKind, getDefaultChartFeatureKeys } from '@/core';
+import { getChartPalette, getLerobotRoot } from '../../../lib/chartTheme';
 import {
-  buildJointColorMap,
+  buildSeriesStyles,
   collectChartDimensions,
-  collectUniqueJointNames,
   computeChartDataCore,
+  type ChartSeriesStyle,
 } from './chartPanelModel';
 import { SplitChartsSheet } from './Split/SplitChartsSheet';
-import { FeatureChartGroups, type ChartGroupData } from './FeatureChartGroups';
+import { FeatureChart, type ChartGroupData } from './FeatureChart';
 import { ChartGroupsPlaceholder } from './ChartGroupsPlaceholder';
 import {
+  auxiliaryFilterNodes,
   buildFeatureChartGroups,
   columnDimension,
   defaultVisibleSeriesIds,
   nearestSampleIndex,
+  type ChartGroup,
+  type ChartGroupSeries,
 } from './chartGroupsModel';
 import { useAuxiliarySeries } from '../../../contexts/AuxiliarySeriesContext';
 
@@ -47,7 +49,8 @@ const ChartPanelContent: React.FC<ChartPanelProps> = ({ params }) => {
   const { selectedEpisodeIndex } = useLeRobotSelection();
   const { resolvedTheme } = useTheme();
   const { auxiliaryGroups } = useAuxiliarySeries();
-  const hoveredSeriesIdsRef = useRef<Set<string> | null>(null);
+  /** Series hovered in the filter menu: the chart fades the others. */
+  const [highlightedIds, setHighlightedIds] = useState<ReadonlySet<string> | null>(null);
 
   const [selectedSeriesIds, setSelectedSeriesIds] = useState<Set<string>>(new Set());
   const [jointSearch, setJointSearch] = useState('');
@@ -78,8 +81,6 @@ const ChartPanelContent: React.FC<ChartPanelProps> = ({ params }) => {
     [targetFeatures, info?.features, chartData],
   );
 
-  const allJointNames = useMemo(() => collectUniqueJointNames(chartDimensions), [chartDimensions]);
-
   const allSeriesIds = useMemo(
     () => [
       ...chartDimensions.map((d) => d.id),
@@ -109,13 +110,7 @@ const ChartPanelContent: React.FC<ChartPanelProps> = ({ params }) => {
     [chartData, currentFrames, targetFeatures, info?.features, resolvedTheme],
   );
 
-  const fallbackJointColorMap = useMemo(
-    () => buildJointColorMap(allJointNames, resolvedTheme),
-    [allJointNames, resolvedTheme],
-  );
-  const jointColorMap = chartCore?.jointColorMap ?? fallbackJointColorMap;
-
-  // Defaults (the first dimensions of every group) are offered once per
+  // Defaults (every dimension of every group) are offered once per
   // series id, so a group that appears later (an auxiliary series loaded
   // after the dataset) starts visible too, unless the user cleared the
   // selection. A new dataset starts over.
@@ -174,12 +169,6 @@ const ChartPanelContent: React.FC<ChartPanelProps> = ({ params }) => {
       });
   }, [targetFeatures, info?.features, chartData, pendingChartColumns, frameTimes]);
 
-  /** The groups the charts will have, from the dataset's features alone (for the loading state). */
-  const placeholderGroups = useMemo(
-    () => buildFeatureChartGroups(targetFeatures, info?.features, {}),
-    [targetFeatures, info?.features],
-  );
-
   const groups = useMemo(
     () => [...featureGroups, ...(frameTimes.length > 0 ? auxiliaryGroups : [])],
     [featureGroups, auxiliaryGroups, frameTimes.length],
@@ -215,9 +204,35 @@ const ChartPanelContent: React.FC<ChartPanelProps> = ({ params }) => {
     [setFrameIndex],
   );
 
+  // The filter menu is the chart's only series picker: features, then auxiliary series.
   const featureFilterNodes = useMemo(
-    () => buildFeatureFilterTree(chartCore?.dimensions ?? chartDimensions),
-    [chartCore?.dimensions, chartDimensions],
+    () => [
+      ...buildFeatureFilterTree(chartCore?.dimensions ?? chartDimensions),
+      ...auxiliaryFilterNodes(auxiliaryGroups.map((data) => data.group)),
+    ],
+    [chartCore?.dimensions, chartDimensions, auxiliaryGroups],
+  );
+
+  // One style per series, shared by the chart and the filter menu's color dots.
+  const seriesStyles = useMemo(
+    () =>
+      buildSeriesStyles(
+        chartCore?.dimensions ?? chartDimensions,
+        auxiliaryGroups.flatMap((data) => data.group.series.map((series) => series.id)),
+        getChartPalette(getLerobotRoot()),
+        resolvedTheme === 'dark' ? '#94a3b8' : '#64748b',
+      ),
+    [chartCore?.dimensions, chartDimensions, auxiliaryGroups, resolvedTheme],
+  );
+  const styleOf = useCallback(
+    (_group: ChartGroup, series: ChartGroupSeries): ChartSeriesStyle =>
+      seriesStyles.get(series.id) ?? { color: '#64748b' },
+    [seriesStyles],
+  );
+
+  const frameAt = useCallback(
+    (time: number) => Math.max(0, nearestSampleIndex(frameTimesRef.current, time)),
+    [],
   );
 
   const toggleSeries = useCallback((seriesId: string) => {
@@ -249,40 +264,27 @@ const ChartPanelContent: React.FC<ChartPanelProps> = ({ params }) => {
   const handleFilterHoverChange = useCallback(
     (payload: { type: 'feature' | 'group' | 'item'; id: string; itemIds: string[] } | null) => {
       const next = payload ? new Set(payload.itemIds) : null;
-      const prev = hoveredSeriesIdsRef.current;
-
-      const same =
-        (!prev && !next) ||
-        (!!prev &&
-          !!next &&
-          prev.size === next.size &&
-          Array.from(prev).every((key) => next.has(key)));
-      if (same) return;
-
-      hoveredSeriesIdsRef.current = next;
+      setHighlightedIds((prev) => {
+        const same =
+          (!prev && !next) ||
+          (!!prev &&
+            !!next &&
+            prev.size === next.size &&
+            Array.from(prev).every((key) => next.has(key)));
+        return same ? prev : next;
+      });
     },
     [],
   );
 
-  const dimensionById = useMemo(() => {
-    const map = new Map<string, { jointName: string }>();
-    (chartCore?.dimensions ?? chartDimensions).forEach((dim) => {
-      map.set(dim.id, { jointName: dim.jointName });
-    });
-    return map;
-  }, [chartCore?.dimensions, chartDimensions]);
-
   const getSeriesItemColor = useCallback(
-    (seriesId: string) => {
-      const dim = dimensionById.get(seriesId);
-      return dim ? jointColorMap[dim.jointName] : undefined;
-    },
-    [dimensionById, jointColorMap],
+    (seriesId: string) => seriesStyles.get(seriesId)?.color,
+    [seriesStyles],
   );
 
   const onJointFilterMenuOpenChange = useCallback((open: boolean) => {
     if (open) return;
-    hoveredSeriesIdsRef.current = null;
+    setHighlightedIds(null);
   }, []);
 
   const summarySelectedCountLabel = useCallback(
@@ -359,11 +361,13 @@ const ChartPanelContent: React.FC<ChartPanelProps> = ({ params }) => {
 
       <div className="flex-1 min-h-0 relative">
         {groups.length > 0 ? (
-          <FeatureChartGroups
+          <FeatureChart
             groups={groups}
             selectedIds={selectedSeriesIds}
-            onToggleSeries={toggleSeries}
+            highlightedIds={highlightedIds}
+            styleOf={styleOf}
             xRange={xRange}
+            frameAt={frameAt}
             getPlayheadTime={getPlayheadTime}
             subscribePlayheadTime={subscribePlayheadTime}
             onSeekTime={onSeekTime}
@@ -376,7 +380,7 @@ const ChartPanelContent: React.FC<ChartPanelProps> = ({ params }) => {
             {error && !isLoading ? null : selectedEpisodeIndex === null && !isLoading ? (
               <PanelEmptyState message={t('playback.noData')} />
             ) : (
-              <ChartGroupsPlaceholder groups={placeholderGroups} />
+              <ChartGroupsPlaceholder />
             )}
           </div>
         )}

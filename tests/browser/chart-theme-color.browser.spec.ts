@@ -63,5 +63,7 @@ describe('chartTheme canvas-safe color resolution', () => {
     }
     // First entries should be distinct chromatic colors, not all black.
     expect(new Set(palette.slice(0, 5)).size).toBeGreaterThan(1);
+    // The colors after the tokens are new ones: no repeats among the extras.
+    expect(new Set(palette.slice(6)).size).toBe(8);
   });
 });

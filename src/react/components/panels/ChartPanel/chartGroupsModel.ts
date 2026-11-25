@@ -1,14 +1,12 @@
 /**
- * Chart groups: one chart per feature (`action`, `observation.state`, an
- * auxiliary series …), titled by the feature key, series named from
- * `info.features[key].names`, with units when the feature declares them.
+ * Chart groups: the series of one feature (`action`, `observation.state`, an
+ * auxiliary series …), named from `info.features[key].names`, with units when
+ * the feature declares them. Every group is drawn in the panel's one chart; a
+ * group is also a node of its filter menu.
  */
-import type { LeRobotFeature, LeRobotInfo } from '@/core';
+import type { FeatureFilterNode, LeRobotFeature, LeRobotInfo } from '@/core';
 import type { NumericalColumnData } from '@/platform';
 import { makeChartSeriesId } from './chartPanelModel';
-
-/** Dimensions shown by default per chart group (the rest are one click away). */
-export const DEFAULT_VISIBLE_DIMENSIONS = 8;
 
 export interface ChartGroupSeries {
   /** Stable id (`<feature>::<dim>`), shared with the series picker. */
@@ -78,11 +76,12 @@ export function buildFeatureChartGroups(
   return groups;
 }
 
-/** Ids visible by default: the first `DEFAULT_VISIBLE_DIMENSIONS` of every group. */
+/**
+ * Ids visible by default: every dimension of every group, as in the one chart
+ * of 1.4. The filter menu narrows them.
+ */
 export function defaultVisibleSeriesIds(groups: ChartGroup[]): string[] {
-  return groups.flatMap((group) =>
-    group.series.slice(0, DEFAULT_VISIBLE_DIMENSIONS).map((series) => series.id),
-  );
+  return groups.flatMap((group) => group.series.map((series) => series.id));
 }
 
 /**
@@ -202,4 +201,24 @@ export function nearestSampleIndex(times: ArrayLike<number>, time: number): numb
     else hi = mid;
   }
   return time - times[lo]! <= times[hi]! - time ? lo : hi;
+}
+
+/**
+ * Filter-menu nodes for auxiliary series (one node per series, one subgroup of
+ * its columns), so the panel's filter menu picks every line the chart can draw.
+ */
+export function auxiliaryFilterNodes(groups: ChartGroup[]): FeatureFilterNode[] {
+  return groups
+    .filter((group) => group.kind === 'auxiliary' && group.series.length > 0)
+    .map((group) => ({
+      id: group.id,
+      label: group.title,
+      subgroups: [
+        {
+          id: `${group.id}::all`,
+          label: group.title,
+          items: group.series.map((series) => ({ id: series.id, label: series.label })),
+        },
+      ],
+    }));
 }
