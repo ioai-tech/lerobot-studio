@@ -55,6 +55,17 @@ const TOOLTIP_MAX_WIDTH_PX = 320;
 const TOOLTIP_MIN_WIDTH_PX = 140;
 const TOOLTIP_PREFERRED_MIN_WIDTH_PX = 180;
 
+/** Longest series name shown whole in the tooltip; longer ones keep their start and end. */
+const TOOLTIP_LABEL_MAX_CHARS = 22;
+
+/** `text` cut in the middle to at most `max` characters (start and end kept). */
+function middleEllipsis(text: string, max: number): string {
+  if (text.length <= max) return text;
+  const tail = Math.ceil((max - 1) * 0.6);
+  const head = max - 1 - tail;
+  return `${text.slice(0, head)}…${text.slice(text.length - tail)}`;
+}
+
 function formatValue(value: number | null | undefined): string {
   if (value == null || !Number.isFinite(value)) return '—';
   const abs = Math.abs(value);
@@ -316,11 +327,14 @@ export function FeatureChart({
           const swatch = document.createElement('span');
           swatch.setAttribute('aria-hidden', 'true');
           swatch.style.cssText = `display:inline-block;width:12px;height:0;flex:none;border-top:2px ${row.item.style.dash ? 'dashed' : 'solid'} ${row.item.style.color};`;
+          // The name keeps its room (short names never truncate; long ones
+          // keep their start and end, where names like *_rad / *_dist differ);
+          // the feature title takes what is left.
           const label = document.createElement('span');
-          label.className = 'truncate';
-          label.textContent = row.item.series.label;
+          label.className = 'shrink-0';
+          label.textContent = middleEllipsis(row.item.series.label, TOOLTIP_LABEL_MAX_CHARS);
           const feature = document.createElement('span');
-          feature.className = 'min-w-0 shrink truncate font-normal text-muted-foreground';
+          feature.className = 'min-w-0 flex-1 truncate font-normal text-muted-foreground';
           feature.textContent = row.item.group.title;
           name.append(swatch, label, feature);
           const value = document.createElement('span');
@@ -333,6 +347,7 @@ export function FeatureChart({
         if (rows.length > shown.length) {
           const more = document.createElement('div');
           more.className = 'px-2 pb-1 text-[10px] leading-3 text-muted-foreground';
+          more.dataset.tooltipMore = '';
           more.textContent = t('chart.tooltip.moreSeries', { count: rows.length - shown.length });
           tip.append(more);
         }
@@ -349,6 +364,11 @@ export function FeatureChart({
         const moreLine = rows.length > byDistance.length ? 0 : 14;
         const fit = Math.floor((available - others - moreLine) / rowHeight);
         render(Math.max(1, Math.min(byDistance.length - 1, fit)));
+        // A very short chart: drop the count, then the header, keeping one row.
+        for (const optional of [tip.querySelector('[data-tooltip-more]'), tip.firstElementChild]) {
+          if (tip.offsetHeight <= available || !optional || tip.childElementCount <= 1) break;
+          optional.remove();
+        }
       }
 
       placement = computeTooltipPlacement({

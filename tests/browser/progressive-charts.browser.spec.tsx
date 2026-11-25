@@ -204,3 +204,53 @@ it('with nothing selected, says to pick series instead of drawing an empty plot'
     await unmount();
   }
 });
+
+it('a narrow tooltip keeps short names whole and long names apart; a tiny chart still fits it', async () => {
+  const { host, render, unmount } = await mount(330, 120);
+  const pose = (id: string, names: string[]): ChartGroupData => ({
+    group: {
+      id,
+      title: id,
+      unit: null,
+      kind: 'feature',
+      series: names.map((label, dimIndex) => ({ id: `${id}:${dimIndex}`, label, dimIndex })),
+    },
+    x,
+    values: (seriesId) => Float64Array.from([1, 2, 3, 4], (v) => v + Number(seriesId.slice(-1))),
+  });
+  const groups = [
+    pose('observation.pose.right_gripper', ['x', 'qy']),
+    pose('observation.state', [
+      'left_Left_Gripper_IntegratedPose_rad',
+      'left_Left_Gripper_IntegratedPose_dist',
+    ]),
+  ];
+  const selected = new Set(groups.flatMap((g) => g.group.series.map((series) => series.id)));
+  try {
+    await render(groups, selected);
+    await waitFor(() => host.querySelector('canvas') !== null);
+    const tip = hover(host, 0.5);
+    const names = [...tip.querySelectorAll<HTMLElement>('[data-series]')].map((row) =>
+      row.querySelector('span > span:nth-child(2)')!,
+    );
+    for (const name of names) {
+      // Never cut by the layout: the name is as wide as its text.
+      expect(name.scrollWidth, name.textContent!).toBeLessThanOrEqual(name.clientWidth + 0.5);
+    }
+    const texts = names.map((name) => name.textContent);
+    expect(new Set(texts).size).toBe(texts.length);
+    expect(texts.filter((text) => text === 'x' || text === 'qy').length).toBeGreaterThan(0);
+
+    // 50 px: one row and nothing else, inside the chart.
+    host.style.height = '50px';
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    const small = hover(host, 0.5);
+    const box = host.querySelector('[data-testid="feature-chart"]')!.getBoundingClientRect();
+    const rect = small.getBoundingClientRect();
+    expect(small.querySelectorAll('[data-series]')).toHaveLength(1);
+    expect(rect.bottom).toBeLessThanOrEqual(box.bottom + 0.5);
+    expect(rect.top).toBeGreaterThanOrEqual(box.top - 0.5);
+  } finally {
+    await unmount();
+  }
+});
