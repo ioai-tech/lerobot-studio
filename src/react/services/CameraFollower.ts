@@ -153,6 +153,24 @@ export class CameraFollower {
     }
   }
 
+  /**
+   * Whether the element is settled for a paused clock: no seek of its own in
+   * flight and, when it can be placed, on the clock's frame. A seek that
+   * landed off target is settled too (it is not sought again).
+   */
+  isSettledWhilePaused(): boolean {
+    if (this.disposed || this.failed || this.clock.isPlaying) return false;
+    if (this.seeking || this.seekPending || this.video.seeking) return false;
+    const range = this.options.range();
+    if (!range || this.video.readyState < HAVE_METADATA) return true;
+    const fps = this.options.fps() || 30;
+    const target = this.frameCentre(frameAtTime(this.clock.now(), fps), range, fps);
+    return (
+      Math.abs(this.video.currentTime - target) <= SAME_POSITION_FRAMES / fps ||
+      this.lastPausedTarget === target
+    );
+  }
+
   dispose(): void {
     this.disposed = true;
     this.release();
