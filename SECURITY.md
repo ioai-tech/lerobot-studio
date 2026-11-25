@@ -93,9 +93,8 @@ also runs `npm audit --omit=dev` and fails if a waived advisory appears in the
 production graph. A failed or incomplete `npm audit` run fails the gate. The
 gate warns about waivers that match no advisory.
 
-| Advisory                                    | Scope                                                                                                                                                                                                            | Reason                                                                                                                                                                                                 | Remove when                                                               |
-| ------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------- |
-| GHSA-fc5q-39xc-vjpf (picomatch ReDoS, high) | Toolchain only: reached through vite, vitest, eslint, changesets and vitepress (via tinyglobby / fdir). Nothing in the published package or the built app depends on picomatch; `npm audit --omit=dev` is clean. | Every published picomatch version (`<= 4.0.7`) is affected and no patched release exists, so no upgrade or override can fix it. Patterns come from repository configuration, not from untrusted input. | A patched picomatch is released: update the lockfile and delete this row. |
+No advisory is waived at present. Add a row here (Advisory, Scope, Reason,
+Remove when) only under the rules above.
 
 ## Scope
 

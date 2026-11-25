@@ -38,9 +38,9 @@ describe('check-audit gate', () => {
     expect(() => readWaivers('# none')).toThrow(/section not found/);
   });
 
-  it('the repository policy waives picomatch', () => {
+  it('the repository policy parses (every waiver row has a scope and a reason)', () => {
     const md = readFileSync(path.resolve(__dirname, '../SECURITY.md'), 'utf8');
-    expect(readWaivers(md).has(PICO)).toBe(true);
+    expect(() => readWaivers(md)).not.toThrow();
   });
 
   it('a waived advisory and the packages reached only through it pass', () => {
@@ -192,10 +192,12 @@ describe('check-audit gate', () => {
     expect(waivedInProduction({ vulnerabilities: {} }, new Set([PICO]))).toEqual([]);
   });
 
-  /** Run the gate with a fake `npm` that answers per argument list. */
+  /** Run the gate with a fake `npm` that answers per argument list, under a policy waiving picomatch. */
   function runWithFakeNpm(full: unknown, production: unknown) {
     const bin = mkdtempSync(path.join(os.tmpdir(), 'fake-npm-'));
     try {
+      const policyPath = path.join(bin, 'SECURITY.md');
+      writeFileSync(policyPath, policy(`| ${PICO} (picomatch) | toolchain | no fix | patched |`));
       const fake = path.join(bin, 'npm');
       writeFileSync(
         fake,
@@ -211,7 +213,11 @@ describe('check-audit gate', () => {
       return spawnSync(process.execPath, [path.resolve(__dirname, '../scripts/check-audit.mjs')], {
         cwd: path.resolve(__dirname, '..'),
         encoding: 'utf8',
-        env: { ...process.env, PATH: `${bin}${path.delimiter}${process.env.PATH}` },
+        env: {
+          ...process.env,
+          PATH: `${bin}${path.delimiter}${process.env.PATH}`,
+          CHECK_AUDIT_POLICY: policyPath,
+        },
       });
     } finally {
       rmSync(bin, { recursive: true, force: true });

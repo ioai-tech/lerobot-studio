@@ -211,7 +211,9 @@ function runAudit(extraArgs = []) {
 function main() {
   let result;
   try {
-    const waivers = readWaivers(readFileSync(path.join(ROOT, 'SECURITY.md'), 'utf8'));
+    // CHECK_AUDIT_POLICY: another policy file, for the gate's own tests.
+    const policyPath = process.env.CHECK_AUDIT_POLICY || path.join(ROOT, 'SECURITY.md');
+    const waivers = readWaivers(readFileSync(policyPath, 'utf8'));
     result = evaluateAudit(runAudit(), waivers);
     // Waivers are toolchain-only: none may appear in what ships.
     result.inProduction = waivedInProduction(runAudit(['--omit=dev']), waivers);
