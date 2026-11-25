@@ -161,7 +161,28 @@ describe.skipIf(!provided)('cameras on one slow storage host', () => {
     playPause().click();
     await expect.poll(playing, { timeout: 10_000 }).toBe(false);
     // Paused near 2 s with 10 s of file ahead: the readers stop without a seek.
-    await expectReadersIdle();
+    // Chromium may keep reading a file it played after preload turns to
+    // "metadata" (the whole file, with buffered and networkState unchanged);
+    // the camera reloads at its frame on pause, so every response ends and
+    // only that frame's bounded read follows.
+    const received = async () => (await stats()).requests.reduce((sum, row) => sum + row.bytes, 0);
+    let last = -1;
+    await expect
+      .poll(
+        async () => {
+          const { open } = await stats();
+          const now = await received();
+          const settled = open === 0 && now === last;
+          last = now;
+          return settled;
+        },
+        { timeout: 8_000, interval: 500 },
+      )
+      .toBe(true);
+    // Nothing more arrives: the files ahead are not read.
+    await pause(2000);
+    expect(await received()).toBe(last);
+    expect(last / shown(6)).toBeLessThan(20 * 1024 * 1024);
     expect(await seek(0.3)).toBeLessThan(SEEK_BUDGET_MS);
   });
 });
