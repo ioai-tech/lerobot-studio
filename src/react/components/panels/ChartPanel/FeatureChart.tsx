@@ -50,6 +50,10 @@ const PLOT_MIN_HEIGHT_PX = 64;
 const TOOLTIP_MAX_ROWS = 12;
 /** Opacity of the series that are not hovered in the filter menu. */
 const FADED_ALPHA = 0.15;
+/** Tooltip width: at most this, at least the smaller value, preferably at least 180 px. */
+const TOOLTIP_MAX_WIDTH_PX = 320;
+const TOOLTIP_MIN_WIDTH_PX = 140;
+const TOOLTIP_PREFERRED_MIN_WIDTH_PX = 180;
 
 function formatValue(value: number | null | undefined): string {
   if (value == null || !Number.isFinite(value)) return '—';
@@ -211,19 +215,33 @@ export function FeatureChart({
       }
     };
 
+    // Emphasis: series hovered in the filter menu (the others fade) and the
+    // line nearest the pointer (drawn thicker). Hovering only entries that are
+    // not drawn fades nothing.
+    let focusedIndex = -1;
     const applyHighlight = (u: uPlot) => {
-      const highlighted = highlightRef.current;
+      const hovered = highlightRef.current;
+      const highlighted =
+        hovered && drawn.some((item) => hovered.has(item.series.id)) ? hovered : null;
       drawn.forEach((item, i) => {
         const series = u.series[i + 1];
         if (!series) return;
         const on = !highlighted || highlighted.has(item.series.id);
         series.alpha = on ? 1 : FADED_ALPHA;
-        series.width = highlighted && on ? 2 : 1.25;
+        series.width = (highlighted && on) || i === focusedIndex ? 2 : 1.25;
       });
+    };
+    const setFocused = (u: uPlot, index: number) => {
+      if (index === focusedIndex) return;
+      focusedIndex = index;
+      applyHighlight(u);
+      u.redraw(false);
     };
 
     // Hover tooltip: the time, the frame, and the values of the series nearest
     // the pointer, read from the full-resolution samples (not the decimated ones).
+    // It stays inside the chart: as wide as the wider side of the pointer
+    // allows, and with as many rows as the chart's height allows.
     let placement: TooltipPlacementState | null = null;
     let lastCursor: { x: number; y: number } | null = null;
     const hideTooltip = () => {
@@ -233,79 +251,106 @@ export function FeatureChart({
     };
     const showTooltip = (u: uPlot) => {
       const tip = tooltipRef.current;
+      const container = hostRef.current;
       const left = u.cursor.left ?? -1;
       const top = u.cursor.top ?? -1;
-      if (!tip || left < 0 || top < 0) return hideTooltip();
-      const time = u.posToVal(left, 'x');
-      const rows = drawn.map((item) => {
-        const index = nearestSampleIndex(item.x, time);
-        const value = index >= 0 ? item.values[index]! : NaN;
-        const y = Number.isFinite(value) ? u.valToPos(value, 'y') : Infinity;
-        return { item, value, distance: Math.abs(y - top) };
-      });
-      const nearest = rows
-        .slice()
-        .sort((a, b) => a.distance - b.distance)
-        .slice(0, TOOLTIP_MAX_ROWS);
-      const focused = nearest[0]?.distance !== Infinity ? nearest[0] : undefined;
-      // Top to bottom as drawn: highest value first, gaps last.
-      const sortValue = (v: number) => (Number.isFinite(v) ? v : -Infinity);
-      nearest.sort((a, b) => {
-        const av = sortValue(a.value);
-        const bv = sortValue(b.value);
-        return av === bv ? 0 : av < bv ? 1 : -1;
-      });
-
-      tip.replaceChildren();
-      const header = document.createElement('div');
-      header.className = 'flex items-center justify-between gap-3 px-2 pt-1.5 pb-1 font-mono';
-      const timeEl = document.createElement('span');
-      timeEl.textContent = `${formatValue(time)} ${secondShort}`;
-      const frameEl = document.createElement('span');
-      frameEl.className = 'text-muted-foreground';
-      frameEl.textContent = `${t('units.frame')} ${frameAtRef.current(time)}`;
-      header.append(timeEl, frameEl);
-      const list = document.createElement('div');
-      list.className = 'flex flex-col px-2 pb-1.5';
-      for (const row of nearest) {
-        const line = document.createElement('div');
-        line.className =
-          'flex items-center justify-between gap-3 rounded-sm px-1 leading-5' +
-          (row === focused ? ' bg-muted font-semibold' : '');
-        line.dataset.series = row.item.series.id;
-        const name = document.createElement('span');
-        name.className = 'flex min-w-0 items-center gap-1.5';
-        const swatch = document.createElement('span');
-        swatch.setAttribute('aria-hidden', 'true');
-        swatch.style.cssText = `display:inline-block;width:12px;height:0;flex:none;border-top:2px ${row.item.style.dash ? 'dashed' : 'solid'} ${row.item.style.color};`;
-        const label = document.createElement('span');
-        label.className = 'truncate';
-        label.textContent = row.item.series.label;
-        const feature = document.createElement('span');
-        feature.className = 'shrink-0 font-normal text-muted-foreground';
-        feature.textContent = row.item.group.title;
-        name.append(swatch, label, feature);
-        const value = document.createElement('span');
-        value.className = 'shrink-0 font-mono tabular-nums';
-        value.textContent = formatValue(row.value);
-        line.append(name, value);
-        list.append(line);
+      if (!tip || !container || left < 0 || top < 0) {
+        setFocused(u, -1);
+        return hideTooltip();
       }
-      tip.append(header, list);
-      if (rows.length > nearest.length) {
-        const more = document.createElement('div');
-        more.className = 'px-3 pb-1.5 text-[10px] text-muted-foreground';
-        more.textContent = t('chart.tooltip.moreSeries', { count: rows.length - nearest.length });
-        tip.append(more);
-      }
-      tip.hidden = false;
-
-      const container = hostRef.current;
-      if (!container) return;
       const overRect = u.over.getBoundingClientRect();
       const hostRect = container.getBoundingClientRect();
       const cursorX = overRect.left - hostRect.left + left;
       const cursorY = overRect.top - hostRect.top + top;
+
+      const time = u.posToVal(left, 'x');
+      const rows = drawn.map((item, index) => {
+        const sample = nearestSampleIndex(item.x, time);
+        const value = sample >= 0 ? item.values[sample]! : NaN;
+        const y = Number.isFinite(value) ? u.valToPos(value, 'y') : Infinity;
+        return { item, index, value, distance: Math.abs(y - top) };
+      });
+      const byDistance = rows
+        .slice()
+        .sort((a, b) => a.distance - b.distance)
+        .slice(0, TOOLTIP_MAX_ROWS);
+      const focused = byDistance[0]?.distance !== Infinity ? byDistance[0] : undefined;
+      setFocused(u, focused?.index ?? -1);
+
+      const gap = 12;
+      const maxWidth = Math.min(
+        TOOLTIP_MAX_WIDTH_PX,
+        Math.max(TOOLTIP_MIN_WIDTH_PX, Math.max(cursorX, hostRect.width - cursorX) - gap - 4),
+      );
+      tip.style.maxWidth = `${maxWidth}px`;
+      tip.style.minWidth = `${Math.min(TOOLTIP_PREFERRED_MIN_WIDTH_PX, maxWidth)}px`;
+
+      const render = (count: number) => {
+        const shown = byDistance.slice(0, count);
+        // Top to bottom as drawn: highest value first, gaps last.
+        const sortValue = (v: number) => (Number.isFinite(v) ? v : -Infinity);
+        shown.sort((a, b) => {
+          const av = sortValue(a.value);
+          const bv = sortValue(b.value);
+          return av === bv ? 0 : av < bv ? 1 : -1;
+        });
+        tip.replaceChildren();
+        const header = document.createElement('div');
+        header.className = 'flex items-center justify-between gap-3 px-2 pt-1 pb-0.5 font-mono';
+        const timeEl = document.createElement('span');
+        timeEl.textContent = `${formatValue(time)} ${secondShort}`;
+        const frameEl = document.createElement('span');
+        frameEl.className = 'text-muted-foreground';
+        frameEl.textContent = `${t('units.frame')} ${frameAtRef.current(time)}`;
+        header.append(timeEl, frameEl);
+        const list = document.createElement('div');
+        list.className = 'flex flex-col px-1 pb-1';
+        for (const row of shown) {
+          const line = document.createElement('div');
+          line.className =
+            'flex items-center justify-between gap-3 rounded-sm px-1 leading-[18px]' +
+            (row === focused ? ' bg-muted font-semibold' : '');
+          line.dataset.series = row.item.series.id;
+          const name = document.createElement('span');
+          name.className = 'flex min-w-0 items-center gap-1.5';
+          const swatch = document.createElement('span');
+          swatch.setAttribute('aria-hidden', 'true');
+          swatch.style.cssText = `display:inline-block;width:12px;height:0;flex:none;border-top:2px ${row.item.style.dash ? 'dashed' : 'solid'} ${row.item.style.color};`;
+          const label = document.createElement('span');
+          label.className = 'truncate';
+          label.textContent = row.item.series.label;
+          const feature = document.createElement('span');
+          feature.className = 'min-w-0 shrink truncate font-normal text-muted-foreground';
+          feature.textContent = row.item.group.title;
+          name.append(swatch, label, feature);
+          const value = document.createElement('span');
+          value.className = 'shrink-0 font-mono tabular-nums';
+          value.textContent = formatValue(row.value);
+          line.append(name, value);
+          list.append(line);
+        }
+        tip.append(header, list);
+        if (rows.length > shown.length) {
+          const more = document.createElement('div');
+          more.className = 'px-2 pb-1 text-[10px] leading-3 text-muted-foreground';
+          more.textContent = t('chart.tooltip.moreSeries', { count: rows.length - shown.length });
+          tip.append(more);
+        }
+        return list;
+      };
+      tip.hidden = false;
+      const list = render(byDistance.length);
+      // Fewer rows when the chart is short: measured, then rendered once more.
+      const available = hostRect.height - 8;
+      if (tip.offsetHeight > available && byDistance.length > 1) {
+        const rowHeight = Math.max(1, list.firstElementChild?.getBoundingClientRect().height ?? 18);
+        const others = tip.offsetHeight - byDistance.length * rowHeight;
+        // Rendering fewer rows adds the "+ N more" line: leave room for it.
+        const moreLine = rows.length > byDistance.length ? 0 : 14;
+        const fit = Math.floor((available - others - moreLine) / rowHeight);
+        render(Math.max(1, Math.min(byDistance.length - 1, fit)));
+      }
+
       placement = computeTooltipPlacement({
         cursorX,
         cursorY,
@@ -314,8 +359,8 @@ export function FeatureChart({
         containerW: hostRect.width,
         containerH: hostRect.height,
         edgePadding: 4,
-        cursorGapX: 12,
-        cursorGapY: 12,
+        cursorGapX: gap,
+        cursorGapY: gap,
         cursorDx: lastCursor ? cursorX - lastCursor.x : 0,
         cursorDy: lastCursor ? cursorY - lastCursor.y : 0,
         previousPlacement: placement?.placement ?? null,
@@ -449,7 +494,7 @@ export function FeatureChart({
         ref={tooltipRef}
         role="tooltip"
         hidden
-        className="pointer-events-none absolute top-0 left-0 z-20 max-w-[320px] min-w-[180px] rounded-md border bg-background/95 text-[11px] text-foreground shadow-lg backdrop-blur"
+        className="pointer-events-none absolute top-0 left-0 z-20 overflow-hidden rounded-md border bg-background/95 text-[11px] text-foreground shadow-lg backdrop-blur"
       />
     </div>
   );

@@ -153,10 +153,20 @@ it('a short chart panel shows one plot that fits it, with no scrollbar and no le
     expect(plot.bottom).toBeLessThanOrEqual(box.bottom + 0.5);
     expect(chart.scrollHeight).toBeLessThanOrEqual(chart.clientHeight);
     expect(chart.querySelectorAll('button, [role="group"]')).toHaveLength(0);
-    // 42 series: the tooltip lists the 12 nearest and counts the rest.
-    const tip = hover(host, 0.5);
-    expect(tip.querySelectorAll('[data-series]')).toHaveLength(12);
-    expect(tip.textContent).toContain('+ 30 more');
+    // 42 series in a short chart: the tooltip lists the nearest that fit and
+    // counts the rest, and stays inside the chart wherever the pointer is.
+    for (const fraction of [0.05, 0.5, 0.95]) {
+      const tip = hover(host, fraction);
+      const shown = tip.querySelectorAll('[data-series]').length;
+      expect(shown).toBeGreaterThanOrEqual(1);
+      expect(shown).toBeLessThan(12);
+      expect(tip.textContent).toContain(`+ ${42 - shown} more`);
+      const rect = tip.getBoundingClientRect();
+      expect(rect.top, `top at ${fraction}`).toBeGreaterThanOrEqual(box.top - 0.5);
+      expect(rect.bottom, `bottom at ${fraction}`).toBeLessThanOrEqual(box.bottom + 0.5);
+      expect(rect.left, `left at ${fraction}`).toBeGreaterThanOrEqual(box.left - 0.5);
+      expect(rect.right, `right at ${fraction}`).toBeLessThanOrEqual(box.right + 0.5);
+    }
   } finally {
     await unmount();
   }

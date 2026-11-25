@@ -47,4 +47,20 @@ describe('chart series styles', () => {
     // 16 feature colors are taken: the auxiliary series is the 17th slot.
     expect(styles.get('aux:imu:acc::0')).toEqual({ color: 'c2', dash: WRAPPED_STATE_DASH });
   });
+
+  it('counts a repeated palette color once, so no two lines share color and dash', () => {
+    // A theme whose tokens repeat (6 colors cycling over 14 slots).
+    const cycling = Array.from({ length: 14 }, (_, i) => `c${i % 6}`);
+    const keys = ['observation.pose.head', 'observation.pose.left', 'observation.pose.right'];
+    const dims = collectChartDimensions(
+      keys,
+      Object.fromEntries(keys.map((key) => [key, pose])) as never,
+    );
+    const styles = buildSeriesStyles(dims, [], cycling, '#000');
+    const looks = dims.map((dim) => {
+      const style = styles.get(dim.id)!;
+      return `${style.color}|${style.dash?.join(',') ?? ''}`;
+    });
+    expect(new Set(looks).size).toBe(dims.length);
+  });
 });

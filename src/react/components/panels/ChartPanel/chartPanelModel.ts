@@ -254,8 +254,10 @@ export function computeChartDataCore(input: {
   };
 }
 
-/** Dash of a state series drawn after the palette wrapped, so it differs from the first round. */
+/** Dash of a state series drawn after the palette wrapped once, so it differs from the first round. */
 export const WRAPPED_STATE_DASH: number[] = [2, 3];
+/** Dashes for each wrap of the palette (the first wrap is {@link WRAPPED_STATE_DASH}). */
+const WRAPPED_STATE_DASHES: number[][] = [WRAPPED_STATE_DASH, [8, 3, 2, 3], [1, 5]];
 
 export type ChartSeriesStyle = { color: string; dash?: number[] };
 
@@ -263,8 +265,9 @@ export type ChartSeriesStyle = { color: string; dash?: number[] };
  * How each series of the one chart is drawn. An action and the state of the
  * same joint share a color (action dashed, state solid), as in 1.4. Other
  * features that reuse a name (three poses each named x, y, z …) get their own
- * colors: the n-th series of a kind with a given name is keyed `name#n`. Once
- * the palette wraps, state series are dotted so a repeated color still differs.
+ * colors: the n-th series of a kind with a given name is keyed `name#n`.
+ * Repeated palette entries count once; each time the palette wraps, state
+ * series take another dash, so a repeated color still differs.
  * Auxiliary series follow, in order, so they never shift the features' colors.
  */
 export function buildSeriesStyles(
@@ -283,24 +286,22 @@ export function buildSeriesStyles(
   }
   const keys = [...new Set(keyOf.values())].sort();
   const spread = makeSpreadIndices(keys.length);
-  const size = Math.max(1, palette.length);
+  const colors = [...new Set(palette)];
+  const size = Math.max(1, colors.length);
+  const wrappedDash = (slot: number) =>
+    slot < size ? undefined : WRAPPED_STATE_DASHES[(Math.floor(slot / size) - 1) % 3];
   const slotOf = new Map(keys.map((key, i) => [key, spread[i] ?? i]));
   const styles = new Map<string, ChartSeriesStyle>();
   for (const dim of dimensions) {
     const slot = slotOf.get(keyOf.get(dim.id)!)!;
-    const color = palette[slot % size] ?? fallback;
-    const wrapped = slot >= size;
     styles.set(dim.id, {
-      color,
-      dash: dim.kind === 'action' ? ACTION_DASH : wrapped ? WRAPPED_STATE_DASH : undefined,
+      color: colors[slot % size] ?? fallback,
+      dash: dim.kind === 'action' ? ACTION_DASH : wrappedDash(slot),
     });
   }
   auxiliarySeriesIds.forEach((id, i) => {
     const slot = keys.length + i;
-    styles.set(id, {
-      color: palette[slot % size] ?? fallback,
-      dash: slot >= size ? WRAPPED_STATE_DASH : undefined,
-    });
+    styles.set(id, { color: colors[slot % size] ?? fallback, dash: wrappedDash(slot) });
   });
   return styles;
 }
